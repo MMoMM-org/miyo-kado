@@ -1,0 +1,12 @@
+{
+  "theme": "dark",
+  "autoUpdates": true,
+  "telemetry": false,
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "claudeMdExcludes": [
+    "claude-docker-home/CLAUDE.md"
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "version": 2,
+  "plugins": {
+    "claude-reflect@claude-reflect-marketplace": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/claude-reflect-marketplace/claude-reflect/3.0.1",
+        "version": "3.0.1",
+        "installedAt": "2026-03-08T19:21:58.685Z",
+        "lastUpdated": "2026-03-08T19:21:58.685Z",
+        "gitCommitSha": "e20d6486346405ece52c0dea2fc33336f0a8bb70"
+      }
+    ],
+    "start@the-custom-startup": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/the-custom-startup/start/3.2.1",
+        "version": "3.2.1",
+        "installedAt": "2026-03-16T14:46:24.165Z",
+        "lastUpdated": "2026-03-16T14:46:24.165Z",
+        "gitCommitSha": "e48925b3f0e30e31a37c032376575ea64cbbcccf"
+      }
+    ],
+    "team@the-custom-startup": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/the-custom-startup/team/3.2.1",
+        "version": "3.2.1",
+        "installedAt": "2026-03-16T14:46:24.358Z",
+        "lastUpdated": "2026-03-16T14:46:24.358Z",
+        "gitCommitSha": "e48925b3f0e30e31a37c032376575ea64cbbcccf"
+      }
+    ],
+    "superpowers@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5",
+        "version": "5.0.5",
+        "installedAt": "2026-03-19T18:52:40.560Z",
+        "lastUpdated": "2026-03-19T18:52:40.560Z",
+        "gitCommitSha": "7e516434f2a30114300efc9247db32fb37daa5f9"
+      }
+    ],
+    "commit-commands@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/claude-plugins-official/commit-commands/61c0597779bd",
+        "version": "61c0597779bd",
+        "installedAt": "2026-03-19T18:52:40.568Z",
+        "lastUpdated": "2026-03-21T10:50:41.551Z",
+        "gitCommitSha": "d53f6ca4cdb000c671dfdc1c181b021e97c25505"
+      }
+    ],
+    "typescript-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/marcus/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-03-21T14:54:44.158Z",
+        "lastUpdated": "2026-03-21T14:54:44.158Z",
+        "gitCommitSha": "61c0597779bd2d670dcd4fbbf37c66aa19eb2ce6"
+      }
+    ]
+  }
+}

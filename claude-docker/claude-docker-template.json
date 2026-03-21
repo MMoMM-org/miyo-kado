@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "repoName": "{{REPO_NAME}}",
+  "config": "{{CONFIG_VARIANT}}",
+  "configVersion": "1.0",
+  "imageName": "claude-code-{{CONFIG_VARIANT}}",
+  "containerName": "claude-{{REPO_NAME_LOWER}}",
+  "installedAt": "{{DATE}}",
+  "features": [
+    {
+      "id": "stop-reflect",
+      "type": "hook",
+      "version": "1.0",
+      "source": "template",
+      "files": [],
+      "settings": {
+        "hooks": {
+          "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "/home/coder/.claude/hooks/stop-reflect.sh" }] }]
+        }
+      }
+    },
+    {
+      "id": "dev-notify-bridge",
+      "type": "hook",
+      "version": "1.0",
+      "source": "template",
+      "files": [],
+      "settings": {
+        "hooks": {
+          "Notification": [{ "hooks": [{ "type": "command", "command": "/home/coder/.claude/hooks/dev-notify-bridge.sh" }] }]
+        }
+      }
+    },
+    {
+      "id": "memory-profile",
+      "type": "rule",
+      "version": "1.0",
+      "source": "host",
+      "files": [
+        { "from": "~/.claude/rules/memory-profile.md", "to": ".claude/rules/memory-profile.md" }
+      ],
+      "settings": {}
+    }
+  ],
+  "extraVolumes": [],
+  "projectMount": "auto"
+}

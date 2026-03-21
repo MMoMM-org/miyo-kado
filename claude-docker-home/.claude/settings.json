@@ -1,0 +1,80 @@
+{
+  "autoUpdates": false,
+  "telemetry": false,
+  "plansDirectory": "./.claude/plans",
+  "statusLine": {
+    "type": "command",
+    "command": "/home/coder/.claude/the-custom-startup-statusline-enhanced.sh"
+  },
+  "enabledPlugins": {
+    "claude-reflect@claude-reflect-marketplace": true,
+    "start@the-custom-startup": true,
+    "team@the-custom-startup": true,
+    "superpowers@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-reflect-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "bayramannakov/claude-reflect"
+      }
+    },
+    "the-custom-startup": {
+      "source": {
+        "source": "github",
+        "repo": "MMoMM-org/the-custom-startup"
+      }
+    }
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/coder/.claude/hooks/stop-reflect.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/coder/.claude/hooks/dev-notify-bridge.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/claude-scripts/security-scan.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/claude-scripts/security-precheck.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}

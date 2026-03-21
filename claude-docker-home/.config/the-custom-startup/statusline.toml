@@ -1,0 +1,21 @@
+# The Custom Startup — Statusline Configuration (Docker)
+plan          = "pro"
+fallback_plan = "pro"
+budget_mode   = "token"
+
+ccusage_cache_ttl = 60
+git_cache_ttl     = 15
+
+show_budget_bar  = true
+show_context_bar = true
+show_duration    = true
+show_git         = true
+show_remote_url  = true
+
+[thresholds.context]
+warn   = 70
+danger = 90
+
+[thresholds.budget]
+warn   = 70
+danger = 90

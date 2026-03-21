@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "repoName": "Kado",
+  "installedAt": "2026-03-21",
+  "initialArtifacts": {
+    "rules": [
+      "memory-profile.md",
+      "memory-preferences.md"
+    ],
+    "hooks": [
+      "stop-reflect.sh",
+      "dev-notify-bridge.sh"
+    ],
+    "auth": {
+      "claudeJson": "extracted from host ~/.claude.json (8 auth fields)",
+      "credentials": "extracted from macOS Keychain (Claude Code-credentials)"
+    }
+  },
+  "syncHistory": []
+}

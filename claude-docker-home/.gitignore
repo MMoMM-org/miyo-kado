@@ -1,0 +1,21 @@
+# Auth — never commit
+.claude/.credentials.json
+.claude/credentials.json
+.claude.json
+
+# Shell and package manager state
+.bash_history
+.bun/
+.npm/
+
+# Claude runtime state
+.claude/projects/
+.claude/shell-snapshots/
+.claude/auto-memory/
+.claude/plans/
+.claude/cache/
+.claude/backups/
+.claude/file-history/
+.claude/history.jsonl
+.claude/mcp-needs-auth-cache.json
+.claude/*.log
