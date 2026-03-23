@@ -12,14 +12,20 @@ set -e
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 
 # ── Block direct commits to main/master ─────────────────────
+# Exception: outbox-only commits are always allowed (MiYo handoff protocol)
 case "$BRANCH" in
   main|master)
-    echo ""
-    echo "  ✗ Direct commit to '$BRANCH' is not allowed."
-    echo "    Create a feature branch first:"
-    echo "      git checkout -b feat/your-feature"
-    echo ""
-    exit 1
+    STAGED_ALL=$(git diff --cached --name-only 2>/dev/null || true)
+    NON_OUTBOX=$(printf '%s\n' "$STAGED_ALL" | grep -v '^_outbox/' || true)
+    if [ -n "$NON_OUTBOX" ]; then
+      echo ""
+      echo "  ✗ Direct commit to '$BRANCH' is not allowed."
+      echo "    Create a feature branch first:"
+      echo "      git checkout -b feat/your-feature"
+      echo "    (Outbox-only commits are exempt from this rule.)"
+      echo ""
+      exit 1
+    fi
     ;;
 esac
 
