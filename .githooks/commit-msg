@@ -1,0 +1,31 @@
+#!/bin/bash
+# commit-msg — git safety hook
+#
+# Validates commit message basics:
+#   1. Subject line must not be empty
+#   2. Subject line must not exceed 72 characters
+#
+# Install: git config core.hooksPath .githooks
+
+MSG_FILE="$1"
+SUBJECT=$(head -1 "$MSG_FILE" | sed 's/[[:space:]]*$//')
+
+# ── Reject empty subject ─────────────────────────────────────
+if [ -z "$SUBJECT" ]; then
+  echo ""
+  echo "  ✗ Commit message subject cannot be empty."
+  echo ""
+  exit 1
+fi
+
+# ── Reject subject over 72 chars ─────────────────────────────
+LENGTH=${#SUBJECT}
+if [ "$LENGTH" -gt 72 ]; then
+  echo ""
+  echo "  ✗ Commit subject too long: $LENGTH characters (max 72)."
+  echo "    Move details to the body (leave a blank line after subject)."
+  echo ""
+  exit 1
+fi
+
+exit 0
