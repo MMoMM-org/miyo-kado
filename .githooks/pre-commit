@@ -1,0 +1,66 @@
+#!/bin/bash
+# pre-commit — git safety hook
+#
+# Blocks:
+#   1. Direct commits to main/master
+#   2. Staged files that look like secrets
+#
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+# ── Block direct commits to main/master ─────────────────────
+# Exception: outbox-only commits are always allowed (MiYo handoff protocol)
+case "$BRANCH" in
+  main|master)
+    STAGED_ALL=$(git diff --cached --name-only 2>/dev/null || true)
+    NON_OUTBOX=$(printf '%s\n' "$STAGED_ALL" | grep -v '^_outbox/' || true)
+    if [ -n "$NON_OUTBOX" ]; then
+      echo ""
+      echo "  ✗ Direct commit to '$BRANCH' is not allowed."
+      echo "    Create a feature branch first:"
+      echo "      git checkout -b feat/your-feature"
+      echo "    (Outbox-only commits are exempt from this rule.)"
+      echo ""
+      exit 1
+    fi
+    ;;
+esac
+
+# ── Check for accidentally staged secret files ───────────────
+STAGED=$(git diff --cached --name-only 2>/dev/null || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+FOUND=0
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    .env|.env.*|*.env)
+      echo "  ✗ Staged file looks like an env file: $file" && FOUND=1 ;;
+    credentials.json|.credentials.json|*.credentials.json)
+      echo "  ✗ Staged file looks like credentials: $file" && FOUND=1 ;;
+    *.pem|*.key|*.p12|*.pfx)
+      echo "  ✗ Staged file looks like a private key: $file" && FOUND=1 ;;
+    id_rsa|id_ed25519|id_ecdsa|id_dsa)
+      echo "  ✗ Staged file looks like an SSH key: $file" && FOUND=1 ;;
+    secrets.*|*.secrets|secret.*)
+      echo "  ✗ Staged file looks like a secrets file: $file" && FOUND=1 ;;
+  esac
+done <<EOF
+$STAGED
+EOF
+
+if [ "$FOUND" -eq 1 ]; then
+  echo ""
+  echo "    Remove from staging: git restore --staged <file>"
+  echo "    Add to .gitignore to prevent future accidents."
+  echo ""
+  exit 1
+fi
+
+exit 0
