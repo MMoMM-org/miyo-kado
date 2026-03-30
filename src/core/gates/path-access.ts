@@ -28,15 +28,22 @@ function blocked(message: string): GateResult {
 	};
 }
 
+/** URL-decodes a path for traversal analysis. Returns the original on malformed input. */
+function decodePath(path: string): string {
+	try { return decodeURIComponent(path); } catch { return path; }
+}
+
 /** Validates a normalized path, returning an error message or null if valid. */
 function validatePath(normalized: string): string | null {
 	if (normalized.length === 0) {
 		return 'Path must not be empty';
 	}
-	if (normalized.includes('\0')) {
+	if (normalized.includes('\0') || normalized.includes('%00')) {
 		return 'Path must not contain null bytes';
 	}
-	if (TRAVERSAL_PATTERN.test(normalized) || normalized === '..') {
+	const decoded = decodePath(normalized);
+	if (TRAVERSAL_PATTERN.test(normalized) || normalized === '..'
+		|| TRAVERSAL_PATTERN.test(decoded) || decoded === '..') {
 		return 'Path must not contain traversal segments';
 	}
 	return null;

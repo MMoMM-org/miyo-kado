@@ -39,7 +39,7 @@
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"cors": "^2.8.6",
 		"express": "^5.2.1",
-		"obsidian": "latest",
+		"obsidian": "^1.7.2",
 		"zod": "^4.3.6"
 	}
 }

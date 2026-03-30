@@ -117,6 +117,42 @@ describe('PathAccessGate — traversal attempts', () => {
 			expect(result.error.gate).toBe('path-access');
 		}
 	});
+
+	it('rejects a percent-encoded traversal segment (%2e%2e/)', () => {
+		const result = gate.evaluate(makeReadRequest('%2e%2e/etc/passwd'), config);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('VALIDATION_ERROR');
+			expect(result.error.gate).toBe('path-access');
+		}
+	});
+
+	it('rejects a mixed percent-encoded traversal segment (..%2f)', () => {
+		const result = gate.evaluate(makeReadRequest('..%2fsecret'), config);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('VALIDATION_ERROR');
+			expect(result.error.gate).toBe('path-access');
+		}
+	});
+
+	it('rejects a partial percent-encoded traversal segment (.%2e/)', () => {
+		const result = gate.evaluate(makeReadRequest('.%2e/secret'), config);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('VALIDATION_ERROR');
+			expect(result.error.gate).toBe('path-access');
+		}
+	});
+
+	it('rejects a percent-encoded null byte (%00)', () => {
+		const result = gate.evaluate(makeReadRequest('projects/%00note.md'), config);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('VALIDATION_ERROR');
+			expect(result.error.gate).toBe('path-access');
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------

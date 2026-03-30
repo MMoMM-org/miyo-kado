@@ -25,6 +25,7 @@ const CRUD_OPS: Array<{key: keyof CrudFlags; label: string}> = [
 export class KadoSettingTab extends PluginSettingTab {
 	plugin: KadoPlugin;
 	private expandedKeyId: string | null = null;
+	private restarting = false;
 
 	constructor(app: App, plugin: KadoPlugin) {
 		super(app, plugin);
@@ -368,11 +369,16 @@ export class KadoSettingTab extends PluginSettingTab {
 	}
 
 	private async saveAndRestartIfRunning(): Promise<void> {
-		await this.plugin.saveSettings();
-		if (this.plugin.mcpServer?.isRunning()) {
-			await this.plugin.mcpServer.stop();
-			const config = this.plugin.configManager.getConfig();
-			await this.plugin.mcpServer.start(config.server);
+		if (this.restarting) return;
+		this.restarting = true;
+		try {
+			await this.plugin.saveSettings();
+			if (this.plugin.mcpServer?.isRunning()) {
+				await this.plugin.mcpServer.stop();
+				await this.plugin.mcpServer.start(this.plugin.configManager.getConfig().server);
+			}
+		} finally {
+			this.restarting = false;
 		}
 	}
 

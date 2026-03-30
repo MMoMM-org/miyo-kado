@@ -225,6 +225,27 @@ describe('KadoSettingTab', () => {
 		});
 	});
 
+	describe('saveAndRestartIfRunning debounce', () => {
+		it('does not restart the server a second time while a restart is in progress', async () => {
+			const {tab, plugin} = getMockTab();
+			let resolveStop!: () => void;
+			const stopPromise = new Promise<void>((res) => { resolveStop = res; });
+			(plugin.mcpServer.isRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+			(plugin.mcpServer.stop as ReturnType<typeof vi.fn>).mockReturnValue(stopPromise);
+
+			// Call saveAndRestartIfRunning twice concurrently — second call should be a no-op
+			const first = (tab as unknown as {saveAndRestartIfRunning: () => Promise<void>}).saveAndRestartIfRunning();
+			const second = (tab as unknown as {saveAndRestartIfRunning: () => Promise<void>}).saveAndRestartIfRunning();
+
+			// Resolve the pending stop so both promises can settle
+			resolveStop();
+			await Promise.all([first, second]);
+
+			// stop() should have been called exactly once despite two concurrent invocations
+			expect(plugin.mcpServer.stop).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	describe('audit section', () => {
 		it('renders audit toggle and path settings', () => {
 			const {tab} = getMockTab();
