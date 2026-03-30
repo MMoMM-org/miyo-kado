@@ -5,6 +5,18 @@
 
 import {vi} from 'vitest';
 
+// --- Core types ---
+
+export interface TagCache {
+	tag: string;
+	position?: unknown;
+}
+
+export interface CachedMetadata {
+	tags?: TagCache[];
+	frontmatter?: Record<string, unknown>;
+}
+
 // --- App & Workspace ---
 
 export class Component {
@@ -22,6 +34,11 @@ export class App {
 		modify: vi.fn(),
 		delete: vi.fn(),
 		trash: vi.fn(),
+		readBinary: vi.fn(),
+		createBinary: vi.fn(),
+		modifyBinary: vi.fn(),
+		getMarkdownFiles: vi.fn(() => [] as TFile[]),
+		getFiles: vi.fn(() => [] as TFile[]),
 		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn()},
 	};
 	fileManager = {
@@ -34,7 +51,7 @@ export class App {
 		getLeavesOfType: vi.fn(() => []),
 	};
 	metadataCache = {
-		getFileCache: vi.fn(),
+		getFileCache: vi.fn((_file: TFile): CachedMetadata | null => null),
 		on: vi.fn(),
 	};
 }
@@ -87,10 +104,26 @@ export class Notice {
 
 export class Setting {
 	settingEl = document.createElement('div');
-	constructor(_containerEl: HTMLElement) {}
-	setName = vi.fn(() => this);
+	nameEl = document.createElement('div');
+	private _containerEl: HTMLElement;
+	private _name = '';
+
+	constructor(containerEl: HTMLElement) {
+		this._containerEl = containerEl;
+		this._containerEl.appendChild(this.settingEl);
+	}
+
+	setName = vi.fn((name: string) => {
+		this._name = name;
+		this.nameEl.textContent = name;
+		this.settingEl.setAttribute('data-setting-name', name);
+		return this;
+	});
 	setDesc = vi.fn(() => this);
-	setHeading = vi.fn(() => this);
+	setHeading = vi.fn(() => {
+		this.settingEl.classList.add('setting-heading');
+		return this;
+	});
 	addText = vi.fn((cb: (text: TextComponent) => void) => {
 		cb(new TextComponent());
 		return this;
@@ -101,6 +134,10 @@ export class Setting {
 	});
 	addDropdown = vi.fn((cb: (dropdown: DropdownComponent) => void) => {
 		cb(new DropdownComponent());
+		return this;
+	});
+	addButton = vi.fn((cb: (button: ButtonComponent) => void) => {
+		cb(new ButtonComponent());
 		return this;
 	});
 }
@@ -152,7 +189,23 @@ class TextComponent {
 
 class ToggleComponent {
 	setValue = vi.fn(() => this);
-	onChange = vi.fn(() => this);
+	onChange = vi.fn((cb: (value: boolean) => void) => {
+		this._onChange = cb;
+		return this;
+	});
+	_onChange?: (value: boolean) => void;
+}
+
+class ButtonComponent {
+	setButtonText = vi.fn(() => this);
+	setCta = vi.fn(() => this);
+	setWarning = vi.fn(() => this);
+	setIcon = vi.fn(() => this);
+	onClick = vi.fn((cb: () => void) => {
+		this._onClick = cb;
+		return this;
+	});
+	_onClick?: () => void;
 }
 
 class DropdownComponent {
@@ -188,6 +241,7 @@ export class TFile {
 	basename = 'test';
 	extension = 'md';
 	vault = {};
+	parent: TFolder | null = null;
 	stat = {ctime: 1000, mtime: 2000, size: 100};
 }
 
@@ -209,4 +263,40 @@ export class Events {
 
 export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+export const getAllTags = vi.fn((_cache: CachedMetadata): string[] | null => null);
+
+// --- Factories ---
+
+export function createMockTFile(overrides?: Partial<{
+	path: string;
+	name: string;
+	basename: string;
+	extension: string;
+	stat: Partial<{ctime: number; mtime: number; size: number}>;
+}>): TFile {
+	const file = new TFile();
+	if (overrides?.path !== undefined) file.path = overrides.path;
+	if (overrides?.name !== undefined) file.name = overrides.name;
+	if (overrides?.basename !== undefined) file.basename = overrides.basename;
+	if (overrides?.extension !== undefined) file.extension = overrides.extension;
+	if (overrides?.stat) {
+		file.stat = {
+			ctime: overrides.stat.ctime ?? 1000,
+			mtime: overrides.stat.mtime ?? 2000,
+			size: overrides.stat.size ?? 100,
+		};
+	}
+	return file;
+}
+
+export function createMockCachedMetadata(overrides?: Partial<{
+	tags: TagCache[];
+	frontmatter: Record<string, unknown>;
+}>): CachedMetadata {
+	return {
+		tags: overrides?.tags ?? [],
+		frontmatter: overrides?.frontmatter ?? {},
+	};
 }
