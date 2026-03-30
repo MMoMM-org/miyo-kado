@@ -12,5 +12,6 @@ DOCKER_FLAGS=(
   "--cpus" "2"
 )
 
-# Cron setup runs before entrypoint in secure variant
-DOCKER_ENTRYPOINT_PREFIX="/usr/local/bin/claude-scripts/crontab-setup.sh 2>/dev/null;"
+# Runs as root before entrypoint drops to coder user.
+# Firewall needs root for iptables — sudo is blocked by no-new-privileges.
+DOCKER_ENTRYPOINT_PREFIX="/usr/local/bin/claude-scripts/crontab-setup.sh 2>/dev/null; /usr/local/bin/claude-scripts/init-firewall.sh 2>/dev/null;"

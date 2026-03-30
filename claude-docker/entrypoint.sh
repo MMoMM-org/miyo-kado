@@ -18,11 +18,9 @@ if [ -f "${HOME}/init-home.sh" ]; then
   source "${HOME}/init-home.sh"
 fi
 
-# ── Firewall setup (secure variant only) ────────────────────
-FIREWALL_SCRIPT="/usr/local/bin/claude-scripts/init-firewall.sh"
-if [ "${CONFIG_VARIANT:-general}" = "secure" ] && [ -f "$FIREWALL_SCRIPT" ]; then
-  sudo "$FIREWALL_SCRIPT" || echo "[entrypoint] Warning: firewall setup failed (continuing)"
-fi
+# ── Firewall setup ──────────────────────────────────────────
+# Firewall runs via DOCKER_ENTRYPOINT_PREFIX (as root, before this script).
+# no-new-privileges blocks sudo, so it cannot run here.
 
 # ── Git user config ──────────────────────────────────────────
 if [[ -n "${GIT_USER_NAME:-}" ]]; then

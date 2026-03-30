@@ -124,13 +124,7 @@ RUN apt-get update \
     clamav clamav-freshclam \
     procps findutils cron bc \
     iptables ipset iproute2 aggregate \
-    sudo \
  && rm -rf /var/lib/apt/lists/*
-
-# Allow coder to run init-firewall.sh as root without password
-RUN echo "coder ALL=(root) NOPASSWD: /usr/local/bin/claude-scripts/init-firewall.sh" \
-    > /etc/sudoers.d/coder-firewall \
- && chmod 0440 /etc/sudoers.d/coder-firewall
 
 ENV DISABLE_INSTALLATION_CHECKS=1
 

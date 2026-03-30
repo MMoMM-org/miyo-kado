@@ -7,14 +7,6 @@
     "installLocation": "/Users/marcus/.claude/plugins/marketplaces/claude-plugins-official",
     "lastUpdated": "2026-03-21T15:14:15.883Z"
   },
-  "claude-reflect-marketplace": {
-    "source": {
-      "source": "github",
-      "repo": "bayramannakov/claude-reflect"
-    },
-    "installLocation": "/Users/marcus/.claude/plugins/marketplaces/claude-reflect-marketplace",
-    "lastUpdated": "2026-03-08T19:21:58.512Z"
-  },
   "the-custom-startup": {
     "source": {
       "source": "github",
