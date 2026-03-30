@@ -1,7 +1,7 @@
 # Docker Setup — Kado
 
 Config: secure
-Installed: 2026-03-21
+Installed: 2026-03-30
 Image: claude-code-secure:1.0
 
 ## Start

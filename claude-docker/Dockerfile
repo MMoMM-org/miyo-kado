@@ -4,7 +4,7 @@
 # 1. Base stage
 # CC-BLOCK:BASE-START
 ########################################
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 
 ARG CONFIG_VERSION=1.0
 ARG BUILD_DATE
@@ -12,30 +12,71 @@ ARG BUILD_DATE
 LABEL configVersion="${CONFIG_VERSION}" \
       buildDate="${BUILD_DATE}"
 
-# C.UTF-8 is a built-in glibc locale — no locale-gen needed
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
-
+# Bootstrap: ca-certificates + curl needed before adding GitHub CLI apt repo
+# Then add GH CLI repo and install all packages in one apt-get pass
 RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl wget \
+ && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
-    bash curl wget git jq \
-    openssh-client ca-certificates \
+    locales \
+    bash git jq \
+    openssh-client \
     build-essential \
     python3 python3-pip \
+    zsh fzf ripgrep fd-find \
+    tree htop tmux man-db \
+    gh \
+ && (sed -i -e 's/# de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen || true) \
+ && (grep -q "^de_DE.UTF-8" /etc/locale.gen || echo "de_DE.UTF-8 UTF-8" >> /etc/locale.gen) \
+ && locale-gen \
  && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=de_DE.UTF-8 \
+    LANGUAGE=de_DE:de \
+    LC_ALL=de_DE.UTF-8
+
+# yq — YAML processor (not in standard apt)
+ARG YQ_VERSION=4.44.1
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -qO /usr/local/bin/yq \
+      "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${ARCH}" && \
+    chmod +x /usr/local/bin/yq
+
+# git-delta — better git diffs
+ARG GIT_DELTA_VERSION=0.18.2
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+    dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+    rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
 # Common tools available in all variants
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g \
       @grekt/cli \
-      typescript-language-server \
+      @vtsls/language-server \
       typescript \
       @biomejs/biome \
       prettier
 
-RUN useradd -m -u 1001 -s /bin/bash coder \
+RUN useradd -m -u 1001 -s /bin/zsh coder \
  && mkdir -p /repo /home/coder/.local/bin \
  && chown -R coder:coder /repo /home/coder
+
+# zsh setup — runs as coder to write ~/.zshrc, ~/.oh-my-zsh
+ARG ZSH_IN_DOCKER_VERSION=1.2.0
+USER coder
+RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh)" -- \
+    -p git \
+    -p fzf \
+    -a "[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh" \
+    -a "[ -f /usr/share/doc/fzf/examples/completion.zsh ] && source /usr/share/doc/fzf/examples/completion.zsh" \
+    -a "alias fd=fdfind" \
+    -a "alias rg='rg --smart-case'"
+USER root
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
@@ -76,13 +117,20 @@ ARG CONFIG_VARIANT=secure
 LABEL config="${CONFIG_VARIANT}" \
       imageName="claude-code-${CONFIG_VARIANT}"
 
-# Secure-only packages
+# Secure-only packages (+ iptables/ipset for Phase 5 firewall)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     python3-venv pipx \
     clamav clamav-freshclam \
     procps findutils cron bc \
+    iptables ipset iproute2 aggregate \
+    sudo \
  && rm -rf /var/lib/apt/lists/*
+
+# Allow coder to run init-firewall.sh as root without password
+RUN echo "coder ALL=(root) NOPASSWD: /usr/local/bin/claude-scripts/init-firewall.sh" \
+    > /etc/sudoers.d/coder-firewall \
+ && chmod 0440 /etc/sudoers.d/coder-firewall
 
 ENV DISABLE_INSTALLATION_CHECKS=1
 

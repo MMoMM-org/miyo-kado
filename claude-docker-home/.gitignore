@@ -1,4 +1,5 @@
 # Auth — never commit
+.grekt/config.yaml
 .claude/.credentials.json
 .claude/credentials.json
 .claude.json
@@ -7,6 +8,10 @@
 .bash_history
 .bun/
 .npm/
+
+# Drift detection state — per-repo runtime, not committed here (lives in <repo>/claude-docker-home/)
+.docker-home-state.json
+.claude/.plugins-initialized
 
 # Claude runtime state
 .claude/projects/

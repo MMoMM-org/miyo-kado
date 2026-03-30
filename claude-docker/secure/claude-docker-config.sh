@@ -6,6 +6,7 @@ DOCKER_FLAGS=(
   "--cap-drop" "ALL"
   "--cap-add" "CHOWN"
   "--cap-add" "DAC_OVERRIDE"
+  "--cap-add" "NET_ADMIN"
   "--security-opt" "no-new-privileges:true"
   "--memory" "2g"
   "--cpus" "2"

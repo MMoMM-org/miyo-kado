@@ -7,20 +7,13 @@
     "command": "/home/coder/.claude/the-custom-startup-statusline-enhanced.sh"
   },
   "enabledPlugins": {
-    "claude-reflect@claude-reflect-marketplace": true,
-    "start@the-custom-startup": true,
-    "team@the-custom-startup": true,
-    "superpowers@claude-plugins-official": true,
-    "commit-commands@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "tcs-helper@the-custom-startup": true,
+    "tcs-team@the-custom-startup": true,
+    "tcs-workflow@the-custom-startup": true,
+    "tcs-patterns@the-custom-startup": true
   },
   "extraKnownMarketplaces": {
-    "claude-reflect-marketplace": {
-      "source": {
-        "source": "github",
-        "repo": "bayramannakov/claude-reflect"
-      }
-    },
     "the-custom-startup": {
       "source": {
         "source": "github",
@@ -29,13 +22,12 @@
     }
   },
   "hooks": {
-    "Stop": [
+    "SessionStart": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "/home/coder/.claude/hooks/stop-reflect.sh"
+            "command": "/home/coder/.claude/hooks/session-start.sh"
           }
         ]
       }
@@ -50,17 +42,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/usr/local/bin/claude-scripts/security-scan.sh"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -71,10 +52,24 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/claude-scripts/security-scan.sh"
+          }
+        ]
+      }
     ]
   },
   "permissions": {
     "allow": [],
     "deny": []
+  },
+  "env": {
+    "ENABLE_LSP_TOOL": "1"
   }
 }

@@ -5,7 +5,7 @@
   "configVersion": "1.0",
   "imageName": "claude-code-secure",
   "containerName": "claude-kado",
-  "installedAt": "2026-03-21",
+  "installedAt": "2026-03-30",
   "features": [
     {
       "id": "stop-reflect",

@@ -28,6 +28,13 @@ data.json
 .claude/clamav-update.log
 .claude/clamav-scan.log
 .claude/.claude.json
+.claude/cache/
+.claude/backups/
+.claude/file-history/
+.claude/history.jsonl
+.claude/mcp-needs-auth-cache.json
+.claude/projects/
+.claude/*.log
 claude-docker-home/.claude/.credentials.json
 claude-docker-home/.claude/credentials.json
 claude-docker-home/.claude.json
@@ -43,3 +50,4 @@ claude-docker-home/.claude/mcp-needs-auth-cache.json
 claude-docker-home/.claude/*.log
 claude-docker-home/.claude/rules/memory-profile.md
 claude-docker-home/.claude/rules/memory-preferences.md
+claude-docker-home/.home-initialized
