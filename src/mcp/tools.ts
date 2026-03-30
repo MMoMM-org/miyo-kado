@@ -23,6 +23,8 @@ import type {
 	CoreWriteResult,
 	CoreSearchResult,
 } from '../types/canonical';
+import type {AuditLogger} from '../core/audit-logger';
+import {createAuditEntry} from '../core/audit-logger';
 
 // ============================================================
 // Public types
@@ -35,6 +37,7 @@ export interface ToolDependencies {
 	gates: PermissionGate[];
 	router: (request: CoreRequest) => Promise<RouteResult>;
 	getFileMtime: (path: string) => number | undefined;
+	auditLogger?: AuditLogger;
 }
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -83,6 +86,31 @@ function missingAuthError(): CallToolResult {
 	return asCallToolResult(mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'}));
 }
 
+async function logAllowed(
+	auditLogger: AuditLogger | undefined,
+	keyId: string,
+	request: CoreRequest,
+	startHrMs: number,
+): Promise<void> {
+	if (!auditLogger) return;
+	const path = 'path' in request ? (request.path as string) : undefined;
+	const operation = String(request.operation ?? '');
+	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
+	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, path, decision: 'allowed', durationMs}));
+}
+
+async function logDenied(
+	auditLogger: AuditLogger | undefined,
+	keyId: string,
+	request: CoreRequest,
+	gate: string | undefined,
+): Promise<void> {
+	if (!auditLogger) return;
+	const path = 'path' in request ? (request.path as string) : undefined;
+	const operation = String(request.operation ?? '');
+	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, path, decision: 'denied', gate}));
+}
+
 // ============================================================
 // Public API
 // ============================================================
@@ -104,10 +132,15 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 
 		const request = mapReadRequest(args as Record<string, unknown>, keyId);
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
-		if (!perm.allowed) return asCallToolResult(mapError(perm.error));
+		if (!perm.allowed) {
+			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			return asCallToolResult(mapError(perm.error));
+		}
 
+		const startMs = performance.now();
 		const result = await deps.router(request);
 		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		await logAllowed(deps.auditLogger, keyId, request, startMs);
 		return asCallToolResult(mapFileResult(result as CoreFileResult));
 	});
 }
@@ -119,13 +152,18 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 
 		const request = mapWriteRequest(args as Record<string, unknown>, keyId);
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
-		if (!perm.allowed) return asCallToolResult(mapError(perm.error));
+		if (!perm.allowed) {
+			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			return asCallToolResult(mapError(perm.error));
+		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
 		if (!concurrency.allowed) return asCallToolResult(mapError(concurrency.error));
 
+		const startMs = performance.now();
 		const result = await deps.router(request);
 		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		await logAllowed(deps.auditLogger, keyId, request, startMs);
 		return asCallToolResult(mapWriteResult(result as CoreWriteResult));
 	});
 }
@@ -137,10 +175,15 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 
 		const request = mapSearchRequest(args as Record<string, unknown>, keyId);
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
-		if (!perm.allowed) return asCallToolResult(mapError(perm.error));
+		if (!perm.allowed) {
+			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			return asCallToolResult(mapError(perm.error));
+		}
 
+		const startMs = performance.now();
 		const result = await deps.router(request);
 		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		await logAllowed(deps.auditLogger, keyId, request, startMs);
 		return asCallToolResult(mapSearchResult(result as CoreSearchResult));
 	});
 }

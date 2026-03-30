@@ -9,6 +9,7 @@ import {KadoSettingTab} from './settings';
 import type {KadoConfig} from './types/canonical';
 import {ConfigManager} from './core/config-manager';
 import {KadoMcpServer} from './mcp/server';
+import {kadoLog} from './core/logger';
 import {registerTools} from './mcp/tools';
 import {createDefaultGateChain} from './core/permission-chain';
 import {createOperationRouter} from './core/operation-router';
@@ -17,10 +18,12 @@ import {createFrontmatterAdapter} from './obsidian/frontmatter-adapter';
 import {createFileAdapter} from './obsidian/file-adapter';
 import {createInlineFieldAdapter} from './obsidian/inline-field-adapter';
 import {createSearchAdapter} from './obsidian/search-adapter';
+import {AuditLogger} from './core/audit-logger';
 
 export default class KadoPlugin extends Plugin {
 	settings: KadoConfig;
-	private configManager!: ConfigManager;
+	configManager!: ConfigManager;
+	mcpServer!: KadoMcpServer;
 
 	async onload(): Promise<void> {
 		this.configManager = new ConfigManager(
@@ -43,20 +46,38 @@ export default class KadoPlugin extends Plugin {
 		const getFileMtime = (path: string): number | undefined =>
 			this.app.vault.getFileByPath(path)?.stat.mtime;
 
-		const mcpServer = new KadoMcpServer(
+		const auditConfig = this.configManager.getConfig().audit;
+		const auditLogPath = `${this.app.vault.configDir}/${auditConfig.logFilePath}`;
+		const auditLogger = new AuditLogger(auditConfig, {
+			write: async (line: string) => {
+				const existing = await this.app.vault.adapter.read(auditLogPath).catch(() => '');
+				await this.app.vault.adapter.write(auditLogPath, existing + line);
+			},
+			getSize: async () => (await this.app.vault.adapter.stat(auditLogPath))?.size ?? 0,
+			rotate: async () => {
+				const existing = await this.app.vault.adapter.read(auditLogPath).catch(() => '');
+				await this.app.vault.adapter.write(auditLogPath + '.1', existing);
+				await this.app.vault.adapter.write(auditLogPath, '');
+			},
+		});
+
+		this.mcpServer = new KadoMcpServer(
 			this.configManager,
-			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime}),
+			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger}),
 		);
 
 		if (this.configManager.getConfig().server.enabled) {
-			await mcpServer.start(this.configManager.getConfig().server);
+			await this.mcpServer.start(this.configManager.getConfig().server);
 		}
 
-		this.register(() => mcpServer.stop());
+		this.register(() => this.mcpServer.stop());
 		this.addSettingTab(new KadoSettingTab(this.app, this));
+		kadoLog('Plugin loaded', {version: this.manifest.version});
 	}
 
-	onunload(): void {}
+	onunload(): void {
+		kadoLog('Plugin unloaded');
+	}
 
 	/** Reload settings from storage and sync to this.settings. */
 	async loadSettings(): Promise<void> {
