@@ -93,7 +93,7 @@ describe('createAuthMiddleware — valid Bearer token', () => {
 
 		middleware(req as Request, res as Response, next);
 
-		expect((req as Request & {auth?: unknown}).auth).toEqual({keyId: ENABLED_KEY.id});
+		expect((req as Request & {auth?: unknown}).auth).toEqual({token: ENABLED_KEY.id, clientId: ENABLED_KEY.id});
 	});
 
 	it('does not respond with 401 when the key is valid', () => {
@@ -106,6 +106,21 @@ describe('createAuthMiddleware — valid Bearer token', () => {
 		middleware(req as Request, res as Response, next);
 
 		expect(statusSpy).not.toHaveBeenCalled();
+	});
+
+
+	it('sets req.auth.token so MCP transport can forward it as authInfo.token', () => {
+		const manager = makeConfigManager([ENABLED_KEY]);
+		const middleware = createAuthMiddleware(manager);
+		const req = makeReq(`Bearer ${ENABLED_KEY.id}`);
+		const {res} = makeRes();
+		const next = makeNext();
+
+		middleware(req as Request, res as Response, next);
+
+		const auth = (req as Request & {auth?: {token: string; clientId: string}}).auth;
+		expect(auth?.token).toBe(ENABLED_KEY.id);
+		expect(auth?.clientId).toBe(ENABLED_KEY.id);
 	});
 });
 

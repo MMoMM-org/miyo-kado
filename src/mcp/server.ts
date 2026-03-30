@@ -90,19 +90,24 @@ export class KadoMcpServer {
 	// -----------------------------------------------------------------------
 
 	private buildApp(): express.Express {
-		const mcpServer = new McpServer({name: 'kado', version: '1.0.0'});
-		this.registerToolsFn(mcpServer);
-
 		const app = express();
 		app.use(cors());
 		app.use(express.json());
 		app.use(createAuthMiddleware(this.configManager));
-		this.mountMcpRoutes(app, mcpServer);
+		this.mountMcpRoutes(app);
 		return app;
 	}
 
-	private mountMcpRoutes(app: express.Express, mcpServer: McpServer): void {
+	/** Creates a fresh McpServer with tools registered for a single request. */
+	private createPerRequestServer(): McpServer {
+		const server = new McpServer({name: 'kado', version: '1.0.0'});
+		this.registerToolsFn(server);
+		return server;
+	}
+
+	private mountMcpRoutes(app: express.Express): void {
 		app.post('/mcp', async (req, res) => {
+			const mcpServer = this.createPerRequestServer();
 			const transport = new StreamableHTTPServerTransport({
 				sessionIdGenerator: undefined,
 			});
@@ -114,13 +119,11 @@ export class KadoMcpServer {
 			};
 
 			await mcpServer.connect(transport);
-			// Cast: our auth middleware sets req.auth = { keyId }; the SDK only
-			// reads auth.token/scopes when it manages OAuth itself (which we don't
-			// use). Passing as McpRequest keeps TypeScript happy without lying.
 			await transport.handleRequest(req as unknown as McpRequest, res, req.body);
 		});
 
 		app.get('/mcp', async (req, res) => {
+			const mcpServer = this.createPerRequestServer();
 			const transport = new StreamableHTTPServerTransport({
 				sessionIdGenerator: undefined,
 			});
@@ -133,6 +136,10 @@ export class KadoMcpServer {
 
 			await mcpServer.connect(transport);
 			await transport.handleRequest(req as unknown as McpRequest, res);
+		});
+
+		app.delete('/mcp', (_req, res) => {
+			res.status(405).json({error: 'Session termination not supported in stateless mode'});
 		});
 	}
 

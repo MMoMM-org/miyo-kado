@@ -10,7 +10,7 @@ import type {ConfigManager} from '../core/config-manager';
 
 declare module 'express-serve-static-core' {
 	interface Request {
-		auth?: {keyId: string};
+		auth?: {token: string; clientId: string};
 	}
 }
 
@@ -39,7 +39,7 @@ export function createAuthMiddleware(configManager: ConfigManager): RequestHandl
 			return;
 		}
 
-		req.auth = {keyId: token};
+		req.auth = {token, clientId: token};
 		next();
 	};
 }

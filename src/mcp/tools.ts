@@ -22,9 +22,12 @@ import type {
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
+	CoreSearchItem,
+	KadoConfig,
 } from '../types/canonical';
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
+import {matchGlob} from '../core/glob-match';
 
 // ============================================================
 // Public types
@@ -84,6 +87,28 @@ function asCallToolResult(result: {content: {type: 'text'; text: string}[]; isEr
 
 function missingAuthError(): CallToolResult {
 	return asCallToolResult(mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'}));
+}
+
+/** Filters search result items to only include paths within the key's permitted areas. */
+export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
+	const key = config.apiKeys.find((k) => k.id === keyId);
+	if (!key || key.areas.length === 0) return [];
+
+	const patterns = collectKeyPatterns(key.areas, config);
+	if (patterns.length === 0) return [];
+
+	return items.filter((item) => patterns.some((p) => matchGlob(p, item.path)));
+}
+
+function collectKeyPatterns(areas: {areaId: string}[], config: KadoConfig): string[] {
+	const patterns: string[] = [];
+	for (const keyArea of areas) {
+		const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
+		if (globalArea) {
+			patterns.push(...globalArea.pathPatterns);
+		}
+	}
+	return patterns;
 }
 
 async function logAllowed(
@@ -183,7 +208,12 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		const startMs = performance.now();
 		const result = await deps.router(request);
 		if (isCoreError(result)) return asCallToolResult(mapError(result));
+
+		const searchResult = result as CoreSearchResult;
+		const config = deps.configManager.getConfig();
+		searchResult.items = filterResultsByScope(searchResult.items, keyId, config);
+
 		await logAllowed(deps.auditLogger, keyId, request, startMs);
-		return asCallToolResult(mapSearchResult(result as CoreSearchResult));
+		return asCallToolResult(mapSearchResult(searchResult));
 	});
 }

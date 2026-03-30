@@ -8,13 +8,14 @@
 
 import {describe, it, expect, vi} from 'vitest';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
+	CoreSearchItem,
 	CoreError,
 	PermissionGate,
 	KadoConfig,
@@ -360,7 +361,11 @@ describe('kado-search handler', () => {
 	it('routes the search request and returns mapped search result', async () => {
 		const searchResult = makeSearchResult();
 		const router = vi.fn(async () => searchResult);
-		const handler = getSearchHandler(makeDeps({router}));
+		const config: Partial<KadoConfig> = {
+			globalAreas: [{id: 'notes', label: 'Notes', pathPatterns: ['notes/**'], permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
+			apiKeys: [{id: 'kado_test-key', label: 'k', enabled: true, createdAt: 1, areas: [{areaId: 'notes', permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}]}],
+		};
+		const handler = getSearchHandler(makeDeps({router, configManager: makeConfigManager(config)}));
 
 		const result = await handler({operation: 'byTag', query: 'project'}, makeExtra());
 
@@ -399,5 +404,107 @@ describe('kado-search handler', () => {
 
 		expect(result.isError).toBe(true);
 		expect(result.content[0].text).toContain('VALIDATION_ERROR');
+	});
+
+	it('filters search results to only include paths within the key permitted areas', async () => {
+		const config: Partial<KadoConfig> = {
+			globalAreas: [
+				{id: 'projects', label: 'Projects', pathPatterns: ['projects/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? makeDeps().configManager.getConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+			],
+			apiKeys: [
+				{
+					id: 'kado_test-key',
+					label: 'Test',
+					enabled: true,
+					createdAt: 1000,
+					areas: [{areaId: 'projects', permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
+				},
+			],
+		};
+		const searchResult = makeSearchResult({
+			items: [
+				{path: 'projects/a.md', name: 'a.md', created: 1000, modified: 2000, size: 10},
+				{path: 'journal/private.md', name: 'private.md', created: 1000, modified: 2000, size: 10},
+				{path: 'projects/b.md', name: 'b.md', created: 1000, modified: 2000, size: 10},
+			],
+		});
+		const router = vi.fn(async () => searchResult);
+		const deps = makeDeps({
+			router,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getSearchHandler(deps);
+
+		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(result.content[0].text);
+		expect(parsed.items).toHaveLength(2);
+		expect(parsed.items[0].path).toBe('projects/a.md');
+		expect(parsed.items[1].path).toBe('projects/b.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// filterResultsByScope — C3 scope filtering
+// ---------------------------------------------------------------------------
+
+describe('filterResultsByScope()', () => {
+	function makeConfig(overrides?: Partial<KadoConfig>): KadoConfig {
+		return {...createDefaultConfig(), ...overrides};
+	}
+
+	function makeItems(...paths: string[]): CoreSearchItem[] {
+		return paths.map((p) => ({path: p, name: p.split('/').pop()!, created: 1000, modified: 2000, size: 10}));
+	}
+
+	it('returns only items matching the key permitted area patterns', () => {
+		const config = makeConfig({
+			globalAreas: [{id: 'docs', label: 'Docs', pathPatterns: ['docs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
+			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: [{areaId: 'docs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}]}],
+		});
+
+		const items = makeItems('docs/readme.md', 'secret/passwd.md', 'docs/guide.md');
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(2);
+		expect(filtered.map((i) => i.path)).toEqual(['docs/readme.md', 'docs/guide.md']);
+	});
+
+	it('returns empty array when the key has no areas', () => {
+		const config = makeConfig({
+			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: []}],
+		});
+		const items = makeItems('docs/readme.md');
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('returns empty array when the key is unknown', () => {
+		const config = makeConfig();
+		const items = makeItems('docs/readme.md');
+		const filtered = filterResultsByScope(items, 'unknown-key', config);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('supports multiple areas on a single key', () => {
+		const config = makeConfig({
+			globalAreas: [
+				{id: 'docs', label: 'Docs', pathPatterns: ['docs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+				{id: 'logs', label: 'Logs', pathPatterns: ['logs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+			],
+			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: [
+				{areaId: 'docs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+				{areaId: 'logs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+			]}],
+		});
+
+		const items = makeItems('docs/a.md', 'logs/b.log', 'secret/c.md');
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(2);
+		expect(filtered.map((i) => i.path)).toEqual(['docs/a.md', 'logs/b.log']);
 	});
 });
