@@ -12,6 +12,12 @@ node_modules
 # They should be uploaded to GitHub releases instead.
 main.js
 
+# Build output (release assets)
+build/
+
+# Test coverage
+coverage/
+
 # Exclude sourcemaps
 *.map
 
@@ -51,3 +57,5 @@ claude-docker-home/.claude/*.log
 claude-docker-home/.claude/rules/memory-profile.md
 claude-docker-home/.claude/rules/memory-preferences.md
 claude-docker-home/.home-initialized
+claude-docker-home/.cache/
+claude-docker-home/.claude/plugins/marketplaces/

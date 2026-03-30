@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from 'node:module';
+import { copyFileSync, mkdirSync } from 'node:fs';
 
 const banner =
 `/*
@@ -10,6 +11,21 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const outdir = prod ? "build" : ".";
+
+// Copy plugin assets alongside the bundle
+const copyAssets = {
+	name: 'copy-assets',
+	setup(build) {
+		build.onEnd(() => {
+			if (prod) {
+				mkdirSync("build", { recursive: true });
+				copyFileSync("manifest.json", "build/manifest.json");
+				copyFileSync("styles.css", "build/styles.css");
+			}
+		});
+	},
+};
 
 const context = await esbuild.context({
 	banner: {
@@ -37,8 +53,9 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js",
+	outfile: `${outdir}/main.js`,
 	minify: prod,
+	plugins: [copyAssets],
 });
 
 if (prod) {
