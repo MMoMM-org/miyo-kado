@@ -113,6 +113,23 @@ describe('ConfigManager.load()', () => {
 		expect(config.apiKeys).toHaveLength(1);
 		expect(config.apiKeys[0]?.id).toBe('kado_abc-def');
 	});
+
+	it('preserves default server.host when stored only has server.port', async () => {
+		const {manager} = makeConfigManager({server: {port: 9999}});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.server.port).toBe(9999);
+		expect(config.server.host).toBe('127.0.0.1');
+	});
+
+	it('preserves default audit sub-object fields when stored audit is partial', async () => {
+		const {manager} = makeConfigManager({audit: {enabled: false}});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.audit.enabled).toBe(false);
+		// maxSizeBytes should remain from defaults
+		expect(typeof config.audit.maxSizeBytes).toBe('number');
+	});
 });
 
 // ---------------------------------------------------------------------------

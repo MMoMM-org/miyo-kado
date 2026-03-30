@@ -13,7 +13,8 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
-import type {PermissionGate, CoreRequest, CoreError} from '../types/canonical';
+import type {PermissionGate, CoreRequest, CoreError, DataType} from '../types/canonical';
+import {isCoreSearchRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from './response-mapper';
@@ -111,6 +112,10 @@ function collectKeyPatterns(areas: {areaId: string}[], config: KadoConfig): stri
 	return patterns;
 }
 
+function extractDataType(request: CoreRequest): DataType {
+	return isCoreSearchRequest(request) ? 'note' : request.operation;
+}
+
 async function logAllowed(
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
@@ -120,8 +125,9 @@ async function logAllowed(
 	if (!auditLogger) return;
 	const path = 'path' in request ? (request.path as string) : undefined;
 	const operation = String(request.operation ?? '');
+	const dataType = extractDataType(request);
 	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
-	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, path, decision: 'allowed', durationMs}));
+	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, dataType, path, decision: 'allowed', durationMs}));
 }
 
 async function logDenied(
@@ -133,7 +139,8 @@ async function logDenied(
 	if (!auditLogger) return;
 	const path = 'path' in request ? (request.path as string) : undefined;
 	const operation = String(request.operation ?? '');
-	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, path, decision: 'denied', gate}));
+	const dataType = extractDataType(request);
+	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, dataType, path, decision: 'denied', gate}));
 }
 
 // ============================================================

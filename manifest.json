@@ -2,7 +2,7 @@
 	"id": "kado",
 	"name": "Kado",
 	"version": "1.0.0",
-	"minAppVersion": "1.4.0",
+	"minAppVersion": "1.5.7",
 	"description": "Security-first MCP gateway for Obsidian vaults",
 	"author": "MiYo",
 	"authorUrl": "",

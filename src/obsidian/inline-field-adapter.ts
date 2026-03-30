@@ -272,7 +272,7 @@ function applySingleFieldUpdate(content: string, key: string, newValue: string):
 	if (bracketRe.test(content)) {
 		return content.replace(
 			new RegExp(`\\[${escapeRegex(key)}\\s*::\\s*[^\\]]*?\\]`, 'g'),
-			`[${key}:: ${newValue}]`,
+			() => `[${key}:: ${newValue}]`,
 		);
 	}
 
@@ -281,7 +281,7 @@ function applySingleFieldUpdate(content: string, key: string, newValue: string):
 	if (parenRe.test(content)) {
 		return content.replace(
 			new RegExp(`\\(${escapeRegex(key)}\\s*::\\s*[^\\)]*?\\)`, 'g'),
-			`(${key}:: ${newValue})`,
+			() => `(${key}:: ${newValue})`,
 		);
 	}
 

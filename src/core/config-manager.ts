@@ -34,7 +34,15 @@ export class ConfigManager {
 			return;
 		}
 		const defaults = createDefaultConfig();
-		this.config = {...defaults, ...(stored as Partial<KadoConfig>)};
+		const partial = stored as Partial<KadoConfig>;
+		this.config = {
+			...defaults,
+			...partial,
+			server: {...defaults.server, ...(partial.server ?? {})},
+			audit: {...defaults.audit, ...(partial.audit ?? {})},
+			globalAreas: partial.globalAreas ?? defaults.globalAreas,
+			apiKeys: partial.apiKeys ?? defaults.apiKeys,
+		};
 	}
 
 	/** Persist the current config via the save callback. */

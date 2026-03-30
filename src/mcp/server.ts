@@ -44,6 +44,7 @@ export class KadoMcpServer {
 	 * On EADDRINUSE the error is logged and the method resolves (no crash).
 	 */
 	async start(config: ServerConfig): Promise<void> {
+		if (this.running || this.httpServer !== null) return;
 		const app = this.buildApp();
 		this.httpServer = http.createServer(app);
 
@@ -107,39 +108,53 @@ export class KadoMcpServer {
 
 	private mountMcpRoutes(app: express.Express): void {
 		app.post('/mcp', async (req, res) => {
-			const mcpServer = this.createPerRequestServer();
-			const transport = new StreamableHTTPServerTransport({
-				sessionIdGenerator: undefined,
-			});
-			const sessionId = this.nextSessionId();
-			this.transports.set(sessionId, transport);
+			try {
+				const mcpServer = this.createPerRequestServer();
+				const transport = new StreamableHTTPServerTransport({
+					sessionIdGenerator: undefined,
+				});
+				const sessionId = this.nextSessionId();
+				this.transports.set(sessionId, transport);
 
-			transport.onclose = () => {
-				this.transports.delete(sessionId);
-			};
+				transport.onclose = () => {
+					this.transports.delete(sessionId);
+				};
 
-			await mcpServer.connect(transport);
-			await transport.handleRequest(req as unknown as McpRequest, res, req.body);
+				await mcpServer.connect(transport);
+				await transport.handleRequest(req as unknown as McpRequest, res, req.body);
+			} catch (err: unknown) {
+				kadoError('Route error', {error: String(err)});
+				res.status(500).json({error: 'Internal server error'});
+			}
 		});
 
 		app.get('/mcp', async (req, res) => {
-			const mcpServer = this.createPerRequestServer();
-			const transport = new StreamableHTTPServerTransport({
-				sessionIdGenerator: undefined,
-			});
-			const sessionId = this.nextSessionId();
-			this.transports.set(sessionId, transport);
+			try {
+				const mcpServer = this.createPerRequestServer();
+				const transport = new StreamableHTTPServerTransport({
+					sessionIdGenerator: undefined,
+				});
+				const sessionId = this.nextSessionId();
+				this.transports.set(sessionId, transport);
 
-			transport.onclose = () => {
-				this.transports.delete(sessionId);
-			};
+				transport.onclose = () => {
+					this.transports.delete(sessionId);
+				};
 
-			await mcpServer.connect(transport);
-			await transport.handleRequest(req as unknown as McpRequest, res);
+				await mcpServer.connect(transport);
+				await transport.handleRequest(req as unknown as McpRequest, res);
+			} catch (err: unknown) {
+				kadoError('Route error', {error: String(err)});
+				res.status(500).json({error: 'Internal server error'});
+			}
 		});
 
 		app.delete('/mcp', (_req, res) => {
 			res.status(405).json({error: 'Session termination not supported in stateless mode'});
+		});
+
+		app.use((_err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+			res.status(500).json({error: 'Internal server error'});
 		});
 	}
 
