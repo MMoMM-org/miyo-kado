@@ -12,3 +12,6 @@ backups/
 file-history/
 history.jsonl
 mcp-needs-auth-cache.json
+.plugins-initialized
+session-env/
+sessions/

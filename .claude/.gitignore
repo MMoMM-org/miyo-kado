@@ -1,0 +1,4 @@
+# Claude credentials — never commit
+.credentials.json
+credentials.json
+*.log

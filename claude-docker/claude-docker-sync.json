@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "repoName": "Kado",
-  "installedAt": "2026-03-21",
+  "installedAt": "2026-03-30",
   "initialArtifacts": {
     "rules": [
       "memory-profile.md",

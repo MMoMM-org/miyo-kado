@@ -1,10 +1,10 @@
 {
   "version": "1.0",
-  "repoName": "{{REPO_NAME}}",
-  "config": "{{CONFIG_VARIANT}}",
+  "repoName": "Kado",
+  "config": "secure",
   "configVersion": "1.0",
-  "imageName": "claude-code-{{CONFIG_VARIANT}}",
-  "containerName": "claude-{{REPO_NAME_LOWER}}",
+  "imageName": "claude-code-secure",
+  "containerName": "claude-kado",
   "installedAt": "{{DATE}}",
   "features": [
     {

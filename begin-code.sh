@@ -133,6 +133,26 @@ if [[ -f "$TEMPLATE_VERSION_FILE" ]]; then
     fi
 fi
 
+# ── Home drift check ──────────────────────────────────────────
+# TEMPLATE → HOME: auto-check on every startup
+# HOST → TEMPLATE: run manually with: bash ~/Kouzou/scripts/check-home-drift.sh --host-template TEMPLATE_DIR
+HOME_TEMPLATE_DIR="$KOUZOU_TARGET/../claude-docker-home-template"
+HOME_DIR="$REPO_DIR/claude-docker-home"
+DRIFT_HELPER="$KOUZOU_TARGET/../scripts/check-home-drift.sh"
+HOME_STATE_FILE="$HOME_DIR/.docker-home-state.json"
+
+if [[ -f "$DRIFT_HELPER" && -d "$HOME_TEMPLATE_DIR" && -d "$HOME_DIR" ]]; then
+    # shellcheck source=/dev/null
+    source "$DRIFT_HELPER"
+    check_template_home_drift "$HOME_TEMPLATE_DIR" "$HOME_DIR" "$HOME_STATE_FILE" || exit 0
+fi
+
+# Plugin initialization check
+if [[ -d "$HOME_DIR/.claude" && ! -f "$HOME_DIR/.claude/.plugins-initialized" ]]; then
+    print_warning "Plugins not initialized. Inside the container, run: /setup-docker-home"
+    echo ""
+fi
+
 # ── Resolve image / build if missing ─────────────────────────
 if ! docker image inspect "${IMAGE_NAME}:${INSTALLED_VERSION}" > /dev/null 2>&1; then
     if ! docker image inspect "$IMAGE_NAME" > /dev/null 2>&1; then
@@ -308,6 +328,7 @@ VOLUME_FLAGS=(
     "-v" "${CLAUDE_HOME}:/home/coder"
     "-v" "${HOST_PROJECTS}:/home/coder/.claude/projects:ro"
     "-v" "${HOST_PROJECT_SUBDIR}:/home/coder/.claude/projects/${PROJECT_SUBDIR}"
+    "-v" "${KOUZOU_TARGET}:/home/coder/Kouzou:ro"
 )
 
 # projectMount auto-detection
@@ -383,11 +404,15 @@ docker run -it \
     "${ENV_FILE_FLAGS[@]}" \
     "${DOCKER_FLAGS[@]}" \
     -e REPO_NAME="$REPO_NAME" \
+    -e REPO_MOUNT_PATH="$REPO_DIR" \
+    -e CONFIG_VARIANT="$CONFIG_VARIANT" \
     -e GIT_USER_NAME="$(git -C "$REPO_DIR" config user.name 2>/dev/null || echo "")" \
     -e GIT_USER_EMAIL="$(git -C "$REPO_DIR" config user.email 2>/dev/null || echo "")" \
     -e CLAUDE_MODE="$CLAUDE_MODE" \
     -e YOLO="$YOLO" \
     -e DEV_NOTIFY_PORT="$DNB_PORT" \
+    -e CLAUDE_REGISTRY_DEFAULT="/home/coder/Kouzou/registries/default-registry.json" \
+    -e CLAUDE_REGISTRY_REPO="/home/coder/Kouzou/registries/${REPO_NAME_LOWER}-registry.json" \
     -w "$REPO_DIR" \
     "${VOLUME_FLAGS[@]}" \
     "${IMAGE_NAME}:${INSTALLED_VERSION}" \
