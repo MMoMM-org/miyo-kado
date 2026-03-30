@@ -4,26 +4,15 @@
  * Translates canonical Core result objects into the CallToolResult shape
  * expected by the MCP SDK. All results are serialised to JSON text so the
  * caller receives a consistent, self-describing payload.
- *
- * NO imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
+import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreError,
 } from '../types/canonical';
-
-interface TextContent {
-	type: 'text';
-	text: string;
-}
-
-interface CallToolResult {
-	content: TextContent[];
-	isError?: boolean;
-}
 
 function textResult(data: unknown): CallToolResult {
 	return {content: [{type: 'text', text: JSON.stringify(data)}]};

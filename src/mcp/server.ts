@@ -22,6 +22,38 @@ import {kadoLog, kadoError} from '../core/logger';
 /** Express request augmented with SDK-compatible auth info for MCP transport. */
 type McpRequest = express.Request & {auth?: AuthInfo};
 
+// -----------------------------------------------------------------------
+// Rate limiting (L5) — in-memory, per-IP, no external dependency
+// -----------------------------------------------------------------------
+
+export const RATE_LIMIT = 200; // requests per window
+const WINDOW_MS = 60_000; // 1 minute
+
+interface RateLimitEntry {
+	count: number;
+	resetAt: number;
+}
+
+/** Exported for testing — allows tests to pre-fill rate limit state. */
+export const requestCounts = new Map<string, RateLimitEntry>();
+
+function rateLimitMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
+	const ip = req.ip ?? 'unknown';
+	const now = Date.now();
+	const entry = requestCounts.get(ip) ?? {count: 0, resetAt: now + WINDOW_MS};
+	if (now > entry.resetAt) {
+		entry.count = 0;
+		entry.resetAt = now + WINDOW_MS;
+	}
+	entry.count++;
+	requestCounts.set(ip, entry);
+	if (entry.count > RATE_LIMIT) {
+		res.status(429).json({error: 'Too many requests'});
+		return;
+	}
+	next();
+}
+
 type Transport = StreamableHTTPServerTransport;
 
 export class KadoMcpServer {
@@ -92,8 +124,12 @@ export class KadoMcpServer {
 
 	private buildApp(): express.Express {
 		const app = express();
-		app.use(cors());
+		app.use(cors({
+			origin: false,
+			methods: ['GET', 'POST', 'DELETE'],
+		}));
 		app.use(express.json());
+		app.use(rateLimitMiddleware);
 		app.use(createAuthMiddleware(this.configManager));
 		this.mountMcpRoutes(app);
 		return app;

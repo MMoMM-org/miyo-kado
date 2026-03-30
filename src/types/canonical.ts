@@ -14,6 +14,7 @@
 
 export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field';
 
+/** 'delete' is reserved for a future kado-delete tool. */
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
 export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags';
@@ -120,6 +121,7 @@ export interface CrudFlags {
 	create: boolean;
 	read: boolean;
 	update: boolean;
+	/** Reserved for future kado-delete tool. Currently not reachable via any MCP tool. */
 	delete: boolean;
 }
 

@@ -8,6 +8,8 @@
  * a CallToolResult.
  */
 
+// NOTE: Uses Zod v4. The MCP SDK 1.29+ includes zod-compat supporting both v3 and v4.
+// If tool schemas don't render correctly in clients, pin zod to "^3.22.0".
 import {z} from 'zod';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
@@ -82,12 +84,8 @@ function extractKeyId(extra: Extra): string | undefined {
 	return extra.authInfo?.token;
 }
 
-function asCallToolResult(result: {content: {type: 'text'; text: string}[]; isError?: boolean}): CallToolResult {
-	return result as unknown as CallToolResult;
-}
-
 function missingAuthError(): CallToolResult {
-	return asCallToolResult(mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'}));
+	return mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'});
 }
 
 /** Filters search result items to only include paths within the key's permitted areas. */
@@ -116,6 +114,10 @@ function extractDataType(request: CoreRequest): DataType {
 	return isCoreSearchRequest(request) ? 'note' : request.operation;
 }
 
+function truncateKeyId(keyId: string): string {
+	return keyId.slice(0, 12) + '...';
+}
+
 async function logAllowed(
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
@@ -127,7 +129,7 @@ async function logAllowed(
 	const operation = String(request.operation ?? '');
 	const dataType = extractDataType(request);
 	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
-	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, dataType, path, decision: 'allowed', durationMs}));
+	await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'allowed', durationMs}));
 }
 
 async function logDenied(
@@ -140,7 +142,7 @@ async function logDenied(
 	const path = 'path' in request ? (request.path as string) : undefined;
 	const operation = String(request.operation ?? '');
 	const dataType = extractDataType(request);
-	await auditLogger.log(createAuditEntry({apiKeyId: keyId, operation, dataType, path, decision: 'denied', gate}));
+	await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'denied', gate}));
 }
 
 // ============================================================
@@ -166,14 +168,14 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
-			return asCallToolResult(mapError(perm.error));
+			return mapError(perm.error);
 		}
 
 		const startMs = performance.now();
 		const result = await deps.router(request);
-		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		if (isCoreError(result)) return mapError(result);
 		await logAllowed(deps.auditLogger, keyId, request, startMs);
-		return asCallToolResult(mapFileResult(result as CoreFileResult));
+		return mapFileResult(result as CoreFileResult);
 	});
 }
 
@@ -186,17 +188,17 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
-			return asCallToolResult(mapError(perm.error));
+			return mapError(perm.error);
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
-		if (!concurrency.allowed) return asCallToolResult(mapError(concurrency.error));
+		if (!concurrency.allowed) return mapError(concurrency.error);
 
 		const startMs = performance.now();
 		const result = await deps.router(request);
-		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		if (isCoreError(result)) return mapError(result);
 		await logAllowed(deps.auditLogger, keyId, request, startMs);
-		return asCallToolResult(mapWriteResult(result as CoreWriteResult));
+		return mapWriteResult(result as CoreWriteResult);
 	});
 }
 
@@ -209,18 +211,18 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
-			return asCallToolResult(mapError(perm.error));
+			return mapError(perm.error);
 		}
 
 		const startMs = performance.now();
 		const result = await deps.router(request);
-		if (isCoreError(result)) return asCallToolResult(mapError(result));
+		if (isCoreError(result)) return mapError(result);
 
 		const searchResult = result as CoreSearchResult;
 		const config = deps.configManager.getConfig();
 		searchResult.items = filterResultsByScope(searchResult.items, keyId, config);
 
 		await logAllowed(deps.auditLogger, keyId, request, startMs);
-		return asCallToolResult(mapSearchResult(searchResult));
+		return mapSearchResult(searchResult);
 	});
 }

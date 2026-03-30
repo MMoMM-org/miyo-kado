@@ -150,7 +150,7 @@ describe('audit integration — allowed kado-read call', () => {
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_test-key');
+		expect(entries[0].apiKeyId).toBe('kado_test-ke...');
 		expect(entries[0].operation).toBe('note');
 		expect(entries[0].path).toBe('notes/test.md');
 	});
@@ -178,7 +178,7 @@ describe('audit integration — allowed kado-write call', () => {
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_writer');
+		expect(entries[0].apiKeyId).toBe('kado_writer...');
 		expect(entries[0].path).toBe('notes/w.md');
 	});
 
@@ -203,7 +203,7 @@ describe('audit integration — allowed kado-search call', () => {
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_searcher');
+		expect(entries[0].apiKeyId).toBe('kado_searche...');
 	});
 });
 
@@ -225,7 +225,7 @@ describe('audit integration — denied kado-read call', () => {
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('denied');
 		expect(entries[0].gate).toBe('key-scope');
-		expect(entries[0].apiKeyId).toBe('kado_test-key');
+		expect(entries[0].apiKeyId).toBe('kado_test-ke...');
 	});
 });
 

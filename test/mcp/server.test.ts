@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {KadoMcpServer} from '../../src/mcp/server';
+import {KadoMcpServer, RATE_LIMIT, requestCounts} from '../../src/mcp/server';
 import {ConfigManager} from '../../src/core/config-manager';
 import type {ServerConfig} from '../../src/types/canonical';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -310,6 +310,47 @@ describe('KadoMcpServer — multiple sequential requests', () => {
 });
 
 // ---------------------------------------------------------------------------
+// CORS policy — cross-origin requests are denied
+// ---------------------------------------------------------------------------
+
+describe('KadoMcpServer — CORS policy', () => {
+	it('does not reflect Origin header in response (cross-origin requests denied)', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		try {
+			const headers = await new Promise<http.IncomingHttpHeaders>((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {
+							'Content-Type': 'application/json',
+							'Origin': 'https://evil.example.com',
+						},
+					},
+					(res) => {
+						res.resume();
+						resolve(res.headers);
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+				req.end();
+			});
+
+			// With origin: false, the cors middleware must not echo back Allow-Origin
+			expect(headers['access-control-allow-origin']).toBeUndefined();
+		} finally {
+			await server.stop();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Middleware ordering — auth applied before MCP routes
 // ---------------------------------------------------------------------------
 
@@ -341,6 +382,83 @@ describe('KadoMcpServer — auth middleware applied', () => {
 
 			expect(statusCode).toBe(401);
 		} finally {
+			await server.stop();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting — 429 response when limit exceeded
+// ---------------------------------------------------------------------------
+
+describe('KadoMcpServer — rate limiting', () => {
+	it('returns 429 when the per-IP request count exceeds RATE_LIMIT', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		// Pre-fill the rate limit counter for 127.0.0.1 to the threshold
+		requestCounts.set('127.0.0.1', {count: RATE_LIMIT, resetAt: Date.now() + 60_000});
+
+		try {
+			const statusCode = await new Promise<number>((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {'Content-Type': 'application/json'},
+					},
+					(res) => {
+						res.resume();
+						resolve(res.statusCode ?? 0);
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+				req.end();
+			});
+
+			expect(statusCode).toBe(429);
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('resets the counter after the window expires', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		// Pre-fill with an expired window
+		requestCounts.set('127.0.0.1', {count: RATE_LIMIT + 50, resetAt: Date.now() - 1});
+
+		try {
+			const statusCode = await new Promise<number>((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {'Content-Type': 'application/json'},
+					},
+					(res) => {
+						res.resume();
+						resolve(res.statusCode ?? 0);
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+				req.end();
+			});
+
+			// Window has reset — request goes through to auth middleware, not rate limiter
+			expect(statusCode).toBe(401);
+		} finally {
+			requestCounts.delete('127.0.0.1');
 			await server.stop();
 		}
 	});
