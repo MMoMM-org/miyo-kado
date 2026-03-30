@@ -119,6 +119,13 @@ export class KadoSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName('Global areas').setHeading();
 
+		if (config.globalAreas.length === 0) {
+			containerEl.createEl('p', {
+				text: 'Kado starts in default-deny mode — no vault content is accessible until you create a global area and grant permissions.',
+				cls: 'setting-item-description',
+			});
+		}
+
 		new Setting(containerEl)
 			.setName('Add area')
 			.addButton(btn => btn
@@ -185,15 +192,20 @@ export class KadoSettingTab extends PluginSettingTab {
 	}
 
 	private renderKeyCard(containerEl: HTMLElement, key: ApiKeyConfig): void {
-		const truncatedId = key.id.length > 16
-			? key.id.slice(0, 16) + '...'
-			: key.id;
 		const status = key.enabled ? 'Enabled' : 'Revoked';
 
 		containerEl.createEl('div', {
 			cls: 'kado-key-card',
-			text: `${key.label} — ${truncatedId} — ${status}`,
+			text: `${key.label} — ${key.id} — ${status}`,
 		});
+
+		new Setting(containerEl)
+			.setName('Copy key ID')
+			.setDesc(key.id)
+			.addButton(btn => btn
+				.setButtonText('Copy')
+				.setIcon('copy')
+				.onClick(() => navigator.clipboard.writeText(key.id)));
 
 		if (key.enabled) {
 			new Setting(containerEl)
@@ -293,18 +305,25 @@ export class KadoSettingTab extends PluginSettingTab {
 		keyPerms: DataTypePermissions,
 		globalArea: GlobalArea,
 	): void {
-		const parts: string[] = [];
+		const wrapper = containerEl.createEl('div', {cls: 'kado-effective-permissions'});
+
+		new Setting(wrapper).setName('Effective permissions').setHeading();
+
+		const patterns = globalArea.pathPatterns.join(', ') || '(no paths)';
+		const permParts: string[] = [];
 		for (const dt of DATA_TYPE_LABELS) {
 			const ops = CRUD_OPS
 				.filter(op => keyPerms[dt.key][op.key] && globalArea.permissions[dt.key][op.key])
 				.map(op => op.label);
 			if (ops.length > 0) {
-				parts.push(`${dt.label} ${ops.join('')}`);
+				permParts.push(`${dt.label}: ${ops.join('')}`);
 			}
 		}
-		const patterns = globalArea.pathPatterns.join(', ') || '(no paths)';
-		const summary = parts.length > 0 ? `${patterns}: ${parts.join(', ')}` : `${patterns}: No permissions`;
-		containerEl.createEl('div', {cls: 'kado-effective-perms', text: summary});
+		const permSummary = permParts.length > 0 ? permParts.join(', ') : 'No permissions';
+
+		new Setting(wrapper)
+			.setName(`${globalArea.label || globalArea.id} — ${patterns}`)
+			.setDesc(permSummary);
 	}
 
 	// ------------------------------------------------------------------

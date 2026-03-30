@@ -64,6 +64,26 @@ function rateLimitMiddleware(req: express.Request, res: express.Response, next: 
 	next();
 }
 
+// -----------------------------------------------------------------------
+// Concurrency cap (PERF-L1-2) — in-process semaphore, no external dependency
+// -----------------------------------------------------------------------
+
+export const MAX_CONCURRENT = 10;
+let activeRequests = 0;
+
+function acquireConcurrencySlot(res: express.Response): boolean {
+	if (activeRequests >= MAX_CONCURRENT) {
+		res.status(503).json({error: 'Server busy'});
+		return false;
+	}
+	activeRequests++;
+	return true;
+}
+
+function releaseConcurrencySlot(): void {
+	activeRequests--;
+}
+
 type Transport = StreamableHTTPServerTransport;
 
 export class KadoMcpServer {
@@ -154,6 +174,7 @@ export class KadoMcpServer {
 
 	private mountMcpRoutes(app: express.Express): void {
 		app.post('/mcp', async (req, res) => {
+			if (!acquireConcurrencySlot(res)) return;
 			try {
 				const mcpServer = this.createPerRequestServer();
 				const transport = new StreamableHTTPServerTransport({
@@ -171,10 +192,13 @@ export class KadoMcpServer {
 			} catch (err: unknown) {
 				kadoError('Route error', {error: String(err)});
 				res.status(500).json({error: 'Internal server error'});
+			} finally {
+				releaseConcurrencySlot();
 			}
 		});
 
 		app.get('/mcp', async (req, res) => {
+			if (!acquireConcurrencySlot(res)) return;
 			try {
 				const mcpServer = this.createPerRequestServer();
 				const transport = new StreamableHTTPServerTransport({
@@ -192,6 +216,8 @@ export class KadoMcpServer {
 			} catch (err: unknown) {
 				kadoError('Route error', {error: String(err)});
 				res.status(500).json({error: 'Internal server error'});
+			} finally {
+				releaseConcurrencySlot();
 			}
 		});
 
