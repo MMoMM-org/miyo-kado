@@ -26,36 +26,10 @@ data.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
+# Claude Code docker
 .claude-docker/
-.claude/.credentials.json
-.claude/credentials.json
-.claude/security-scan.log
-.claude/cleanup.log
-.claude/clamav-update.log
-.claude/clamav-scan.log
-.claude/.claude.json
-.claude/cache/
-.claude/backups/
-.claude/file-history/
-.claude/history.jsonl
-.claude/mcp-needs-auth-cache.json
-.claude/projects/
-.claude/*.log
-claude-docker-home/.claude/.credentials.json
-claude-docker-home/.claude/credentials.json
 claude-docker-home/.claude.json
-claude-docker-home/.claude/projects/
-claude-docker-home/.claude/shell-snapshots/
-claude-docker-home/.claude/auto-memory/
-claude-docker-home/.claude/plans/
-claude-docker-home/.claude/cache/
-claude-docker-home/.claude/backups/
-claude-docker-home/.claude/file-history/
-claude-docker-home/.claude/history.jsonl
-claude-docker-home/.claude/mcp-needs-auth-cache.json
-claude-docker-home/.claude/*.log
-claude-docker-home/.claude/rules/memory-profile.md
-claude-docker-home/.claude/rules/memory-preferences.md
+claude-docker-home/.claude/
 claude-docker-home/.home-initialized
+claude-docker-home/.bash_history
 claude-docker-home/.cache/
-claude-docker-home/.claude/plugins/marketplaces/

@@ -21,7 +21,15 @@
 ## Known Quirks
 <!-- Non-obvious gotchas specific to this repo -->
 
+## Code
+
+- Add a short description if possible into any file which explains why the file exists.
+- Use the clean architecture and clean code principle.
+
 ---
+
+
+
 
 # Project Context
 
