@@ -130,14 +130,12 @@ describe('createFileAdapter() — read()', () => {
 		expect(vault.getFileByPath).toHaveBeenCalledWith('docs/report.pdf');
 	});
 
-	it('returns a NOT_FOUND CoreError when file does not exist', async () => {
+	it('throws a NOT_FOUND error when file does not exist', async () => {
 		const vault = makeVault();
 		vault.getFileByPath.mockReturnValue(null);
 
 		const adapter = createFileAdapter(makeApp(vault) as never);
-		const result = await adapter.read(makeReadRequest());
-
-		expect(result).toMatchObject({
+		await expect(adapter.read(makeReadRequest())).rejects.toMatchObject({
 			code: 'NOT_FOUND',
 			message: expect.stringContaining('assets/image.png'),
 		});
@@ -174,14 +172,12 @@ describe('createFileAdapter() — write() create', () => {
 		});
 	});
 
-	it('returns a CONFLICT CoreError when file already exists during create', async () => {
+	it('throws a CONFLICT error when file already exists during create', async () => {
 		const vault = makeVault();
 		vault.getFileByPath.mockReturnValue(makeTFile());
 
 		const adapter = createFileAdapter(makeApp(vault) as never);
-		const result = await adapter.write(makeWriteRequest({content: btoa('data')}));
-
-		expect(result).toMatchObject({
+		await expect(adapter.write(makeWriteRequest({content: btoa('data')}))).rejects.toMatchObject({
 			code: 'CONFLICT',
 			message: expect.stringContaining('assets/image.png'),
 		});
@@ -219,16 +215,14 @@ describe('createFileAdapter() — write() update', () => {
 		expect(vault.createBinary).not.toHaveBeenCalled();
 	});
 
-	it('returns a NOT_FOUND CoreError when updating a non-existent file', async () => {
+	it('throws a NOT_FOUND error when updating a non-existent file', async () => {
 		const vault = makeVault();
 		vault.getFileByPath.mockReturnValue(null);
 
 		const adapter = createFileAdapter(makeApp(vault) as never);
-		const result = await adapter.write(
-			makeWriteRequest({content: btoa('data'), expectedModified: 9999}),
-		);
-
-		expect(result).toMatchObject({
+		await expect(
+			adapter.write(makeWriteRequest({content: btoa('data'), expectedModified: 9999})),
+		).rejects.toMatchObject({
 			code: 'NOT_FOUND',
 			message: expect.stringContaining('assets/image.png'),
 		});

@@ -29,3 +29,10 @@ function globToRegExp(pattern: string): RegExp {
 export function matchGlob(pattern: string, path: string): boolean {
 	return globToRegExp(pattern).test(path);
 }
+
+/**
+ * Returns true when `path` matches at least one of the given glob `patterns`.
+ */
+export function pathMatchesPatterns(path: string, patterns: string[]): boolean {
+	return patterns.some((pattern) => matchGlob(pattern, path));
+}

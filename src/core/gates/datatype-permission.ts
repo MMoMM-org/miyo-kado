@@ -28,7 +28,7 @@ import type {
 	KeyAreaConfig,
 	PermissionGate,
 } from '../../types/canonical';
-import {matchGlob} from '../glob-match';
+import {pathMatchesPatterns} from '../glob-match';
 
 /** Returns a FORBIDDEN GateResult labelled with this gate. */
 function forbidden(message: string): GateResult {
@@ -59,11 +59,6 @@ function dataTypeToPermissionsKey(
 	return dataType;
 }
 
-/** Returns true when the request path matches any of the given glob patterns. */
-function pathMatchesArea(path: string, patterns: string[]): boolean {
-	return patterns.some((pattern) => matchGlob(pattern, path));
-}
-
 /**
  * Finds the first KeyAreaConfig whose referenced global area covers the path.
  * Returns undefined if no area matches.
@@ -75,7 +70,7 @@ function findMatchingKeyArea(
 ): KeyAreaConfig | undefined {
 	for (const keyArea of keyAreas) {
 		const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
-		if (globalArea && pathMatchesArea(path, globalArea.pathPatterns)) {
+		if (globalArea && pathMatchesPatterns(path, globalArea.pathPatterns)) {
 			return keyArea;
 		}
 	}

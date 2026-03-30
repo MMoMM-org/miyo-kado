@@ -77,7 +77,6 @@ function buildSkippedLineSet(lines: string[]): Set<number> {
 	const skipped = new Set<number>();
 	let inFence = false;
 	let inFrontmatter = false;
-	let frontmatterDone = false;
 
 	for (let i = 0; i < lines.length; i++) {
 		const trimmed = (lines[i] ?? '').trim();
@@ -92,7 +91,6 @@ function buildSkippedLineSet(lines: string[]): Set<number> {
 			skipped.add(i);
 			if (trimmed === '---') {
 				inFrontmatter = false;
-				frontmatterDone = true;
 			}
 			continue;
 		}
@@ -106,8 +104,6 @@ function buildSkippedLineSet(lines: string[]): Set<number> {
 		if (inFence) {
 			skipped.add(i);
 		}
-
-		void frontmatterDone;
 	}
 
 	return skipped;
@@ -269,20 +265,18 @@ function applyFieldUpdates(content: string, updates: Record<string, unknown>): s
 function applySingleFieldUpdate(content: string, key: string, newValue: string): string {
 	// Try bracket first
 	const bracketRe = new RegExp(`\\[${escapeRegex(key)}\\s*::\\s*[^\\]]*?\\]`, 'g');
+	bracketRe.lastIndex = 0;
 	if (bracketRe.test(content)) {
-		return content.replace(
-			new RegExp(`\\[${escapeRegex(key)}\\s*::\\s*[^\\]]*?\\]`, 'g'),
-			() => `[${key}:: ${newValue}]`,
-		);
+		bracketRe.lastIndex = 0;
+		return content.replace(bracketRe, () => `[${key}:: ${newValue}]`);
 	}
 
 	// Try paren
-	const parenRe = new RegExp(`\\(${escapeRegex(key)}\\s*::\\s*[^\\)]*?\\)`, 'g');
+	const parenRe = new RegExp(`\\(${escapeRegex(key)}\\s*::\\s*[^)]*?\\)`, 'g');
+	parenRe.lastIndex = 0;
 	if (parenRe.test(content)) {
-		return content.replace(
-			new RegExp(`\\(${escapeRegex(key)}\\s*::\\s*[^\\)]*?\\)`, 'g'),
-			() => `(${key}:: ${newValue})`,
-		);
+		parenRe.lastIndex = 0;
+		return content.replace(parenRe, () => `(${key}:: ${newValue})`);
 	}
 
 	// Try bare field (line-level)

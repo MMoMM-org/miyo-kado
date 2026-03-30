@@ -13,17 +13,13 @@
 
 import {isCoreSearchRequest} from '../../types/canonical';
 import type {CoreRequest, GateResult, KadoConfig, PermissionGate} from '../../types/canonical';
-import {matchGlob} from '../glob-match';
+import {pathMatchesPatterns} from '../glob-match';
 
 function forbidden(message: string): GateResult {
 	return {
 		allowed: false,
 		error: {code: 'FORBIDDEN', message, gate: 'key-scope'},
 	};
-}
-
-function pathMatchesAnyPattern(path: string, patterns: string[]): boolean {
-	return patterns.some((pattern) => matchGlob(pattern, path));
 }
 
 export const keyScopeGate: PermissionGate = {
@@ -43,7 +39,7 @@ export const keyScopeGate: PermissionGate = {
 
 		for (const keyArea of key.areas) {
 			const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
-			if (globalArea && pathMatchesAnyPattern(path, globalArea.pathPatterns)) {
+			if (globalArea && pathMatchesPatterns(path, globalArea.pathPatterns)) {
 				return {allowed: true};
 			}
 		}

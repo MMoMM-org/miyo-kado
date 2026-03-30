@@ -75,7 +75,7 @@ const kadoSearchShape = {
 // ============================================================
 
 function isCoreError(value: RouteResult): value is CoreError {
-	return typeof (value as CoreError).code === 'string' && typeof (value as CoreError).message === 'string' && !('content' in value) && !('items' in value);
+	return 'code' in value && 'message' in value && !('content' in value) && !('items' in value);
 }
 
 function extractKeyId(extra: Extra): string | undefined {

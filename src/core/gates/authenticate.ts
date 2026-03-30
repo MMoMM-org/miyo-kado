@@ -27,11 +27,11 @@ export const authenticateGate: PermissionGate = {
 		const key = config.apiKeys.find((k) => k.id === request.apiKeyId);
 
 		if (!key) {
-			return unauthorized(`API key not found: ${request.apiKeyId}`);
+			return unauthorized('Invalid or missing API key');
 		}
 
 		if (!key.enabled) {
-			return unauthorized(`API key is disabled: ${request.apiKeyId}`);
+			return unauthorized('Invalid or missing API key');
 		}
 
 		return {allowed: true};

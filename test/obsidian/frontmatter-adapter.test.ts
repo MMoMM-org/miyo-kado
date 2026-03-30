@@ -119,15 +119,13 @@ describe('createFrontmatterAdapter() — read()', () => {
 		expect(result.content).toEqual({});
 	});
 
-	it('returns NOT_FOUND error when file does not exist', async () => {
+	it('throws NOT_FOUND error when file does not exist', async () => {
 		const app = makeApp({
 			getFileByPath: vi.fn().mockReturnValue(null),
 		});
 
 		const adapter = createFrontmatterAdapter(app as never);
-		const result = await adapter.read(makeReadRequest('notes/missing.md'));
-
-		expect(result).toMatchObject({
+		await expect(adapter.read(makeReadRequest('notes/missing.md'))).rejects.toMatchObject({
 			code: 'NOT_FOUND',
 			message: expect.stringContaining('notes/missing.md'),
 		});
@@ -234,15 +232,13 @@ describe('createFrontmatterAdapter() — write()', () => {
 		expect(result).toMatchObject({path: 'notes/test.md'});
 	});
 
-	it('returns NOT_FOUND error when file does not exist on write', async () => {
+	it('throws NOT_FOUND error when file does not exist on write', async () => {
 		const app = makeApp({
 			getFileByPath: vi.fn().mockReturnValue(null),
 		});
 
 		const adapter = createFrontmatterAdapter(app as never);
-		const result = await adapter.write(makeWriteRequest({title: 'Test'}));
-
-		expect(result).toMatchObject({
+		await expect(adapter.write(makeWriteRequest({title: 'Test'}))).rejects.toMatchObject({
 			code: 'NOT_FOUND',
 			message: expect.stringContaining('notes/test.md'),
 		});

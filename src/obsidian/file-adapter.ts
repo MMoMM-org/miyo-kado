@@ -7,8 +7,9 @@
  */
 
 import type {App} from 'obsidian';
-import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError} from '../types/canonical';
+import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult} from '../types/canonical';
 import type {ReadWriteAdapter} from '../core/operation-router';
+import {NoteAdapterError} from './note-adapter';
 
 // ---------------------------------------------------------------------------
 // Base64 ↔ ArrayBuffer helpers
@@ -32,12 +33,12 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 // Error builders
 // ---------------------------------------------------------------------------
 
-function notFoundError(path: string): CoreError {
-	return {code: 'NOT_FOUND', message: `File not found: ${path}`};
+function notFoundError(path: string): NoteAdapterError {
+	return new NoteAdapterError({code: 'NOT_FOUND', message: `File not found: ${path}`});
 }
 
-function conflictError(path: string): CoreError {
-	return {code: 'CONFLICT', message: `File already exists: ${path}`};
+function conflictError(path: string): NoteAdapterError {
+	return new NoteAdapterError({code: 'CONFLICT', message: `File already exists: ${path}`});
 }
 
 // ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ function conflictError(path: string): CoreError {
 
 async function readFile(app: App, request: CoreReadRequest): Promise<CoreFileResult> {
 	const file = app.vault.getFileByPath(request.path);
-	if (!file) return notFoundError(request.path) as unknown as CoreFileResult;
+	if (!file) throw notFoundError(request.path);
 
 	const buffer = await app.vault.readBinary(file);
 	return {
@@ -65,13 +66,13 @@ async function writeFile(app: App, request: CoreWriteRequest): Promise<CoreWrite
 
 	if (isUpdate) {
 		const file = app.vault.getFileByPath(request.path);
-		if (!file) return notFoundError(request.path) as unknown as CoreWriteResult;
+		if (!file) throw notFoundError(request.path);
 		await app.vault.modifyBinary(file, buffer);
 		return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
 	}
 
 	const existing = app.vault.getFileByPath(request.path);
-	if (existing) return conflictError(request.path) as unknown as CoreWriteResult;
+	if (existing) throw conflictError(request.path);
 
 	const created = await app.vault.createBinary(request.path, buffer);
 	return {path: request.path, created: created.stat.ctime, modified: created.stat.mtime};

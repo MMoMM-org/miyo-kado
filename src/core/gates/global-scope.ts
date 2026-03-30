@@ -14,7 +14,7 @@
 
 import type {PermissionGate, CoreRequest, KadoConfig, GateResult} from '../../types/canonical';
 import {isCoreSearchRequest} from '../../types/canonical';
-import {matchGlob} from '../glob-match';
+import {pathMatchesPatterns} from '../glob-match';
 
 function forbidden(message: string): GateResult {
 	return {
@@ -39,13 +39,11 @@ export const globalScopeGate: PermissionGate = {
 		}
 
 		for (const area of config.globalAreas) {
-			for (const pattern of area.pathPatterns) {
-				if (matchGlob(pattern, path)) {
-					return {allowed: true};
-				}
+			if (pathMatchesPatterns(path, area.pathPatterns)) {
+				return {allowed: true};
 			}
 		}
 
-		return forbidden(`Path '${path}' is not within any configured global area.`);
+		return forbidden('Path is not within any configured global area');
 	},
 };

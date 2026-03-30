@@ -5,6 +5,7 @@
  * validation receive a 401 JSON response and do not reach MCP handlers.
  */
 
+import {timingSafeEqual} from 'node:crypto';
 import type {RequestHandler} from 'express';
 import type {ConfigManager} from '../core/config-manager';
 
@@ -21,6 +22,12 @@ function extractBearer(header: string | undefined): string | undefined {
 	return header.slice('Bearer '.length);
 }
 
+function safeEquals(a: string, b: string): boolean {
+	if (a.length !== b.length) return false;
+	const enc = new TextEncoder();
+	return timingSafeEqual(enc.encode(a), enc.encode(b));
+}
+
 /**
  * Returns an Express RequestHandler that gates requests on a valid,
  * enabled Bearer token. On success sets `(req as any).auth = { keyId }`.
@@ -33,7 +40,7 @@ export function createAuthMiddleware(configManager: ConfigManager): RequestHandl
 			return;
 		}
 
-		const key = configManager.getKeyById(token);
+		const key = configManager.getConfig().apiKeys.find((k) => safeEquals(k.id, token));
 		if (key === undefined || !key.enabled) {
 			res.status(401).json(UNAUTHORIZED);
 			return;

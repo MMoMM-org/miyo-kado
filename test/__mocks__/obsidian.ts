@@ -39,7 +39,7 @@ export class App {
 		modifyBinary: vi.fn(),
 		getMarkdownFiles: vi.fn(() => [] as TFile[]),
 		getFiles: vi.fn(() => [] as TFile[]),
-		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn()},
+		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn(), stat: vi.fn(async () => null)},
 	};
 	fileManager = {
 		processFrontMatter: vi.fn(),

@@ -7,14 +7,15 @@
 
 import type {App, TFile} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
-import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError} from '../types/canonical';
+import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult} from '../types/canonical';
+import {NoteAdapterError} from './note-adapter';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function notFoundError(path: string): CoreError {
-	return {code: 'NOT_FOUND', message: `File not found: ${path}`};
+function notFoundError(path: string): NoteAdapterError {
+	return new NoteAdapterError({code: 'NOT_FOUND', message: `File not found: ${path}`});
 }
 
 function getFile(app: App, path: string): TFile | null {
@@ -53,7 +54,7 @@ export function createFrontmatterAdapter(app: App): ReadWriteAdapter {
 		async read(request: CoreReadRequest): Promise<CoreFileResult> {
 			const file = getFile(app, request.path);
 			if (!file) {
-				return notFoundError(request.path) as unknown as CoreFileResult;
+				throw notFoundError(request.path);
 			}
 			const content = readFrontmatter(app, file);
 			return buildFileResult(request.path, content, file);
@@ -62,7 +63,7 @@ export function createFrontmatterAdapter(app: App): ReadWriteAdapter {
 		async write(request: CoreWriteRequest): Promise<CoreWriteResult> {
 			const file = getFile(app, request.path);
 			if (!file) {
-				return notFoundError(request.path) as unknown as CoreWriteResult;
+				throw notFoundError(request.path);
 			}
 			const content = request.content as Record<string, unknown>;
 			await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
