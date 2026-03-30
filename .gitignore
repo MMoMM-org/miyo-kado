@@ -26,7 +26,8 @@ data.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
-# Claude Code docker
+# Claude Code
+.claude/
 .claude-docker/
 claude-docker-home/.claude.json
 claude-docker-home/.claude/
