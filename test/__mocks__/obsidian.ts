@@ -16,10 +16,16 @@ export class Component {
 export class App {
 	vault = {
 		getAbstractFileByPath: vi.fn(),
+		getFileByPath: vi.fn(),
 		read: vi.fn(),
 		create: vi.fn(),
 		modify: vi.fn(),
+		delete: vi.fn(),
+		trash: vi.fn(),
 		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn()},
+	};
+	fileManager = {
+		processFrontMatter: vi.fn(),
 	};
 	workspace = {
 		getActiveViewOfType: vi.fn(),
@@ -38,6 +44,7 @@ export class App {
 export class Plugin extends Component {
 	app: App;
 	manifest = {id: 'test-plugin', name: 'Test Plugin', version: '0.0.0'};
+	private _cleanupFns: Array<() => unknown> = [];
 
 	constructor(app?: App) {
 		super();
@@ -50,6 +57,14 @@ export class Plugin extends Component {
 	addStatusBarItem = vi.fn(() => ({setText: vi.fn()}));
 	addCommand = vi.fn();
 	addSettingTab = vi.fn();
+	register = vi.fn((fn: () => unknown) => {
+		this._cleanupFns.push(fn);
+	});
+
+	/** Simulate Obsidian calling all registered cleanup functions (for testing onunload). */
+	_runCleanup(): void {
+		for (const fn of this._cleanupFns) fn();
+	}
 }
 
 // --- UI Components ---
@@ -173,6 +188,7 @@ export class TFile {
 	basename = 'test';
 	extension = 'md';
 	vault = {};
+	stat = {ctime: 1000, mtime: 2000, size: 100};
 }
 
 export class TFolder {

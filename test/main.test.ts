@@ -3,12 +3,41 @@
  * Tests plugin lifecycle and settings persistence through the public API.
  */
 
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import KadoPlugin from '../src/main';
 import {createDefaultConfig} from '../src/types/canonical';
 
+// ---------------------------------------------------------------------------
+// Mock MCP server — prevents real HTTP binding in unit tests.
+// We test wiring (was it created, was start called) not actual networking.
+// ---------------------------------------------------------------------------
+
+const mockMcpStart = vi.fn(async () => {});
+const mockMcpStop = vi.fn(async () => {});
+const mockIsRunning = vi.fn(() => false);
+
+vi.mock('../src/mcp/server', () => ({
+	KadoMcpServer: vi.fn().mockImplementation(() => ({
+		start: mockMcpStart,
+		stop: mockMcpStop,
+		isRunning: mockIsRunning,
+	})),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const getMockPlugin = (): KadoPlugin => new KadoPlugin();
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe('KadoPlugin', () => {
-	const getMockPlugin = (): KadoPlugin => new KadoPlugin();
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
 
 	describe('class contract', () => {
 		it('is instantiable as a Plugin subclass', () => {
@@ -48,12 +77,47 @@ describe('KadoPlugin', () => {
 			await plugin.onload();
 			expect(plugin.addCommand).not.toHaveBeenCalled();
 		});
+
+		it('creates KadoMcpServer', async () => {
+			const {KadoMcpServer} = await import('../src/mcp/server');
+			const plugin = getMockPlugin();
+			await plugin.onload();
+			expect(KadoMcpServer).toHaveBeenCalledTimes(1);
+		});
+
+		it('starts MCP server when config.server.enabled is true', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({server: {enabled: true, host: '127.0.0.1', port: 3001}}));
+			await plugin.onload();
+			expect(mockMcpStart).toHaveBeenCalledTimes(1);
+		});
+
+		it('does NOT start MCP server when config.server.enabled is false', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({server: {enabled: false, host: '127.0.0.1', port: 3001}}));
+			await plugin.onload();
+			expect(mockMcpStart).not.toHaveBeenCalled();
+		});
+
+		it('registers cleanup handler for MCP server stop', async () => {
+			const plugin = getMockPlugin();
+			await plugin.onload();
+			expect(plugin.register).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe('onunload', () => {
 		it('exists and is callable without error', () => {
 			const plugin = getMockPlugin();
 			expect(() => plugin.onunload()).not.toThrow();
+		});
+
+		it('stops MCP server when cleanup runs', async () => {
+			const plugin = getMockPlugin();
+			await plugin.onload();
+			// Simulate Obsidian calling registered cleanup callbacks
+			plugin._runCleanup();
+			expect(mockMcpStop).toHaveBeenCalledTimes(1);
 		});
 	});
 
