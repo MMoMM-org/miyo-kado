@@ -65,7 +65,7 @@ const kadoWriteShape = {
 };
 
 const kadoSearchShape = {
-	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags']),
+	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']),
 	query: z.string().optional(),
 	path: z.string().optional(),
 	cursor: z.string().optional(),

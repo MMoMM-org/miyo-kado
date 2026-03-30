@@ -60,6 +60,33 @@ function byName(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 	return app.vault.getFiles().filter((f) => f.name.toLowerCase().includes(query)).map(mapFileToItem);
 }
 
+async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSearchItem[]> {
+	const query = (request.query ?? '').toLowerCase();
+	const prefix = request.path ?? '';
+	const files = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
+	const results: CoreSearchItem[] = [];
+	for (const file of files) {
+		const content = await app.vault.read(file);
+		if (content.toLowerCase().includes(query)) {
+			results.push(mapFileToItem(file));
+		}
+	}
+	return results;
+}
+
+function byFrontmatter(app: App, request: CoreSearchRequest): CoreSearchItem[] {
+	const query = request.query ?? '';
+	const eqIndex = query.indexOf('=');
+	const key = eqIndex === -1 ? query : query.slice(0, eqIndex);
+	const value = eqIndex === -1 ? null : query.slice(eqIndex + 1).toLowerCase();
+	return app.vault.getMarkdownFiles().filter((f) => {
+		const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+		if (!fm || !(key in fm)) return false;
+		if (value === null) return true;
+		return String(fm[key]).toLowerCase() === value;
+	}).map(mapFileToItem);
+}
+
 function listTags(app: App): CoreSearchItem[] {
 	const counts = new Map<string, number>();
 	for (const file of app.vault.getMarkdownFiles()) {
@@ -96,6 +123,12 @@ export function createSearchAdapter(app: App): SearchAdapter {
 					break;
 				case 'listTags':
 					items = listTags(app);
+					break;
+				case 'byContent':
+					items = await byContent(app, request);
+					break;
+				case 'byFrontmatter':
+					items = byFrontmatter(app, request);
 					break;
 			}
 			return paginate(items, request.cursor, limit);

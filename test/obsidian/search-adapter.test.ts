@@ -43,15 +43,18 @@ function makeApp(overrides: {
 	markdownFiles?: ReturnType<typeof makeTFile>[];
 	allFiles?: ReturnType<typeof makeTFile>[];
 	cacheMap?: Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null>;
+	readFile?: Map<ReturnType<typeof makeTFile>, string>;
 }) {
 	const markdownFiles = overrides.markdownFiles ?? [];
 	const allFiles = overrides.allFiles ?? markdownFiles;
 	const cacheMap = overrides.cacheMap ?? new Map();
+	const readFile = overrides.readFile ?? new Map();
 
 	return {
 		vault: {
 			getMarkdownFiles: vi.fn(() => markdownFiles),
 			getFiles: vi.fn(() => allFiles),
+			read: vi.fn(async (file: ReturnType<typeof makeTFile>) => readFile.get(file) ?? ''),
 		},
 		metadataCache: {
 			getFileCache: vi.fn((file: ReturnType<typeof makeTFile>) => cacheMap.get(file) ?? null),
@@ -254,6 +257,147 @@ describe('SearchAdapter — listTags', () => {
 		const adapter = createSearchAdapter(app as never);
 
 		const result = await adapter.search(makeSearchRequest({operation: 'listTags'}));
+
+		expect(result.items).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// byContent
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — byContent', () => {
+	it('returns notes whose content contains the query string', async () => {
+		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md', ctime: 10, mtime: 20, size: 5});
+		const fileB = makeTFile({path: 'notes/b.md', name: 'b.md'});
+		const app = makeApp({
+			markdownFiles: [fileA, fileB],
+			readFile: new Map([
+				[fileA, 'This note is about project management.'],
+				[fileB, 'Nothing relevant here.'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'}));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]).toMatchObject({path: 'notes/a.md', name: 'a.md', created: 10, modified: 20, size: 5});
+	});
+
+	it('is case-insensitive', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const app = makeApp({
+			markdownFiles: [file],
+			readFile: new Map([[file, 'Contains PROJECT MANAGEMENT details']]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'}));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('returns empty array when no notes match', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const app = makeApp({
+			markdownFiles: [file],
+			readFile: new Map([[file, 'Nothing about that topic.']]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'zebra'}));
+
+		expect(result.items).toEqual([]);
+	});
+
+	it('respects path prefix scope', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const app = makeApp({
+			markdownFiles: [fileA, fileB],
+			readFile: new Map([
+				[fileA, 'project management in notes'],
+				[fileB, 'project management in archive'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', path: 'notes/'}));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('paginates results', async () => {
+		const files = Array.from({length: 10}, (_, i) => makeTFile({path: `notes/file${i}.md`, name: `file${i}.md`}));
+		const readFile = new Map(files.map((f) => [f, 'contains the search term'] as [ReturnType<typeof makeTFile>, string]));
+		const app = makeApp({markdownFiles: files, readFile});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'search term', limit: 3}));
+
+		expect(result.items).toHaveLength(3);
+		expect(result.cursor).toBeDefined();
+		expect(result.total).toBe(10);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// byFrontmatter
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — byFrontmatter', () => {
+	it('finds notes with matching key=value', async () => {
+		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md', ctime: 10, mtime: 20, size: 5});
+		const fileB = makeTFile({path: 'notes/b.md', name: 'b.md'});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {status: 'archived'}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]).toMatchObject({path: 'notes/a.md', name: 'a.md', created: 10, modified: 20, size: 5});
+	});
+
+	it('key-only query returns notes that have the frontmatter key', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {title: 'No status here'}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status'}));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('is case-insensitive on values', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {status: 'Active'}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('returns empty array when no notes match', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {status: 'archived'}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
 
 		expect(result.items).toEqual([]);
 	});

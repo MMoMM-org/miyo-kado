@@ -17,7 +17,7 @@ export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field'
 /** 'delete' is reserved for a future kado-delete tool. */
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
-export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags';
+export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags' | 'byContent' | 'byFrontmatter';
 
 // ============================================================
 // Core Requests
@@ -244,7 +244,7 @@ export function isCoreSearchRequest(req: CoreRequest): req is CoreSearchRequest 
 // ============================================================
 
 const DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field']);
-const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags']);
+const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']);
 
 function isDataType(value: string): boolean {
 	return DATA_TYPES.has(value);
