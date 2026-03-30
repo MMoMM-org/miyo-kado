@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundation — Types, Config, Plugin Scaffold"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
