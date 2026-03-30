@@ -1,59 +1,118 @@
-import {describe, it, expect, beforeEach, vi} from 'vitest';
-import {App, Notice} from 'obsidian';
-import MyPlugin from '../src/main';
+/**
+ * Behavioral tests for KadoPlugin (plugin entry point).
+ * Tests plugin lifecycle and settings persistence through the public API.
+ */
 
-describe('MyPlugin', () => {
-	let plugin: MyPlugin;
+import {describe, it, expect, vi} from 'vitest';
+import KadoPlugin from '../src/main';
+import {createDefaultConfig} from '../src/types/canonical';
 
-	beforeEach(() => {
-		plugin = new MyPlugin();
+describe('KadoPlugin', () => {
+	const getMockPlugin = (): KadoPlugin => new KadoPlugin();
+
+	describe('class contract', () => {
+		it('is instantiable as a Plugin subclass', () => {
+			const plugin = getMockPlugin();
+			expect(plugin).toBeInstanceOf(KadoPlugin);
+		});
 	});
 
 	describe('onload', () => {
-		it('should register a ribbon icon', async () => {
+		it('registers a settings tab', async () => {
+			const plugin = getMockPlugin();
 			await plugin.onload();
-			expect(plugin.addRibbonIcon).toHaveBeenCalledWith(
-				'dice',
-				'Sample',
-				expect.any(Function),
-			);
+			expect(plugin.addSettingTab).toHaveBeenCalledTimes(1);
 		});
 
-		it('should add a status bar item', async () => {
+		it('loads settings from storage on startup', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({}));
 			await plugin.onload();
-			expect(plugin.addStatusBarItem).toHaveBeenCalled();
+			expect(plugin.loadData).toHaveBeenCalledTimes(1);
 		});
 
-		it('should register three commands', async () => {
+		it('does not register ribbon icons', async () => {
+			const plugin = getMockPlugin();
 			await plugin.onload();
-			expect(plugin.addCommand).toHaveBeenCalledTimes(3);
+			expect(plugin.addRibbonIcon).not.toHaveBeenCalled();
 		});
 
-		it('should register a settings tab', async () => {
+		it('does not register status bar items', async () => {
+			const plugin = getMockPlugin();
 			await plugin.onload();
-			expect(plugin.addSettingTab).toHaveBeenCalled();
+			expect(plugin.addStatusBarItem).not.toHaveBeenCalled();
+		});
+
+		it('does not register commands', async () => {
+			const plugin = getMockPlugin();
+			await plugin.onload();
+			expect(plugin.addCommand).not.toHaveBeenCalled();
 		});
 	});
 
-	describe('settings', () => {
-		it('should load default settings when no data stored', async () => {
+	describe('onunload', () => {
+		it('exists and is callable without error', () => {
+			const plugin = getMockPlugin();
+			expect(() => plugin.onunload()).not.toThrow();
+		});
+	});
+
+	describe('loadSettings', () => {
+		it('returns default config when storage is empty', async () => {
+			const plugin = getMockPlugin();
 			plugin.loadData = vi.fn(async () => null);
-			await plugin.onload();
-			expect(plugin.settings.mySetting).toBe('default');
+			await plugin.loadSettings();
+			const defaults = createDefaultConfig();
+			expect(plugin.settings).toEqual(defaults);
 		});
 
-		it('should merge stored settings with defaults', async () => {
-			plugin.loadData = vi.fn(async () => ({mySetting: 'custom'}));
-			await plugin.onload();
-			expect(plugin.settings.mySetting).toBe('custom');
+		it('returns default config when storage returns empty object', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({}));
+			await plugin.loadSettings();
+			const defaults = createDefaultConfig();
+			expect(plugin.settings).toEqual(defaults);
 		});
 
-		it('should persist settings via saveData', async () => {
+		it('merges stored data over defaults', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({
+				server: {enabled: true, host: '0.0.0.0', port: 9999},
+			}));
+			await plugin.loadSettings();
+			expect(plugin.settings.server.enabled).toBe(true);
+			expect(plugin.settings.server.port).toBe(9999);
+		});
+
+		it('preserves default values for missing keys', async () => {
+			const plugin = getMockPlugin();
+			plugin.loadData = vi.fn(async () => ({
+				server: {enabled: true, host: '0.0.0.0', port: 9999},
+			}));
+			await plugin.loadSettings();
+			const defaults = createDefaultConfig();
+			expect(plugin.settings.apiKeys).toEqual(defaults.apiKeys);
+			expect(plugin.settings.audit).toEqual(defaults.audit);
+		});
+	});
+
+	describe('saveSettings', () => {
+		it('persists current config via saveData', async () => {
+			const plugin = getMockPlugin();
 			await plugin.onload();
-			plugin.settings.mySetting = 'updated';
+			await plugin.saveSettings();
+			expect(plugin.saveData).toHaveBeenCalledWith(plugin.settings);
+		});
+
+		it('saves the current config object', async () => {
+			const plugin = getMockPlugin();
+			await plugin.onload();
+			plugin.settings.server.port = 12345;
 			await plugin.saveSettings();
 			expect(plugin.saveData).toHaveBeenCalledWith(
-				expect.objectContaining({mySetting: 'updated'}),
+				expect.objectContaining({
+					server: expect.objectContaining({port: 12345}),
+				}),
 			);
 		});
 	});

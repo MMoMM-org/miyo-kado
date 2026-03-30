@@ -75,6 +75,7 @@ export class Setting {
 	constructor(_containerEl: HTMLElement) {}
 	setName = vi.fn(() => this);
 	setDesc = vi.fn(() => this);
+	setHeading = vi.fn(() => this);
 	addText = vi.fn((cb: (text: TextComponent) => void) => {
 		cb(new TextComponent());
 		return this;
@@ -89,10 +90,31 @@ export class Setting {
 	});
 }
 
+// Extend HTMLElement with Obsidian-specific DOM helpers used by setting tabs.
+function makeObsidianEl(tag = 'div'): HTMLElement {
+	const el = document.createElement(tag);
+	// Obsidian's createEl — creates a child element and appends it.
+	(el as unknown as Record<string, unknown>)['createEl'] = <K extends keyof HTMLElementTagNameMap>(
+		childTag: K,
+		opts?: {text?: string; cls?: string},
+	): HTMLElement => {
+		const child = document.createElement(childTag);
+		if (opts?.text) child.textContent = opts.text;
+		if (opts?.cls) child.className = opts.cls;
+		el.appendChild(child);
+		return child;
+	};
+	// Obsidian's empty — removes all child nodes.
+	(el as unknown as Record<string, unknown>)['empty'] = (): void => {
+		while (el.firstChild) el.removeChild(el.firstChild);
+	};
+	return el;
+}
+
 export class PluginSettingTab {
 	app: App;
 	plugin: Plugin;
-	containerEl = document.createElement('div');
+	containerEl = makeObsidianEl('div');
 	constructor(app: App, plugin: Plugin) {
 		this.app = app;
 		this.plugin = plugin;
