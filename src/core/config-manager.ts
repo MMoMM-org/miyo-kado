@@ -14,6 +14,7 @@ import {
 	type KadoConfig,
 	createDefaultConfig,
 } from '../types/canonical';
+import {kadoLog} from './logger';
 
 export class ConfigManager {
 	private config: KadoConfig;
@@ -39,6 +40,7 @@ export class ConfigManager {
 	/** Persist the current config via the save callback. */
 	async save(): Promise<void> {
 		await this.saveFn(this.config);
+		kadoLog('Config saved');
 	}
 
 	/** Return the current in-memory config (read-only by convention). */

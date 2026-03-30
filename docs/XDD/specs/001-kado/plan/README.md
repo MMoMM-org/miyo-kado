@@ -71,12 +71,12 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-- [ ] [Phase 1: Foundation — Types, Config, Plugin Scaffold](phase-1.md)
-- [ ] [Phase 2: Core — Permission Gates & Operation Routing](phase-2.md)
-- [ ] [Phase 3: Obsidian Interface — Vault Adapters](phase-3.md)
-- [ ] [Phase 4: MCP Layer — Server, Tools & Auth](phase-4.md)
-- [ ] [Phase 5: Settings UI](phase-5.md)
-- [ ] [Phase 6: Integration, Audit & Polish](phase-6.md)
+- [x] [Phase 1: Foundation — Types, Config, Plugin Scaffold](phase-1.md)
+- [x] [Phase 2: Core — Permission Gates & Operation Routing](phase-2.md)
+- [x] [Phase 3: Obsidian Interface — Vault Adapters](phase-3.md)
+- [x] [Phase 4: MCP Layer — Server, Tools & Auth](phase-4.md)
+- [x] [Phase 5: Settings UI](phase-5.md)
+- [x] [Phase 6: Integration, Audit & Polish](phase-6.md)
 
 ---
 

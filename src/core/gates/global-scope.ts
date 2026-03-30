@@ -14,56 +14,7 @@
 
 import type {PermissionGate, CoreRequest, KadoConfig, GateResult} from '../../types/canonical';
 import {isCoreSearchRequest} from '../../types/canonical';
-
-/**
- * Converts a glob pattern to a RegExp.
- *
- * Rules:
- *   `**`  → matches any number of path segments (including zero)
- *   `*`   → matches any characters within a single path segment (no `/`)
- *   All other regex-special characters are escaped.
- */
-function globToRegex(pattern: string): RegExp {
-	let regexStr = '';
-	let i = 0;
-
-	while (i < pattern.length) {
-		if (pattern[i] === '*' && pattern[i + 1] === '*') {
-			// ** — consume optional surrounding slashes so "a/**/b" also covers "a/b"
-			const hasPrecedingSlash = regexStr.endsWith('/');
-			if (hasPrecedingSlash) {
-				regexStr = regexStr.slice(0, -1);
-			}
-			regexStr += '(?:/.+|/.+/|)';
-			i += 2;
-			// skip a trailing slash so "**/" doesn't leave a dangling separator
-			if (pattern[i] === '/') {
-				i++;
-			}
-		} else if (pattern[i] === '*') {
-			// * — any chars except path separator
-			regexStr += '[^/]*';
-			i++;
-		} else {
-			// escape regex special characters
-			const ch = pattern[i] ?? '';
-			regexStr += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-			i++;
-		}
-	}
-
-	return new RegExp(`^${regexStr}$`);
-}
-
-/**
- * Returns true when `path` matches `pattern` using glob semantics.
- */
-function matchGlob(pattern: string, path: string): boolean {
-	if (pattern === path) {
-		return true;
-	}
-	return globToRegex(pattern).test(path);
-}
+import {matchGlob} from '../glob-match';
 
 function forbidden(message: string): GateResult {
 	return {
