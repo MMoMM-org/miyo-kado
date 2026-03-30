@@ -263,21 +263,15 @@ function applyFieldUpdates(content: string, updates: Record<string, unknown>): s
 }
 
 function applySingleFieldUpdate(content: string, key: string, newValue: string): string {
-	// Try bracket first
+	// Try bracket first — single replace call, check if anything changed
 	const bracketRe = new RegExp(`\\[${escapeRegex(key)}\\s*::\\s*[^\\]]*?\\]`, 'g');
-	bracketRe.lastIndex = 0;
-	if (bracketRe.test(content)) {
-		bracketRe.lastIndex = 0;
-		return content.replace(bracketRe, () => `[${key}:: ${newValue}]`);
-	}
+	const bracketResult = content.replace(bracketRe, () => `[${key}:: ${newValue}]`);
+	if (bracketResult !== content) return bracketResult;
 
 	// Try paren
 	const parenRe = new RegExp(`\\(${escapeRegex(key)}\\s*::\\s*[^)]*?\\)`, 'g');
-	parenRe.lastIndex = 0;
-	if (parenRe.test(content)) {
-		parenRe.lastIndex = 0;
-		return content.replace(parenRe, () => `(${key}:: ${newValue})`);
-	}
+	const parenResult = content.replace(parenRe, () => `(${key}:: ${newValue})`);
+	if (parenResult !== content) return parenResult;
 
 	// Try bare field (line-level)
 	const lines = content.split('\n');

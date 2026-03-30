@@ -23,9 +23,15 @@ function extractBearer(header: string | undefined): string | undefined {
 }
 
 function safeEquals(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
 	const enc = new TextEncoder();
-	return timingSafeEqual(enc.encode(a), enc.encode(b));
+	const bufA = enc.encode(a);
+	const bufB = enc.encode(b);
+	const len = Math.max(bufA.length, bufB.length);
+	const padA = new Uint8Array(len);
+	padA.set(bufA);
+	const padB = new Uint8Array(len);
+	padB.set(bufB);
+	return timingSafeEqual(padA, padB) && bufA.length === bufB.length;
 }
 
 /**

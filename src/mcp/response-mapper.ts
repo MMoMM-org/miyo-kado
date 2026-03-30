@@ -46,7 +46,7 @@ export function mapSearchResult(result: CoreSearchResult): CallToolResult {
 
 export function mapError(error: CoreError): CallToolResult {
 	return {
-		content: [{type: 'text', text: JSON.stringify({code: error.code, message: error.message, gate: error.gate})}],
+		content: [{type: 'text', text: JSON.stringify({code: error.code, message: error.message})}],
 		isError: true,
 	};
 }

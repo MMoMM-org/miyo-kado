@@ -72,7 +72,13 @@ export default class KadoPlugin extends Plugin {
 				});
 				return writeChain;
 			},
-			getSize: async () => (await this.app.vault.adapter.stat(this.resolvedAuditLogPath))?.size ?? 0,
+			getSize: () => {
+				let size = 0;
+				writeChain = writeChain.then(async () => {
+					size = (await this.app.vault.adapter.stat(this.resolvedAuditLogPath))?.size ?? 0;
+				});
+				return writeChain.then(() => size);
+			},
 			rotate: () => {
 				const logPath = this.resolvedAuditLogPath;
 				writeChain = writeChain.then(async () => {

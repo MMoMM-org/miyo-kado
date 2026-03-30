@@ -37,9 +37,19 @@ interface RateLimitEntry {
 /** Exported for testing — allows tests to pre-fill rate limit state. */
 export const requestCounts = new Map<string, RateLimitEntry>();
 
+const MAX_TRACKED_IPS = 10_000;
+
+function evictStaleEntries(now: number): void {
+	if (requestCounts.size < MAX_TRACKED_IPS) return;
+	for (const [ip, entry] of requestCounts) {
+		if (now > entry.resetAt) requestCounts.delete(ip);
+	}
+}
+
 function rateLimitMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
 	const ip = req.ip ?? 'unknown';
 	const now = Date.now();
+	evictStaleEntries(now);
 	const entry = requestCounts.get(ip) ?? {count: 0, resetAt: now + WINDOW_MS};
 	if (now > entry.resetAt) {
 		entry.count = 0;

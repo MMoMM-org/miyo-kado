@@ -233,11 +233,12 @@ describe('mapError()', () => {
 		expect(text).toContain('FORBIDDEN');
 	});
 
-	it('includes gate name in the text output when present', () => {
+	it('does not leak gate name in error output (SEC-014)', () => {
 		const result = mapError(makeCoreError({gate: 'authenticate'}));
 		const text = result.content[0].text;
 
-		expect(text).toContain('authenticate');
+		expect(text).not.toContain('authenticate');
+		expect(text).not.toContain('gate');
 	});
 
 	it('handles errors without a gate field', () => {
