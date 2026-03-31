@@ -114,7 +114,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 	const dirSetting = new Setting(containerEl).setName('Log directory');
 	dirSetting.addText(text => text
 		.setValue(audit.logDirectory)
-		.setPlaceholder('logs')
+		.setPlaceholder('Logs')
 		.onChange(async (value) => {
 			if (value.includes('..') || value.startsWith('/')) {
 				new Notice('Invalid path: must be vault-relative, no ".." allowed');
@@ -126,10 +126,9 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 	dirSetting.addButton(btn => btn
 		.setButtonText('Browse')
 		.onClick(() => {
-			new VaultFolderModal(plugin.app, async (path) => {
+			new VaultFolderModal(plugin.app, (path) => {
 				audit.logDirectory = path;
-				await plugin.saveSettings();
-				onRedisplay();
+				void plugin.saveSettings().then(() => onRedisplay());
 			}).open();
 		}));
 
@@ -138,7 +137,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 		.setName('Log filename')
 		.addText(text => text
 			.setValue(audit.logFileName)
-			.setPlaceholder('kado-audit.log')
+			.setPlaceholder('Kado-audit.log')
 			.onChange(async (value) => {
 				audit.logFileName = value;
 				await plugin.saveSettings();
@@ -146,6 +145,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 
 	// Max size
 	new Setting(containerEl)
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- MB is a unit abbreviation
 		.setName('Max log size (MB)')
 		.addText(text => text
 			.setValue(String(Math.round(audit.maxSizeBytes / (1024 * 1024))))

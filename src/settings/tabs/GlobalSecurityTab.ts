@@ -21,7 +21,7 @@ export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPl
 
 	new Setting(containerEl)
 		.addButton(btn => btn
-			.setButtonText('+ Add area')
+			.setButtonText('+ add area')
 			.setCta()
 			.onClick(() => {
 				const area: GlobalArea = {
@@ -58,10 +58,10 @@ function renderAreaCard(
 		value: area.label,
 		cls: 'kado-path-input',
 	});
-	labelInput.style.fontWeight = 'var(--font-semibold)';
-	labelInput.addEventListener('change', async () => {
+	labelInput.addClass('kado-area-label-input');
+	labelInput.addEventListener('change', () => {
 		area.label = labelInput.value;
-		await plugin.saveSettings();
+		void plugin.saveSettings();
 	});
 
 	const removeBtn = header.createEl('button', {text: 'Remove area', cls: 'mod-warning'});
@@ -98,9 +98,9 @@ function renderAreaCard(
 		};
 		renderPathEntry(pathsContainer, pathRule, {
 			app: plugin.app,
-			onChange: async () => {
+			onChange: () => {
 				area.pathPatterns[i] = pathRule.path;
-				await plugin.saveSettings();
+				void plugin.saveSettings();
 			},
 			onRemove: () => {
 				area.pathPatterns.splice(i, 1);
@@ -110,7 +110,7 @@ function renderAreaCard(
 		});
 	}
 
-	const addPathBtn = card.createEl('button', {cls: 'kado-add-btn', text: '+ Add path'});
+	const addPathBtn = card.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
 	addPathBtn.addEventListener('click', () => {
 		area.pathPatterns.push('');
 		void plugin.saveSettings();
@@ -137,7 +137,7 @@ function renderAreaCard(
 		});
 	}
 
-	const addTagBtn = card.createEl('button', {cls: 'kado-add-btn', text: '+ Add tag'});
+	const addTagBtn = card.createEl('button', {cls: 'kado-add-btn', text: '+ add tag'});
 	addTagBtn.addEventListener('click', () => {
 		area.tags.push('');
 		void plugin.saveSettings();

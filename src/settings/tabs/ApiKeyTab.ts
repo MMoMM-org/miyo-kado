@@ -48,14 +48,16 @@ export function renderApiKeyTab(
 	keyDisplay.descEl.createSpan({cls: 'kado-key-display', text: key.id});
 	keyDisplay.addButton(btn => {
 		btn.setButtonText('Copy');
-		btn.onClick(async () => {
-			try {
-				await navigator.clipboard.writeText(key.id);
-				btn.setButtonText('Copied!');
-				setTimeout(() => btn.setButtonText('Copy'), 1500);
-			} catch {
-				new Notice('Failed to copy to clipboard');
-			}
+		btn.onClick(() => {
+			void navigator.clipboard.writeText(key.id).then(
+				() => {
+					btn.setButtonText('Copied!');
+					setTimeout(() => { btn.setButtonText('Copy'); }, 1500);
+				},
+				() => {
+					new Notice('Failed to copy to clipboard');
+				},
+			);
 		});
 	});
 
@@ -80,7 +82,7 @@ export function renderApiKeyTab(
 
 	if (config.globalAreas.length === 0) {
 		containerEl.createEl('p', {
-			text: 'No global areas defined. Create areas in the Global Security tab first.',
+			text: 'No global areas defined. Create areas in the global security tab first.',
 			cls: 'setting-item-description',
 		});
 	}
@@ -186,7 +188,7 @@ function renderAreaAssignment(
 			}
 
 			// Only allow adding tags that exist in the global area
-			const addTagBtn = matrixContainer.createEl('button', {cls: 'kado-add-btn', text: '+ Add tag'});
+			const addTagBtn = matrixContainer.createEl('button', {cls: 'kado-add-btn', text: '+ add tag'});
 			addTagBtn.addEventListener('click', () => {
 				keyArea.tags.push('');
 				void plugin.saveSettings();
@@ -261,9 +263,9 @@ class ConfirmModal extends Modal {
 		cancelBtn.addEventListener('click', () => this.close());
 
 		const confirmBtn = btnRow.createEl('button', {text: 'Confirm', cls: 'mod-warning'});
-		confirmBtn.addEventListener('click', async () => {
+		confirmBtn.addEventListener('click', () => {
 			this.close();
-			await this.onConfirm();
+			void this.onConfirm();
 		});
 
 		// Focus cancel button (default = No)

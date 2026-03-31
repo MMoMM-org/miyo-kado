@@ -319,6 +319,10 @@
 	margin-bottom: 8px;
 }
 
+.kado-area-label-input {
+	font-weight: var(--font-semibold);
+}
+
 .kado-section-label {
 	font-size: var(--font-smallest);
 	font-weight: var(--font-semibold);

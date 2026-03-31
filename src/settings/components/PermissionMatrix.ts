@@ -7,7 +7,7 @@
  * - Read-only mode: all dots non-interactive (for effective permissions)
  */
 
-import type {DataTypePermissions, CrudFlags} from '../../types/canonical';
+import type {DataTypePermissions} from '../../types/canonical';
 
 const RESOURCES = ['note', 'frontmatter', 'dataviewInlineField', 'file'] as const;
 type ResourceKey = typeof RESOURCES[number];
@@ -51,8 +51,8 @@ export function renderPermissionMatrix(
 		const row = grid.createDiv({cls: 'kado-perm-row'});
 		row.createDiv({cls: 'kado-perm-label', text: RESOURCE_LABELS[resource]});
 
-		const flags = permissions[resource] as CrudFlags;
-		const maxFlags = options.maxPermissions?.[resource] as CrudFlags | undefined;
+		const flags = permissions[resource];
+		const maxFlags = options.maxPermissions?.[resource];
 
 		for (const op of CRUD_OPS) {
 			const cell = row.createDiv({cls: 'kado-perm-cell'});
