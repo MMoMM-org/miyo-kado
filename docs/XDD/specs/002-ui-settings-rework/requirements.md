@@ -1,7 +1,7 @@
 ---
 title: "UI Settings Rework"
 status: draft
-version: "1.0"
+version: "1.1"
 ---
 
 # Product Requirements Document
@@ -51,7 +51,7 @@ These issues reduce trust in the security model and increase the chance of misco
 
 ### Value Proposition
 
-Kado's reworked settings tab replaces error-prone text inputs with guided interactions (directory pickers, tag inputs, visual permission matrices) while keeping the security model transparent. Users see exactly what is allowed, for whom, and can change it safely — without ever touching a config file.
+Kado's reworked settings tab replaces error-prone text inputs with guided interactions (directory pickers, tag pickers, visual permission matrices) while keeping the security model transparent. Users see exactly what is allowed, for whom, and can change it safely — without ever touching a config file.
 
 ## User Personas
 
@@ -75,7 +75,7 @@ Kado's reworked settings tab replaces error-prone text inputs with guided intera
 
 1. **Awareness:** User installs Kado plugin and opens settings for the first time.
 2. **Consideration:** Sees the General tab — server is off, no areas or keys configured. Info message explains default-deny.
-3. **Adoption:** Creates a global area with a directory picker, sets path + tag filters, configures the CRUD matrix. Creates an API key and assigns it to the area.
+3. **Adoption:** Creates a global area via the Global Security tab, uses directory picker for paths, adds tags via tag picker, configures the CRUD matrix. Switches to General tab, creates an API key, opens the key's tab, assigns it to the area.
 4. **Usage:** Enables the server, copies the API key, configures the external AI tool. Checks audit log to verify operations.
 5. **Retention:** Comes back to adjust permissions, add new areas, rotate keys — each operation is fast and safe.
 
@@ -95,7 +95,6 @@ Kado's reworked settings tab replaces error-prone text inputs with guided intera
 3. Sees which global areas the key is assigned to, with effective permissions shown as a read-only matrix.
 4. Checks the audit log (vault-relative path) for recent activity.
 
-
 ## Feature Requirements
 
 ### Must Have Features
@@ -104,10 +103,10 @@ Kado's reworked settings tab replaces error-prone text inputs with guided intera
 
 - **User Story:** As a vault admin, I want settings organized into clear tabs so that I can find and configure each aspect without scrolling through a single long page.
 - **Acceptance Criteria:**
-  - [x] Given the user opens the settings tab, When the tab loads, Then they see a horizontal tab bar with at minimum: "General", "Global Security", and one tab per existing API key
+  - [x] Given the user opens the settings tab, When the tab loads, Then they see a horizontal tab bar with: "General", "Global Security", and one tab per existing API key
   - [x] Given the user clicks a tab, When the tab activates, Then only that tab's content is shown and the active tab is visually highlighted
   - [x] Given the user creates a new API key, When the key is created, Then a new tab appears for that key
-  - [ ] Given the user opens the settings tab, When the tab loads, Then they see a horizontal tab bar with at minimum: "General", "Global Security", and one tab per existing API key. If those Tabs can not be all displayed in a row he either can scroll left or right with buttons or sees a second row
+  - [x] Given the tab bar has more tabs than fit in one row, When the user views the tab bar, Then scroll buttons (left/right arrows) appear to navigate overflow tabs
 
 #### Feature 2: Server Configuration with Running-State Lock
 
@@ -130,22 +129,20 @@ Kado's reworked settings tab replaces error-prone text inputs with guided intera
 
 - **User Story:** As a vault admin, I want the audit log stored inside my vault (not hidden in .obsidian) so that I can see it, sync it, and review it alongside my notes.
 - **Acceptance Criteria:**
-  - [x] Given the user enables audit logging, When they configure the log path, Then a directory picker allows selecting any vault folder
-  - [x] Given the user picks a directory, When the path is set, Then the log file name is appended automatically (e.g., `selected-dir/kado-audit.log`)
-  **Note:** the user must also be able to choose the name of the log file
+  - [x] Given the user enables audit logging, When they configure the log path, Then a directory picker allows selecting any vault folder for the log directory
+  - [x] Given the user picks a directory, When the path is set, Then a separate text input allows editing the log file name (default: `kado-audit.log`)
   - [x] Given the audit log path is vault-relative, When the vault is synced, Then the audit log is included in sync
   - [x] Given the user enters a path with `..` or absolute path, When the input is validated, Then the path is rejected with an error message
-  - [x] Given audit is enabled, When max size is reached, Then log rotation occurs (current → `.1` backup, fresh file started)
-  **Note:** either we use FIFO with the max size or if we do log rotation we should have an additional field of number of logs retained.
+  - [x] Given audit is enabled, When max size is reached, Then log rotation occurs (current → `.1` → `.2` etc.)
+  - [x] Given log rotation is configured, When the user views audit settings, Then a "Max retained logs" field controls how many rotated files are kept (default: 3)
 
 #### Feature 5: Global Areas with Directory Picker and Permission Matrix
 
 - **User Story:** As a vault admin, I want to define access areas using a directory picker and a visual permission matrix so that I can see at a glance what is allowed where.
 - **Acceptance Criteria:**
   - [x] Given the user adds a new global area, When the area is created, Then it has an empty label, no paths, no tags, and all permissions default to false (default-deny)
-  - [x] Given the user clicks "Browse" on a path entry, When the directory picker modal opens, Then it shows all vault folders (filterable) and selecting one inserts the vault-relative path
-  **Note:** The mockup uses a picker, we can also use a browser to select the path. What is the easiest to implement.
-  - [x] Given a path is configured, When the user views the permission matrix, Then a 4×4 grid shows resources (Notes, Frontmatter, Dataview, Files) × CRUD (Create, Read, Update, Delete)
+  - [x] Given the user clicks "Browse" on a path entry, When the directory picker modal opens, Then it shows all vault folders (filterable by search) and selecting one inserts the vault-relative path
+  - [x] Given a path is configured, When the user views the permission matrix, Then a 4x4 grid shows resources (Notes, Frontmatter, Dataview, Files) x CRUD (Create, Read, Update, Delete)
   - [x] Given the user clicks a matrix dot, When toggled, Then the permission flips and the dot shows a visual on/off state
   - [x] Given the user removes an area, When confirmed, Then the area and all key assignments to it are removed
 
@@ -154,33 +151,37 @@ Kado's reworked settings tab replaces error-prone text inputs with guided intera
 - **User Story:** As a vault admin, I want to choose whether a scope operates in whitelist mode ("only these paths/tags are allowed") or blacklist mode ("everything except these is blocked") so that I can model both restrictive and permissive access patterns.
 - **Acceptance Criteria:**
   - [x] Given a new global area is created, When the user views its settings, Then the list mode defaults to "Whitelist"
-  **Note:** the whitelist/blacklist toggle is for the whole "tab", we don't destinguish between pathes or tags
-  - [x] Given the user toggles to "Blacklist", When the mode changes, Then the interpretation of path/tag rules reverses (listed items are blocked instead of allowed)
-  - [x] Given a key is assigned to an area, When the user views the key's area config, Then the key inherits the area's list mode (cannot override)
+  - [x] Given the user toggles to "Blacklist", When the mode changes, Then the interpretation of ALL rules (both paths and tags) in that scope reverses — the toggle applies to the entire scope, not individually per paths or tags
+  - [x] Given the user switches from whitelist to blacklist with existing rules, When the mode changes, Then an inline description updates to explain the current mode ("Only listed items are accessible" vs "Everything except listed items is accessible")
+  - [x] Given a scope is in blacklist mode with zero path/tag rules, When the user views the scope, Then a warning is displayed: "Blacklist with no rules grants full access"
+  - [x] Given a key is assigned to an area, When the user views the key's area config, Then the key shows the area's inherited list mode as a read-only label (not a toggle) and the key's permissions are editable but constrained by the global area's maximum
 
 #### Feature 7: Tag Filtering (Read-Only)
 
 - **User Story:** As a vault admin, I want to filter accessible files by Obsidian tags so that I can scope AI access to semantically meaningful content groups without relying solely on folder structure.
 - **Acceptance Criteria:**
-  - [x] Given the user adds a tag rule, When they enter a tag, Then tags with or without leading `#` are accepted and normalized (stored consistently)
+  - [x] Given the user adds a tag rule, When they enter a tag, Then tags with or without leading `#` are accepted and normalized (stored consistently without `#`)
   - [x] Given the user enters a nested tag like `#this/is/a/tag`, When the tag is saved, Then nested tags are supported and matched correctly
   - [x] Given a tag rule exists, When the permission is displayed, Then only "Read" is shown as a fixed/enabled column (CUD are not applicable for tags)
-  - [x] Given the user wants wildcard matching, When they enter `#project/*`, Then all child tags under `#project/` are matched
+  - [x] Given the user wants wildcard matching, When they enter `#project/*`, Then all child tags under `#project/` are matched. Wildcard `*` is only valid at the end of a tag.
   - [x] Given the UI shows a tag input, When the field is empty, Then a placeholder indicates format: `#tag`, `#nested/tag`, `tag`, `tag/*`
-**Note:** Tags should be able to be added with a picker, but should also be able to be edited. Only Tags show up on the Key page if they are allowed via the Global Security Settings.
-Concerning the permission checking side (which is not part of the UI rework but should be checked). If the AI component does a listTag with an allowed Tag for that Key he only get's back the notes which are also allowed via his allowed paths.
-Let me know if we need to clarify this.
+  - [x] Given the user clicks "Add Tag", When the tag picker opens, Then it shows existing vault tags (from metadata cache, both frontmatter and inline) for selection. The user can also type a tag manually.
+  - [x] Given the user views a key's tag section, When the key is assigned to global areas, Then only tags defined in those global areas are shown (key cannot add tags outside global scope)
+
+**Business Rule — Tag × Path Intersection:** When an API key queries by tag, the result set is the intersection of (files matching the tag) AND (files within the key's allowed paths). Tags narrow the result set — they never expand access beyond allowed paths. This is a backend enforcement rule, documented here for completeness.
+
+**Business Rule — Tag Sources:** Obsidian stores tags in two places: frontmatter (without `#`) and inline (with `#`). The tag picker and tag matching must use the complete merged tag set from Obsidian's metadata cache. The test vault contains both inline and frontmatter tags for validation.
 
 #### Feature 8: API Key Management (Create, Copy, Rename, Delete, Regenerate)
 
 - **User Story:** As a vault admin, I want full lifecycle management of API keys so that I can create, rotate, and revoke access for individual agents.
 - **Acceptance Criteria:**
   - [x] Given the user clicks "Create API Key", When a key is generated, Then a new tab appears for the key with a unique ID and default name
-  - [x] Given the user views an API key tab, When they see the key value, Then a "Copy" button copies the full key to clipboard with "Copied!" feedback (1.5s)
+  - [x] Given the user views an API key tab, When they see the key value, Then the full key is displayed (no masking) with a "Copy" button that copies to clipboard with "Copied!" feedback (1.5s)
   - [x] Given the user edits the key name, When they click "Rename", Then the tab label and page title update immediately
   - [x] Given the user clicks "Delete Key", When the confirmation dialog appears, Then it asks "Delete API key '[key-name]'? This cannot be undone." with default selection on "No" / "Cancel"
   - [x] Given the user confirms deletion, When the key is removed, Then the tab disappears and the user is redirected to the General tab
-  - [x] Given the user clicks "Regenerate Key", When a confirmation dialog appears and the user confirms, Then the old key value is replaced with a new one (same key ID, new secret), and the user is prompted to copy the new value
+  - [x] Given the user clicks "Regenerate Key", When a confirmation dialog appears and the user confirms, Then the old key value is replaced with a new one (same key ID, new secret), and the new key is displayed in full for copying
 
 #### Feature 9: Per-Key Area Assignment with Constrained Permissions
 
@@ -190,8 +191,7 @@ Let me know if we need to clarify this.
   - [x] Given a key is assigned to an area, When the user views the key's permissions for that area, Then the CRUD matrix is shown but constrained to the global area's maximum permissions (cannot grant more than global allows)
   - [x] Given a global area removes a permission, When the key's view is refreshed, Then any key permission exceeding the new global maximum is automatically revoked
   - [x] Given a key is not assigned to any area, When the key is used for an MCP request, Then all access is denied (default-deny)
-**Note:** How do we make this work when we switch to blacklist? I think we then need to also flip enabled/disabled => disabled/enabled .. so an allowed R becomes a NOT blocked R
-Or how do we make sure that the user is not confused when switching whitelist to blacklist mode for a key? We CANNOT reset the permissions!
+  - [x] Given the global area is in whitelist mode, When the key's permissions are shown, Then enabled dots represent "allowed" operations. Given the area is in blacklist mode, Then enabled dots represent "blocked" operations. The dot semantics follow the area's list mode — no separate toggle needed.
 
 ### Should Have Features
 
@@ -208,14 +208,13 @@ Or how do we make sure that the user is not confused when switching whitelist to
 - **Acceptance Criteria:**
   - [x] Given the server is running, When the user views the General tab, Then a status line shows "Running on {host}:{port}" with a green/accent indicator
   - [x] Given the server is stopped, When the user views the General tab, Then a status line shows "Stopped" with a muted indicator
-  
-#### Feature 12: Server Status Indicator
-  
-  - **User Story:** As a vault admin, I want to see at a glance which version of the plugin I'm using and want to access the documentation quickly.
-  - **Acceptance Criteria:**
-  - [ ] Given the admin is opening the plugin settings he sees the verision of the plugin and a link to the documentation
-See https://github.com/MMoMM-org/obsidian-dynbedded/blob/main/src/DynbeddedSettingTab.ts line 33-43
 
+#### Feature 12: Plugin Version & Documentation Link
+
+- **User Story:** As a vault admin, I want to see which plugin version I'm running and quickly access documentation.
+- **Acceptance Criteria:**
+  - [x] Given the user opens the plugin settings, When the settings tab loads, Then the plugin version (from manifest) and a clickable link to the documentation are displayed at the top
+  - Reference: [obsidian-dynbedded SettingTab.ts L33-43](https://github.com/MMoMM-org/obsidian-dynbedded/blob/main/src/DynbeddedSettingTab.ts)
 
 ### Could Have Features
 
@@ -225,62 +224,53 @@ See https://github.com/MMoMM-org/obsidian-dynbedded/blob/main/src/DynbeddedSetti
 - **Acceptance Criteria:**
   - [x] Given audit logging is enabled and a log file exists, When the user clicks "View Log", Then the audit log file opens in Obsidian's editor
 
-#### Feature 14: New Keys Session Tab
-
-- **User Story:** As a vault admin, I want to see all keys created in the current session in one place so I can copy them before they get masked.
-- **Acceptance Criteria:**
-  - [x] Given keys were created in the current session, When the user views the "New Keys" tab, Then all newly created keys are shown as cards with copy/delete actions
-  - [x] Given no keys were created this session, When the user views the tab, Then an empty state message is shown
-**Denied:** we DON'T mask the keys.. there is no reason for this.
-
 ### Won't Have (This Phase)
 
+- **New Keys session tab** — Per-key tabs are sufficient. Keys are always shown in full (no masking), so no need for a separate session view.
 - **Per-key list mode override** — Keys inherit the area's whitelist/blacklist mode. Independent per-key mode toggle is deferred.
 - **Custom IP entry** — IP selection is from a predefined dropdown (localhost, 0.0.0.0, detected interfaces). Free-text IP entry is deferred.
 - **Tag CUD permissions** — Tags are read-only filters. Create/Update/Delete operations on tagged files via tags alone are out of scope.
 - **Multi-vault support** — Settings are per-vault only.
 - **Import/export settings** — No settings backup/restore mechanism in this phase.
 - **Real-time permission testing** — No "test this key against this path" dry-run tool.
+- **Key masking/obfuscation** — Keys are always displayed in full. No masking.
 
 ## Detailed Feature Specifications
 
-### Feature: Global Areas with Permission Matrix (Feature 5 + 6 + 7)
+### Feature: Security Scope Configuration (Feature 5 + 6 + 7)
 
-**Description:** The core security configuration surface. Each global area defines a named scope with paths, tags, a list mode, and a resource × CRUD permission matrix. This is the foundation that API keys reference.
+**Description:** The core security configuration surface. Each scope (Global Security tab or API Key tab) contains three sections in this order: (1) list mode toggle, (2) paths section with permission matrix, (3) tags section with read-only permission. This structure is identical on both the Global Security tab and each API Key tab.
 
 **User Flow:**
 
-1. User navigates to the "Global Security" tab (or equivalent area management section).
-2. User clicks "Add Area" — a new area card appears with empty fields and all permissions off.
-3. User enters a label (e.g., "Project Notes").
-4. User clicks "Add Path" → clicks "Browse" → directory picker modal opens.
-5. User searches/selects a vault folder → path is inserted (e.g., `Projects/MiYo`).
-6. User clicks dots in the 4×4 matrix to enable specific resource × CRUD permissions.
-7. User clicks "Add Tag" → types `#project/miyo` → "Read" column is pre-checked and fixed.
-8. User toggles list mode from "Whitelist" to "Blacklist" if needed.
-9. Changes auto-save on each interaction.
-**Note:** Nope. Stick to the mock..
-Global Security and every Key has
-- list mode with whitelist/blacklist toggle
-- a (File) Paths (probably best called Paths area
-- a tag area
-In those three areas we work with the permissions. the path and tag area each have a add button to add a new row to the permissions table and a - in front of the already existings rows to remove it
+1. User navigates to the "Global Security" tab.
+2. List mode toggle is at the top — defaults to "Whitelist" with explanatory text.
+3. Below: **Paths** section with an "Add Path" (+) button.
+4. User clicks (+) → new row: [-remove] [path input] [browse button] [4x4 permission matrix].
+5. User clicks "Browse" → modal picker shows vault folders → selects one → path inserted.
+6. User clicks dots in the matrix to enable resource x CRUD permissions.
+7. Below paths: **Tags** section with an "Add Tag" (+) button.
+8. User clicks (+) → new row: [-remove] [tag input/picker] [Read: fixed on].
+9. User picks a tag from the tag picker or types one manually.
+10. Changes auto-save on each interaction.
 
 **Business Rules:**
 
-- Rule 1: Default-deny — a new area grants zero permissions until explicitly configured.
-- Rule 2: Whitelist mode (default) — only listed paths/tags are accessible. Blacklist mode — everything except listed paths/tags is accessible.
-- Rule 3: Tags are read-only filters — they narrow which files are returned from allowed paths. They do not grant write/create/delete capabilities.
-- Rule 4: Tag normalization — `#tag`, `tag`, `#nested/tag`, `nested/tag` are all valid inputs. Stored form should be consistent (without `#`). Display can include `#`.
-- Rule 5: Wildcard tags — `tag/*` matches all child tags (e.g., `project/*` matches `project/a`, `project/b/c`). The `*` wildcard is only valid at the end.
+- Rule 1: Default-deny — a new scope grants zero permissions until explicitly configured.
+- Rule 2: Whitelist mode (default) — only listed paths/tags are accessible. Blacklist mode — everything except listed paths/tags is accessible. The toggle applies to the ENTIRE scope (both paths and tags together). A blacklist scope with zero rules intentionally grants full access — a UI warning must be shown in this case.
+- Rule 2a: Auto-save — every setting change is persisted immediately. No explicit "Save" button. Changes take effect as soon as the user modifies a field.
+- Rule 3: Tags are read-only filters — they narrow which files are returned from allowed paths. They do not grant write/create/delete capabilities. The intersection rule applies: tag results are always filtered against allowed paths.
+- Rule 4: Tag normalization — `#tag`, `tag`, `#nested/tag`, `nested/tag` are all valid inputs. Stored without `#`. Display includes `#` prefix.
+- Rule 5: Wildcard tags — `tag/*` matches all child tags (e.g., `project/*` matches `project/a`, `project/b/c`). Wildcard `*` is only valid at the end.
 - Rule 6: Path entries use vault-relative paths. No absolute paths, no `..` traversal.
-- Rule 7: Removing an area cascades — all API key assignments referencing that area are also removed.
+- Rule 7: Removing a global area cascades — all API key assignments referencing that area are also removed.
+- Rule 8: Tag sources — the tag picker and matching use both frontmatter tags (stored without `#`) and inline tags (stored with `#`), merged into one complete set via Obsidian's metadata cache.
 
 **Edge Cases:**
 
 - Scenario 1: User creates an area but adds no paths or tags → Expected: Area exists but grants no access (default-deny is preserved).
 - Scenario 2: User adds a path that doesn't exist in the vault → Expected: Path is accepted (folder may be created later), but currently resolves to no files.
-- Scenario 3: User switches list mode from whitelist to blacklist with existing rules → Expected: Rules stay, interpretation flips. A warning/info text should explain the mode change.
+- Scenario 3: User switches list mode from whitelist to blacklist with existing rules → Expected: Rules stay, interpretation flips. Inline description text updates to explain the new semantics.
 - Scenario 4: User enters a tag with `#` prefix → Expected: Stored without `#`, displayed with `#` in UI.
 - Scenario 5: User enters `#project/*` → Expected: Matches `project/a`, `project/b`, `project/b/c` etc. Does NOT match `project` itself (exact match needs separate entry).
 - Scenario 6: User deletes the last path in an area → Expected: Area still exists with zero paths. Effectively grants no path-based access.
@@ -293,7 +283,7 @@ In those three areas we work with the permissions. the path and tag area each ha
 
 1. User clicks "Create API Key" on General tab → new key generated, new tab appears.
 2. User renames the key → tab label updates.
-3. User copies the key → clipboard + feedback.
+3. User copies the key (always shown in full) → clipboard + feedback.
 4. User assigns key to global areas → permissions configured.
 5. Later, user clicks "Regenerate" → confirmation dialog → new secret generated, old one invalidated.
 6. User copies new key, updates external client.
@@ -303,8 +293,7 @@ In those three areas we work with the permissions. the path and tag area each ha
 
 - Rule 1: Key deletion confirmation must default to "No" / "Cancel" to prevent accidental deletion.
 - Rule 2: Key regeneration replaces the secret value but keeps the key ID, name, and all permission assignments intact.
-- Rule 3: After regeneration, the new key value should be prominently displayed and the user prompted to copy it (since it won't be shown again in full).
-**Note:** again we don't obfuscate the key
+- Rule 3: Keys are always displayed in full — no obfuscation or masking.
 - Rule 4: A key with no area assignments has zero access (default-deny).
 
 **Edge Cases:**
@@ -333,7 +322,7 @@ In those three areas we work with the permissions. the path and tag area each ha
 | `settings.key.deleted` | key_id | Track key lifecycle |
 | `settings.audit.enabled` | log_path | Track audit adoption |
 | `settings.server.started` | host, port, connection_type | Track server configuration patterns |
-| `settings.directory_picker.used` | context (path, audit) | Track picker vs manual entry ratio |
+| `settings.directory_picker.used` | context (path, audit, tag) | Track picker vs manual entry ratio |
 
 Note: All tracking respects user privacy. Events are local only (audit log), not sent externally.
 
@@ -347,44 +336,42 @@ Note: All tracking respects user privacy. Events are local only (audit log), not
 - **No external dependencies for UI**: All UI components are vanilla DOM + Obsidian API. No React, Vue, or similar frameworks.
 - **Settings storage**: Single JSON blob via Obsidian's `plugin.loadData()` / `plugin.saveData()`. No separate config files.
 - **Default-deny security model**: The architecture (L1 constitutional rule) requires that nothing is accessible until explicitly granted. The UI must reinforce this.
-- **Backward compatibility**: Existing v1 settings (GlobalArea[], ApiKeyConfig[]) must be migrated to any new structure without data loss.
-**Note:** we can ignore this, we can change the layout during codeing to the right config in the testvault once.
+- **Theming**: Inherit Obsidian's native theme entirely. No custom color palette. Use Obsidian's CSS variables (`--background-primary`, `--text-normal`, `--interactive-accent`, etc.). Only add `.kado-`-prefixed classes for layout/structure, not colors.
+- **No backward compatibility needed**: Only test instance exists. Config can be manually reset or adjusted during development.
 
 ### Assumptions
 
 - Users have a basic understanding of file permissions (read/write/create/delete concepts).
 - Obsidian's `TFolder` API provides access to all vault folders for the directory picker.
-- The v3 mockup's visual design (purple accent, dark theme, custom tab bar) is the target design language.
-**Note:** Ignore the theme.. we use the original obsidian theme.. so inherit everything if possible
-- Tag resolution depends on Obsidian's metadata cache being available and up-to-date.
+- Tag resolution depends on Obsidian's metadata cache being available and up-to-date. Both frontmatter and inline tags must be included.
 - Network interface detection (for the IP dropdown in Public mode) is available at runtime.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Data migration breaks existing configs | NonExistent | Low | Only Testinstance atm. can be modified during coding or manually reset |
 | Directory picker misses folders in large vaults | Medium | Low | Use Obsidian's built-in file API (already handles large vaults). Add search filter in modal. |
-| Tag normalization inconsistencies | Medium | Medium | Define single canonical form (without `#`). Normalize on input. Test with edge cases (#, nested, wildcard). |
+| Tag normalization inconsistencies between frontmatter and inline tags | Medium | Medium | Define single canonical form (without `#`). Normalize on input. Use merged tag set from metadata cache. Test with both inline and frontmatter tags in test vault. |
 | Users confused by whitelist vs blacklist semantics | Medium | Medium | Add inline description text that updates when mode toggles. E.g., "Only listed paths are accessible" vs "All paths except listed ones are accessible". |
-| Custom CSS conflicts with Obsidian themes | Low | Medium | Use `.kado-` prefixed classes. Test with default dark/light themes. Prefer CSS custom properties. |
+| Custom CSS conflicts with Obsidian themes | Low | Low | Inherit Obsidian theme variables. Only use `.kado-` classes for structure/layout, not colors. Test with default dark/light themes. |
 | Key regeneration while server is active causes auth disruption | Low | High | Immediately invalidate old key in config. Document that active sessions will fail and need reconnection. |
-
-**Note:** Concerning tags.. there are two kinds which are differently stored.. frontmatter tags and inline... inline is with # frontmatter without IIRC... this is also an issue for the metadata which has 2 different sets of tags if IIRC.. one is only a part of all tags.
-we should orient us on the larger tag collection
-the testvault has inline and frontline tags
 
 ## Open Questions
 
-- [x] ~~Audit log location~~ → Decision: vault-relative path with directory picker
-- [x] ~~Permission model~~ → Decision: keep two-layer (global → key), add whitelist/blacklist toggle
-- [x] ~~Tag permissions scope~~ → Decision: Read-only filter only
-- [x] ~~Delete confirmation~~ → Decision: confirm dialog, default = No
-- [x] ~~Key regeneration~~ → Decision: regenerate button with confirmation
-- [ ] Should the "New Keys" session tab be kept or is per-key tabs sufficient?
-Per Key is sufficient
-- [ ] Should tag wildcard `*` only be valid at the end, or also support `project/*/notes` patterns?
-at the end
+All open questions have been resolved:
+
+- [x] ~~Audit log location~~ → Vault-relative path with directory picker + editable filename
+- [x] ~~Permission model~~ → Keep two-layer (global → key), add whitelist/blacklist toggle per scope
+- [x] ~~Tag permissions scope~~ → Read-only filter only, intersection with allowed paths
+- [x] ~~Delete confirmation~~ → Confirm dialog, default = No
+- [x] ~~Key regeneration~~ → Regenerate button with confirmation
+- [x] ~~New Keys session tab~~ → Won't have. Per-key tabs sufficient, no masking.
+- [x] ~~Tag wildcard scope~~ → Wildcard `*` only valid at the end
+- [x] ~~Log rotation vs FIFO~~ → Log rotation with configurable retention count (default: 3)
+- [x] ~~Directory picker implementation~~ → Modal picker (Obsidian Modal subclass with filtered folder list)
+- [x] ~~Theming approach~~ → Inherit Obsidian native theme, no custom color palette
+- [x] ~~Tag sources~~ → Merged set from both frontmatter and inline tags via metadata cache
+- [x] ~~Key display~~ → Always shown in full, no masking
 
 ---
 
