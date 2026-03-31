@@ -1,8 +1,355 @@
-/*
+/* Kado Settings — structural layout classes only, colors from Obsidian theme */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* Tab bar */
+.kado-settings {
+	padding: 0;
+}
 
-If your plugin does not need CSS, delete this file.
+.kado-version-header {
+	padding: 8px 0 12px;
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+}
 
-*/
+.kado-version-header a {
+	color: var(--text-accent);
+}
+
+.kado-tab-bar {
+	display: flex;
+	align-items: center;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 16px;
+}
+
+.kado-tab-strip {
+	display: flex;
+	overflow-x: hidden;
+	flex: 1;
+	gap: 4px;
+}
+
+.kado-tab {
+	padding: 8px 16px;
+	cursor: pointer;
+	white-space: nowrap;
+	border-bottom: 2px solid transparent;
+	font-size: var(--font-small);
+	color: var(--text-muted);
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.kado-tab:hover {
+	color: var(--text-normal);
+}
+
+.kado-tab.is-active {
+	border-bottom-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+.kado-tab-scroll {
+	padding: 4px 8px;
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 16px;
+}
+
+.kado-tab-scroll:hover {
+	color: var(--text-normal);
+}
+
+.kado-hidden {
+	display: none;
+}
+
+.kado-tab-content {
+	padding: 4px 0;
+}
+
+/* Permission matrix */
+.kado-perm-matrix {
+	display: grid;
+	grid-template-columns: auto repeat(4, 28px);
+	gap: 4px;
+	align-items: center;
+}
+
+.kado-perm-row {
+	display: contents;
+}
+
+.kado-perm-label {
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+	padding-right: 8px;
+}
+
+.kado-perm-col-label {
+	text-align: center;
+	font-size: var(--font-smallest);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+}
+
+.kado-perm-cell {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.kado-dot {
+	width: 20px;
+	height: 20px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s, border-color 0.15s;
+}
+
+.kado-dot:hover {
+	border-color: var(--interactive-accent);
+}
+
+.kado-dot.is-active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+.kado-dot.is-active::after {
+	content: '\2713';
+	color: var(--text-on-accent);
+	font-size: 12px;
+}
+
+.kado-dot.is-disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.kado-dot.is-disabled:hover {
+	border-color: var(--background-modifier-border);
+}
+
+/* Path entries */
+.kado-path-entry {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.kado-path-input {
+	flex: 1;
+	min-width: 120px;
+	font-family: var(--font-monospace);
+	font-size: var(--font-small);
+}
+
+.kado-path-input.kado-input-error {
+	border-color: var(--text-error);
+}
+
+.kado-path-matrix {
+	flex-shrink: 0;
+}
+
+/* Tag entries */
+.kado-tag-entry {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 0;
+}
+
+.kado-tag-input {
+	flex: 1;
+	min-width: 120px;
+	font-family: var(--font-monospace);
+	font-size: var(--font-small);
+}
+
+.kado-tag-read-badge {
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: var(--background-secondary);
+	font-weight: var(--font-semibold);
+}
+
+/* Shared buttons */
+.kado-remove-btn {
+	background: none;
+	border: none;
+	color: var(--text-error);
+	cursor: pointer;
+	font-size: 16px;
+	padding: 2px 6px;
+	border-radius: 4px;
+}
+
+.kado-remove-btn:hover {
+	background: var(--background-modifier-error);
+}
+
+.kado-browse-btn {
+	background: none;
+	border: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 14px;
+}
+
+.kado-browse-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.kado-add-btn {
+	background: none;
+	border: 1px dashed var(--background-modifier-border);
+	cursor: pointer;
+	padding: 4px 12px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-small);
+	margin-top: 4px;
+}
+
+.kado-add-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+/* Picker modals */
+.kado-folder-picker,
+.kado-tag-picker {
+	padding: 12px;
+}
+
+.kado-picker-input-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.kado-picker-input-row input {
+	flex: 1;
+}
+
+.kado-picker-search {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.kado-picker-list {
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.kado-picker-item {
+	padding: 6px 8px;
+	cursor: pointer;
+	font-family: var(--font-monospace);
+	font-size: var(--font-small);
+	border-radius: 4px;
+}
+
+.kado-picker-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.kado-picker-empty {
+	color: var(--text-muted);
+	padding: 12px;
+	text-align: center;
+}
+
+/* List mode toggle */
+.kado-listmode {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 0 4px;
+}
+
+.kado-listmode-label {
+	font-size: var(--font-small);
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 4px;
+}
+
+.kado-listmode-label.is-active {
+	color: var(--interactive-accent);
+	font-weight: var(--font-semibold);
+}
+
+.kado-listmode-desc {
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+	padding: 0 0 8px;
+}
+
+.kado-listmode-warning {
+	font-size: var(--font-smallest);
+	color: var(--text-error);
+	padding: 0 0 8px;
+}
+
+/* Area cards */
+.kado-area-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+
+.kado-area-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+.kado-section-label {
+	font-size: var(--font-smallest);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	padding: 12px 0 4px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 4px;
+}
+
+/* Danger zone */
+.kado-danger-zone {
+	margin-top: 24px;
+	padding-top: 16px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Key display */
+.kado-key-display {
+	font-family: var(--font-monospace);
+	font-size: var(--font-small);
+	color: var(--text-muted);
+	word-break: break-all;
+}
+
+/* Inherited mode label */
+.kado-inherited-label {
+	font-size: var(--font-smallest);
+	color: var(--text-muted);
+	padding: 2px 8px;
+	border-radius: 4px;
+	background: var(--background-secondary);
+}
