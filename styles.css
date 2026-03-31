@@ -345,6 +345,30 @@
 	word-break: break-all;
 }
 
+/* Area assignment detail (key tab) */
+.kado-area-assignment-detail {
+	padding-left: 16px;
+	margin-bottom: 12px;
+}
+
+/* Effective permissions */
+.kado-effective-perms {
+	padding-left: 16px;
+	margin-bottom: 8px;
+}
+
+.kado-effective-matrix {
+	margin-top: 4px;
+}
+
+/* Confirm modal buttons */
+.kado-confirm-buttons {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+
 /* Inherited mode label */
 .kado-inherited-label {
 	font-size: var(--font-smallest);
