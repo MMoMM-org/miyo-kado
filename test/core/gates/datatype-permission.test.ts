@@ -53,6 +53,8 @@ function makeGlobalArea(
 		label: `Area ${id}`,
 		pathPatterns,
 		permissions: permissions ?? makeAllTruePermissions(),
+		listMode: 'whitelist',
+		tags: [],
 	};
 }
 
@@ -60,6 +62,7 @@ function makeKeyAreaConfig(areaId: string, permissions?: DataTypePermissions): K
 	return {
 		areaId,
 		permissions: permissions ?? makeAllTruePermissions(),
+		tags: [],
 	};
 }
 
@@ -80,10 +83,10 @@ function makeApiKey(
 
 function makeConfig(globalAreas: GlobalArea[], apiKeys: ApiKeyConfig[]): KadoConfig {
 	return {
-		server: {enabled: false, host: '127.0.0.1', port: 23026},
+		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
 		globalAreas,
 		apiKeys,
-		audit: {enabled: true, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10485760},
+		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
 }
 

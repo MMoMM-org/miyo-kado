@@ -108,13 +108,16 @@ function makeAuditLogger(): {logger: AuditLogger; entries: AuditEntry[]} {
 	const entries: AuditEntry[] = [];
 	const deps = {
 		write: vi.fn(async (line: string) => {
-			entries.push(JSON.parse(line) as AuditEntry);
+			if (line.trim()) entries.push(JSON.parse(line) as AuditEntry);
 		}),
 		getSize: vi.fn(async () => 0),
-		rotate: vi.fn(async () => undefined),
+		exists: vi.fn(async () => false),
+		rename: vi.fn(async () => undefined),
+		remove: vi.fn(async () => undefined),
+		getLogPath: vi.fn(() => 'logs/kado-audit.log'),
 	};
 	const logger = new AuditLogger(
-		{enabled: true, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10 * 1024 * 1024},
+		{enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10 * 1024 * 1024, maxRetainedLogs: 3},
 		deps,
 	);
 	return {logger, entries};
@@ -272,10 +275,13 @@ describe('audit integration — disabled audit logger', () => {
 		const deps = {
 			write: vi.fn(async () => undefined),
 			getSize: vi.fn(async () => 0),
-			rotate: vi.fn(async () => undefined),
+			exists: vi.fn(async () => false),
+			rename: vi.fn(async () => undefined),
+			remove: vi.fn(async () => undefined),
+			getLogPath: vi.fn(() => 'logs/kado-audit.log'),
 		};
 		const logger = new AuditLogger(
-			{enabled: false, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10 * 1024 * 1024},
+			{enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10 * 1024 * 1024, maxRetainedLogs: 3},
 			deps,
 		);
 		const handler = getHandler('kado-read', makeDeps({auditLogger: logger}));

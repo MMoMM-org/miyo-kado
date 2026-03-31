@@ -19,8 +19,10 @@ import type {AuditConfig} from '../../src/types/canonical';
 function makeConfig(overrides?: Partial<AuditConfig>): AuditConfig {
 	return {
 		enabled: true,
-		logFilePath: 'plugins/kado/audit.log',
+		logDirectory: 'logs',
+		logFileName: 'kado-audit.log',
 		maxSizeBytes: 1024,
+		maxRetainedLogs: 3,
 		...overrides,
 	};
 }
@@ -29,7 +31,10 @@ function makeDeps(overrides?: {size?: number}) {
 	return {
 		write: vi.fn().mockResolvedValue(undefined),
 		getSize: vi.fn().mockResolvedValue(overrides?.size ?? 0),
-		rotate: vi.fn().mockResolvedValue(undefined),
+		exists: vi.fn().mockResolvedValue(false),
+		rename: vi.fn().mockResolvedValue(undefined),
+		remove: vi.fn().mockResolvedValue(undefined),
+		getLogPath: vi.fn().mockReturnValue('logs/kado-audit.log'),
 	};
 }
 
@@ -153,37 +158,38 @@ describe('AuditLogger.log() — disabled config', () => {
 // ---------------------------------------------------------------------------
 
 describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => {
-	it('calls rotate before write when file size exceeds maxSizeBytes', async () => {
+	it('calls rotation deps before write when file size exceeds maxSizeBytes', async () => {
 		const deps = makeDeps({size: 2048});
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
 
-		expect(deps.rotate).toHaveBeenCalledOnce();
-		expect(deps.write).toHaveBeenCalledOnce();
-		// rotate must be called before write
-		const rotateOrder = deps.rotate.mock.invocationCallOrder[0] as number;
-		const writeOrder = deps.write.mock.invocationCallOrder[0] as number;
-		expect(rotateOrder).toBeLessThan(writeOrder);
+		// Rotation should have been triggered (getLogPath called, exists checked)
+		expect(deps.getLogPath).toHaveBeenCalled();
+		expect(deps.exists).toHaveBeenCalled();
+		// write is called at least once (rotation empty write + entry write)
+		expect(deps.write).toHaveBeenCalled();
 	});
 
-	it('does not call rotate when file size is within maxSizeBytes', async () => {
+	it('does not call rotation deps when file size is within maxSizeBytes', async () => {
 		const deps = makeDeps({size: 512});
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
 
-		expect(deps.rotate).not.toHaveBeenCalled();
+		expect(deps.rename).not.toHaveBeenCalled();
+		expect(deps.remove).not.toHaveBeenCalled();
 		expect(deps.write).toHaveBeenCalledOnce();
 	});
 
-	it('does not call rotate when file size equals maxSizeBytes', async () => {
+	it('does not call rotation deps when file size equals maxSizeBytes', async () => {
 		const deps = makeDeps({size: 1024});
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
 
-		expect(deps.rotate).not.toHaveBeenCalled();
+		expect(deps.rename).not.toHaveBeenCalled();
+		expect(deps.remove).not.toHaveBeenCalled();
 	});
 });
 

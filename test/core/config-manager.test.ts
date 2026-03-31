@@ -26,6 +26,8 @@ function makeArea(overrides?: Partial<GlobalArea>): GlobalArea {
 			file: {create: false, read: false, update: false, delete: false},
 			dataviewInlineField: {create: false, read: false, update: false, delete: false},
 		},
+		listMode: 'whitelist',
+		tags: [],
 		...overrides,
 	};
 }

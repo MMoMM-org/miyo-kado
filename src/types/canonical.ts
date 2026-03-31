@@ -135,6 +135,8 @@ export interface DataTypePermissions {
 export interface KeyAreaConfig {
 	areaId: string;
 	permissions: DataTypePermissions;
+	/** Subset of parent GlobalArea.tags this key can use. */
+	tags: string[];
 }
 
 export interface ApiKeyConfig {
@@ -145,28 +147,38 @@ export interface ApiKeyConfig {
 	areas: KeyAreaConfig[];
 }
 
+export type ListMode = 'whitelist' | 'blacklist';
+
 export interface GlobalArea {
 	id: string;
 	label: string;
 	pathPatterns: string[];
 	permissions: DataTypePermissions;
+	/** Whether listed items are allowed (whitelist) or blocked (blacklist). Default: 'whitelist'. */
+	listMode: ListMode;
+	/** Tags for this area, stored without '#'. */
+	tags: string[];
 }
+
+export type ConnectionType = 'local' | 'public';
 
 export interface ServerConfig {
 	enabled: boolean;
 	host: string;
 	port: number;
+	/** Whether server binds locally or to a public interface. Default: 'local'. */
+	connectionType: ConnectionType;
 }
 
 export interface AuditConfig {
 	enabled: boolean;
-	/**
-	 * Path relative to `Vault#configDir` (e.g. "plugins/kado/audit.log").
-	 * Callers must resolve the absolute path using `vault.configDir + "/" + logFilePath`.
-	 * Never store an absolute or hardcoded ".obsidian/" prefix here.
-	 */
-	logFilePath: string;
+	/** Vault-relative directory for audit log. Default: 'logs'. */
+	logDirectory: string;
+	/** Log file name. Default: 'kado-audit.log'. */
+	logFileName: string;
 	maxSizeBytes: number;
+	/** Number of rotated log files to keep. Default: 3. */
+	maxRetainedLogs: number;
 }
 
 export interface KadoConfig {
@@ -199,13 +211,16 @@ export function createDefaultConfig(): KadoConfig {
 			enabled: false,
 			host: '127.0.0.1',
 			port: 23026,
+			connectionType: 'local',
 		},
 		globalAreas: [],
 		apiKeys: [],
 		audit: {
 			enabled: true,
-			logFilePath: 'plugins/kado/audit.log',
+			logDirectory: 'logs',
+			logFileName: 'kado-audit.log',
 			maxSizeBytes: 10 * 1024 * 1024,
+			maxRetainedLogs: 3,
 		},
 	};
 }

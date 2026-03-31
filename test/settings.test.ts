@@ -252,7 +252,8 @@ describe('KadoSettingTab', () => {
 			tab.display();
 			const names = getSettingNames(tab.containerEl);
 			expect(names).toContain('Enable audit');
-			expect(names).toContain('Log path');
+			expect(names).toContain('Log directory');
+			expect(names).toContain('Log filename');
 		});
 
 		it('renders max size setting', () => {

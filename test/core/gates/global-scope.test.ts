@@ -48,16 +48,18 @@ function makeGlobalArea(pathPatterns: string[], overrides?: Partial<GlobalArea>)
 			file: {create: false, read: true, update: false, delete: false},
 			dataviewInlineField: {create: false, read: true, update: false, delete: false},
 		},
+		listMode: 'whitelist',
+		tags: [],
 		...overrides,
 	};
 }
 
 function makeConfig(globalAreas: GlobalArea[]): KadoConfig {
 	return {
-		server: {enabled: false, host: '127.0.0.1', port: 23026},
+		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
 		globalAreas,
 		apiKeys: [],
-		audit: {enabled: true, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10485760},
+		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
 }
 

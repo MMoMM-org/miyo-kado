@@ -37,7 +37,7 @@ import type {KadoConfig, CoreError} from '../../src/types/canonical';
  */
 function makeTestConfig(): KadoConfig {
 	return {
-		server: {enabled: true, host: '127.0.0.1', port: 23026},
+		server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
 		globalAreas: [
 			{
 				id: 'projects',
@@ -49,6 +49,8 @@ function makeTestConfig(): KadoConfig {
 					file: {create: false, read: true, update: false, delete: false},
 					dataviewInlineField: {create: false, read: true, update: true, delete: false},
 				},
+				listMode: 'whitelist' as const,
+				tags: [],
 			},
 		],
 		apiKeys: [
@@ -66,11 +68,12 @@ function makeTestConfig(): KadoConfig {
 							file: {create: false, read: true, update: false, delete: false},
 							dataviewInlineField: {create: false, read: true, update: false, delete: false},
 						},
+						tags: [],
 					},
 				],
 			},
 		],
-		audit: {enabled: false, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10485760},
+		audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
 }
 
@@ -552,6 +555,7 @@ describe('End-to-end tool call pipeline', () => {
 									file: {create: false, read: false, update: false, delete: false},
 									dataviewInlineField: {create: false, read: false, update: false, delete: false},
 								},
+								tags: [],
 							},
 						],
 					},

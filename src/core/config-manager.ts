@@ -35,13 +35,38 @@ export class ConfigManager {
 		}
 		const defaults = createDefaultConfig();
 		const partial = stored as Partial<KadoConfig>;
+
+		// Merge audit — handle migration from old logFilePath to logDirectory/logFileName
+		const storedAudit = (partial.audit ?? {}) as Record<string, unknown>;
+		const mergedAudit = {...defaults.audit, ...storedAudit};
+		// Remove legacy field if present
+		if ('logFilePath' in mergedAudit) {
+			delete (mergedAudit as Record<string, unknown>)['logFilePath'];
+		}
+
+		// Ensure globalAreas have new fields (listMode, tags)
+		const areas = (partial.globalAreas ?? defaults.globalAreas).map(area => ({
+			...area,
+			listMode: area.listMode ?? 'whitelist' as const,
+			tags: area.tags ?? [],
+		}));
+
+		// Ensure apiKeys' areas have tags field
+		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
+			...key,
+			areas: (key.areas ?? []).map(ka => ({
+				...ka,
+				tags: ka.tags ?? [],
+			})),
+		}));
+
 		this.config = {
 			...defaults,
 			...partial,
 			server: {...defaults.server, ...(partial.server ?? {})},
-			audit: {...defaults.audit, ...(partial.audit ?? {})},
-			globalAreas: partial.globalAreas ?? defaults.globalAreas,
-			apiKeys: partial.apiKeys ?? defaults.apiKeys,
+			audit: mergedAudit as typeof defaults.audit,
+			globalAreas: areas,
+			apiKeys: keys,
 		};
 	}
 

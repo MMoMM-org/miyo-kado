@@ -22,7 +22,7 @@ function makeConfigManager(): ConfigManager {
 }
 
 function makeServerConfig(port: number): ServerConfig {
-	return {enabled: true, host: '127.0.0.1', port};
+	return {enabled: true, host: '127.0.0.1', port, connectionType: 'local'};
 }
 
 function noopRegisterTools(_server: McpServer): void {

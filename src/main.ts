@@ -21,9 +21,9 @@ import {createSearchAdapter} from './obsidian/search-adapter';
 import {AuditLogger} from './core/audit-logger';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
-function sanitizeAuditPath(raw: string): string {
+function sanitizePath(raw: string): string {
 	if (raw.includes('..') || raw.startsWith('/') || raw.startsWith('\\')) {
-		return 'plugins/kado/audit.log';
+		return '';
 	}
 	return raw;
 }
@@ -34,10 +34,12 @@ export default class KadoPlugin extends Plugin {
 	mcpServer!: KadoMcpServer;
 	private auditLogger!: AuditLogger;
 
+	/** Resolve the audit log path relative to the vault root. */
 	private get resolvedAuditLogPath(): string {
-		const raw = this.configManager.getConfig().audit.logFilePath;
-		const sanitized = sanitizeAuditPath(raw);
-		return `${this.app.vault.configDir}/${sanitized}`;
+		const audit = this.configManager.getConfig().audit;
+		const dir = sanitizePath(audit.logDirectory) || 'logs';
+		const file = sanitizePath(audit.logFileName) || 'kado-audit.log';
+		return `${dir}/${file}`;
 	}
 
 	async onload(): Promise<void> {
@@ -63,31 +65,38 @@ export default class KadoPlugin extends Plugin {
 
 		const auditConfig = this.configManager.getConfig().audit;
 		let writeChain = Promise.resolve();
+		const adapter = this.app.vault.adapter;
 		this.auditLogger = new AuditLogger(auditConfig, {
 			write: (line: string) => {
 				const logPath = this.resolvedAuditLogPath;
 				writeChain = writeChain.then(async () => {
-					const existing = await this.app.vault.adapter.read(logPath).catch(() => '');
-					await this.app.vault.adapter.write(logPath, existing + line);
+					const existing = await adapter.read(logPath).catch(() => '');
+					await adapter.write(logPath, existing + line);
 				});
 				return writeChain;
 			},
 			getSize: () => {
 				let size = 0;
 				writeChain = writeChain.then(async () => {
-					size = (await this.app.vault.adapter.stat(this.resolvedAuditLogPath))?.size ?? 0;
+					size = (await adapter.stat(this.resolvedAuditLogPath))?.size ?? 0;
 				});
 				return writeChain.then(() => size);
 			},
-			rotate: () => {
-				const logPath = this.resolvedAuditLogPath;
-				writeChain = writeChain.then(async () => {
-					const existing = await this.app.vault.adapter.read(logPath).catch(() => '');
-					await this.app.vault.adapter.write(logPath + '.1', existing);
-					await this.app.vault.adapter.write(logPath, '');
+			exists: (path: string) => {
+				return writeChain.then(async () => {
+					const stat = await adapter.stat(path);
+					return stat !== null;
 				});
+			},
+			rename: (from: string, to: string) => {
+				writeChain = writeChain.then(() => adapter.rename(from, to));
 				return writeChain;
 			},
+			remove: (path: string) => {
+				writeChain = writeChain.then(() => adapter.remove(path));
+				return writeChain;
+			},
+			getLogPath: () => this.resolvedAuditLogPath,
 		});
 
 		this.mcpServer = new KadoMcpServer(

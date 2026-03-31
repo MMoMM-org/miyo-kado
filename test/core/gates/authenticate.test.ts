@@ -27,10 +27,10 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 
 function makeConfig(keys: ApiKeyConfig[] = []): KadoConfig {
 	return {
-		server: {enabled: false, host: '127.0.0.1', port: 23026},
+		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const},
 		globalAreas: [],
 		apiKeys: keys,
-		audit: {enabled: true, logFilePath: 'plugins/kado/audit.log', maxSizeBytes: 10485760},
+		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
 }
 

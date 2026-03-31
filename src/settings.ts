@@ -49,6 +49,8 @@ export class KadoSettingTab extends PluginSettingTab {
 			label: '',
 			pathPatterns: [],
 			permissions: createDefaultPermissions(),
+			listMode: 'whitelist',
+			tags: [],
 		};
 		this.plugin.configManager.addGlobalArea(area);
 		void this.plugin.saveSettings();
@@ -346,11 +348,20 @@ export class KadoSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Log path')
+			.setName('Log directory')
 			.addText(text => text
-				.setValue(audit.logFilePath)
+				.setValue(audit.logDirectory)
 				.onChange(async (value) => {
-					audit.logFilePath = value;
+					audit.logDirectory = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Log filename')
+			.addText(text => text
+				.setValue(audit.logFileName)
+				.onChange(async (value) => {
+					audit.logFileName = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -406,6 +417,7 @@ export class KadoSettingTab extends PluginSettingTab {
 			key.areas.push({
 				areaId: globalArea.id,
 				permissions: createDefaultPermissions(),
+				tags: [],
 			});
 		} else {
 			key.areas = key.areas.filter(a => a.areaId !== globalArea.id);

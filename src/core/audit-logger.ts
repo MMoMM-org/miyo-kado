@@ -28,7 +28,14 @@ export interface AuditEntry {
 export interface AuditLoggerDeps {
 	write: (line: string) => Promise<void>;
 	getSize: () => Promise<number>;
-	rotate: () => Promise<void>;
+	/** Check if a file exists at the given path. */
+	exists: (path: string) => Promise<boolean>;
+	/** Rename (move) a file. */
+	rename: (from: string, to: string) => Promise<void>;
+	/** Remove a file. */
+	remove: (path: string) => Promise<void>;
+	/** Get the base log file path (logDirectory/logFileName resolved). */
+	getLogPath: () => string;
 }
 
 // ============================================================
@@ -51,10 +58,42 @@ export class AuditLogger {
 
 		const size = await this.deps.getSize();
 		if (size > this.config.maxSizeBytes) {
-			await this.deps.rotate();
+			await this.rotate();
 		}
 
 		await this.deps.write(JSON.stringify(entry) + '\n');
+	}
+
+	/**
+	 * Multi-file log rotation: shifts .1→.2→...→.N, deletes beyond maxRetainedLogs.
+	 * Then moves current log to .1 and creates a fresh empty file.
+	 */
+	private async rotate(): Promise<void> {
+		const basePath = this.deps.getLogPath();
+		const maxRetained = this.config.maxRetainedLogs;
+
+		// Delete oldest if at limit
+		const oldest = `${basePath}.${maxRetained}`;
+		if (await this.deps.exists(oldest)) {
+			await this.deps.remove(oldest);
+		}
+
+		// Shift: .N-1 → .N, .N-2 → .N-1, ..., .1 → .2
+		for (let i = maxRetained - 1; i >= 1; i--) {
+			const from = `${basePath}.${i}`;
+			const to = `${basePath}.${i + 1}`;
+			if (await this.deps.exists(from)) {
+				await this.deps.rename(from, to);
+			}
+		}
+
+		// Current → .1
+		if (await this.deps.exists(basePath)) {
+			await this.deps.rename(basePath, `${basePath}.1`);
+		}
+
+		// Create fresh empty log via write
+		await this.deps.write('');
 	}
 
 	updateConfig(config: AuditConfig): void {

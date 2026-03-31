@@ -110,8 +110,10 @@ describe('createDefaultConfig', () => {
 	it('returns audit config with enabled true and correct defaults', () => {
 		const config = createDefaultConfig();
 		expect(config.audit.enabled).toBe(true);
-		expect(config.audit.logFilePath).toBe('plugins/kado/audit.log');
+		expect(config.audit.logDirectory).toBe('logs');
+		expect(config.audit.logFileName).toBe('kado-audit.log');
 		expect(config.audit.maxSizeBytes).toBe(10 * 1024 * 1024);
+		expect(config.audit.maxRetainedLogs).toBe(3);
 	});
 
 	it('produces independent objects on each call', () => {
@@ -204,7 +206,7 @@ describe('CoreWriteRequest shape', () => {
 
 describe('CoreSearchRequest shape', () => {
 	it('accepts all valid SearchOperation values', () => {
-		const ops: CoreSearchRequest['operation'][] = ['byTag', 'byName', 'listDir', 'listTags'];
+		const ops: CoreSearchRequest['operation'][] = ['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter'];
 		for (const op of ops) {
 			const req = makeSearchRequest({operation: op});
 			expect(req.operation).toBe(op);
