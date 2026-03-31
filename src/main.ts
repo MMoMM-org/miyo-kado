@@ -5,7 +5,7 @@
  */
 
 import {Plugin} from 'obsidian';
-import {KadoSettingTab} from './settings';
+import {KadoSettingsTab} from './settings/SettingsTab';
 import type {KadoConfig} from './types/canonical';
 import {ConfigManager} from './core/config-manager';
 import {KadoMcpServer} from './mcp/server';
@@ -108,7 +108,7 @@ export default class KadoPlugin extends Plugin {
 		if (this.configManager.getConfig().server.enabled) {
 			await this.mcpServer.start(this.configManager.getConfig().server);
 		}
-		this.addSettingTab(new KadoSettingTab(this.app, this));
+		this.addSettingTab(new KadoSettingsTab(this.app, this));
 		kadoLog('Plugin loaded', {version: this.manifest.version});
 	}
 

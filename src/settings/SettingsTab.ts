@@ -23,7 +23,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 	display(): void {
 		const {containerEl} = this;
 		containerEl.empty();
-		containerEl.addClass('kado-settings');
+		containerEl.classList.add('kado-settings');
 
 		// Version header
 		const header = containerEl.createDiv({cls: 'kado-version-header'});

@@ -39,7 +39,9 @@ export class App {
 		modifyBinary: vi.fn(),
 		getMarkdownFiles: vi.fn(() => [] as TFile[]),
 		getFiles: vi.fn(() => [] as TFile[]),
-		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn(), stat: vi.fn(async () => null)},
+		getAllLoadedFiles: vi.fn(() => [] as (TFile | TFolder)[]),
+		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn(), stat: vi.fn(async () => null), rename: vi.fn(), remove: vi.fn()},
+		configDir: '.obsidian',
 	};
 	fileManager = {
 		processFrontMatter: vi.fn(),
@@ -49,6 +51,7 @@ export class App {
 		on: vi.fn(),
 		off: vi.fn(),
 		getLeavesOfType: vi.fn(() => []),
+		openLinkText: vi.fn(async () => {}),
 	};
 	metadataCache = {
 		getFileCache: vi.fn((_file: TFile): CachedMetadata | null => null),
@@ -105,6 +108,7 @@ export class Notice {
 export class Setting {
 	settingEl = document.createElement('div');
 	nameEl = document.createElement('div');
+	descEl = augmentEl(document.createElement('div'));
 	private _containerEl: HTMLElement;
 	private _name = '';
 
@@ -143,24 +147,58 @@ export class Setting {
 }
 
 // Extend HTMLElement with Obsidian-specific DOM helpers used by setting tabs.
-function makeObsidianEl(tag = 'div'): HTMLElement {
-	const el = document.createElement(tag);
-	// Obsidian's createEl — creates a child element and appends it.
-	(el as unknown as Record<string, unknown>)['createEl'] = <K extends keyof HTMLElementTagNameMap>(
-		childTag: K,
-		opts?: {text?: string; cls?: string},
-	): HTMLElement => {
-		const child = document.createElement(childTag);
+function augmentEl(el: HTMLElement): HTMLElement {
+	const any = el as unknown as Record<string, unknown>;
+
+	any['createEl'] = (childTag: string, opts?: {text?: string; cls?: string; type?: string; placeholder?: string; value?: string; href?: string}): HTMLElement => {
+		const child = augmentEl(document.createElement(childTag));
 		if (opts?.text) child.textContent = opts.text;
 		if (opts?.cls) child.className = opts.cls;
+		if (opts?.type) (child as HTMLInputElement).type = opts.type;
+		if (opts?.placeholder) (child as HTMLInputElement).placeholder = opts.placeholder;
+		if (opts?.value) (child as HTMLInputElement).value = opts.value;
+		if (opts?.href) (child as HTMLAnchorElement).href = opts.href;
 		el.appendChild(child);
 		return child;
 	};
-	// Obsidian's empty — removes all child nodes.
-	(el as unknown as Record<string, unknown>)['empty'] = (): void => {
+
+	any['createDiv'] = (opts?: {cls?: string; text?: string}): HTMLElement => {
+		const div = augmentEl(document.createElement('div'));
+		if (opts?.cls) div.className = opts.cls;
+		if (opts?.text) div.textContent = opts.text;
+		el.appendChild(div);
+		return div;
+	};
+
+	any['createSpan'] = (opts?: {cls?: string; text?: string}): HTMLElement => {
+		const span = augmentEl(document.createElement('span'));
+		if (opts?.cls) span.className = opts.cls;
+		if (opts?.text) span.textContent = opts.text;
+		el.appendChild(span);
+		return span;
+	};
+
+	any['empty'] = (): void => {
 		while (el.firstChild) el.removeChild(el.firstChild);
 	};
+
+	any['addClass'] = (...classes: string[]): void => {
+		el.classList.add(...classes);
+	};
+
+	any['removeClass'] = (...classes: string[]): void => {
+		el.classList.remove(...classes);
+	};
+
+	any['toggleClass'] = (cls: string, force?: boolean): void => {
+		el.classList.toggle(cls, force);
+	};
+
 	return el;
+}
+
+function makeObsidianEl(tag = 'div'): HTMLElement {
+	return augmentEl(document.createElement(tag));
 }
 
 export class PluginSettingTab {
