@@ -25,7 +25,7 @@ import {describe, it, expect, beforeAll, afterAll, type TestContext} from 'vites
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {execSync} from 'node:child_process';
-import {readFileSync, existsSync, unlinkSync} from 'node:fs';
+import {readFileSync, existsSync, unlinkSync, writeFileSync, copyFileSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -56,6 +56,85 @@ const MIYO_KADO_VAULT_PATH = resolve(REPO_ROOT, 'test/MiYo-Kado');
 
 /** Kado plugin data.json — accessible from any environment since it lives in the repo. */
 const KADO_DATA_JSON = resolve(REPO_ROOT, 'test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json');
+const KADO_DATA_BACKUP = KADO_DATA_JSON + '.bak';
+
+// ============================================================
+// Test fixture config — written to data.json before tests
+// ============================================================
+
+/**
+ * Builds the expected plugin config for live tests.
+ * Requires the API key from .mcp.json to be passed in.
+ */
+function buildTestConfig(apiKey: string): Record<string, unknown> {
+	const fullCrud = {create: true, read: true, update: true, delete: true};
+	const readOnly = {create: false, read: true, update: false, delete: false};
+	const fullPerms = {note: fullCrud, frontmatter: fullCrud, file: fullCrud, dataviewInlineField: fullCrud};
+	const readPerms = {note: readOnly, frontmatter: {...readOnly, update: true}, file: fullCrud, dataviewInlineField: readOnly};
+
+	return {
+		server: {enabled: true, host: '127.0.0.1', port: MCP_PORT, connectionType: 'local'},
+		globalAreas: [
+			{id: 'test-allowed', label: 'Allowed', pathPatterns: ['allowed/**'], listMode: 'whitelist', tags: [], permissions: fullPerms},
+			{id: 'test-maybe', label: 'Maybe Allowed', pathPatterns: ['maybe-allowed/**'], listMode: 'whitelist', tags: [], permissions: fullPerms},
+		],
+		apiKeys: [{
+			id: apiKey,
+			label: 'Live Test Key',
+			enabled: true,
+			createdAt: Date.now(),
+			areas: [
+				{areaId: 'test-allowed', tags: [], permissions: fullPerms},
+				{areaId: 'test-maybe', tags: [], permissions: readPerms},
+			],
+		}],
+		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+	};
+}
+
+/**
+ * Checks if data.json already contains our test config (by checking area IDs).
+ */
+function isTestConfigActive(): boolean {
+	try {
+		if (!existsSync(KADO_DATA_JSON)) return false;
+		const raw = readFileSync(KADO_DATA_JSON, 'utf-8');
+		const data = JSON.parse(raw) as {globalAreas?: Array<{id: string}>};
+		return data.globalAreas?.some(a => a.id === 'test-allowed') ?? false;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Writes the test config to data.json and backs up the original.
+ * Skips if test config is already active.
+ * Returns true if config is ready (either already active or freshly written).
+ */
+function setupTestConfig(apiKey: string): boolean {
+	try {
+		if (isTestConfigActive()) return true;
+		// Backup current config
+		if (existsSync(KADO_DATA_JSON) && !existsSync(KADO_DATA_BACKUP)) {
+			copyFileSync(KADO_DATA_JSON, KADO_DATA_BACKUP);
+		}
+		const testConfig = buildTestConfig(apiKey);
+		writeFileSync(KADO_DATA_JSON, JSON.stringify(testConfig, null, 2));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Restores the original data.json from backup. */
+function restoreOriginalConfig(): void {
+	try {
+		if (existsSync(KADO_DATA_BACKUP)) {
+			copyFileSync(KADO_DATA_BACKUP, KADO_DATA_JSON);
+			unlinkSync(KADO_DATA_BACKUP);
+		}
+	} catch { /* best effort */ }
+}
 
 // ============================================================
 // Preflight utilities
@@ -219,13 +298,16 @@ describe('Kado MCP Live Tests', () => {
 	let obsidianStatus: boolean | 'unknown' = 'unknown';
 	let vaultStatus: boolean | 'unknown' = 'unknown';
 	let pluginStatus: KadoPluginStatus | null = null;
+	let configWritten = false;
 	let mcpUp = false;
 	let apiKey: string | null = null;
 	let ready = false;
 
-	/** Skips the current test when the full preflight hasn't passed. */
-	function requireReady(ctx: TestContext): void {
+	/** Skips the current test when the full preflight hasn't passed.
+	 *  Also throttles to avoid rate limiting (each callTool = new TCP connection). */
+	async function requireReady(ctx: TestContext): Promise<void> {
 		if (!ready) ctx.skip();
+		await new Promise(r => setTimeout(r, 200));
 	}
 
 	beforeAll(async () => {
@@ -233,27 +315,52 @@ describe('Kado MCP Live Tests', () => {
 		apiKey = loadApiKey();
 		if (!apiKey) return;
 
-		// 2. Read Kado plugin config (works everywhere — file is in the repo)
+		// 2. Write deterministic test config to data.json
+		configWritten = setupTestConfig(apiKey);
+
+		// 3. Read back to verify it's correct
 		pluginStatus = readKadoPluginConfig();
 
-		// 3. macOS-specific checks (informational — don't block in Docker)
+		// 4. macOS-specific checks (informational — don't block in Docker)
 		obsidianStatus = isObsidianRunning();
 		vaultStatus = isMiYoKadoVaultOpen();
 
-		// On macOS, bail early if Obsidian or vault aren't available
 		if (obsidianStatus === false) return;
 		if (vaultStatus === false) return;
-
-		// 4. Check plugin config for known issues before probing network
-		if (pluginStatus?.available && !pluginStatus.serverEnabled) return;
-		if (pluginStatus?.available && !pluginStatus.keyHasAreas) return;
 
 		// 5. Probe MCP server — the definitive check for both environments
 		mcpUp = await isMcpReachable();
 		if (!mcpUp) return;
 
+		// 6. Verify the server picked up the test config.
+		//    If config was just written, the plugin needs a reload.
+		//    Try a test read — if it fails with FORBIDDEN, config is stale.
+		try {
+			const probe = await callTool(apiKey, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+			if (probe.isError) {
+				const body = parseResult<{code?: string}>(probe);
+				if (body.code === 'FORBIDDEN' || body.code === 'UNAUTHORIZED') {
+					console.warn(
+						'\n⚠️  MCP server has stale config. Please reload the Kado plugin in Obsidian:\n' +
+						'   Cmd+P → "Reload app without saving" or disable/enable the plugin.\n' +
+						'   Then re-run: npm run test:live\n',
+					);
+					return; // ready stays false → all tests skip
+				}
+			}
+		} catch {
+			return; // connectivity issue
+		}
+
 		ready = true;
 	});
+
+	// Note: test config persists in data.json after tests run.
+	// The plugin will use it until manually changed via the settings UI.
+	// Original config is backed up at data.json.bak if you need to restore.
 
 	// --------------------------------------------------------
 	// Preflight — documents *why* subsequent tests skip
@@ -275,6 +382,11 @@ describe('Kado MCP Live Tests', () => {
 			if (vaultStatus === 'unknown') ctx.skip(); // can't check (Docker)
 			if (vaultStatus === false) ctx.skip();
 			expect(vaultStatus).toBe(true);
+		});
+
+		it('Test config written to data.json', (ctx) => {
+			if (!configWritten) ctx.skip();
+			expect(configWritten).toBe(true);
 		});
 
 		it('Kado plugin: server is enabled in data.json', (ctx) => {
@@ -671,7 +783,9 @@ describe('Kado MCP Live Tests', () => {
 		});
 
 		it('update: rejects stale timestamp (CONFLICT)', async (ctx) => {
-			requireReady(ctx);
+			await requireReady(ctx);
+			// Extra cooldown — previous tests consumed many connections
+			await new Promise(r => setTimeout(r, 1000));
 			const contentBefore = readFileSync(SCRATCH_FS_PATH, 'utf-8');
 
 			const result = await callTool(apiKey!, 'kado-write', {
@@ -691,7 +805,6 @@ describe('Kado MCP Live Tests', () => {
 
 		it('update: second write after first update needs fresh timestamp', async (ctx) => {
 			requireReady(ctx);
-
 			// Read to get current state
 			const read1 = await callTool(apiKey!, 'kado-read', {
 				operation: 'note',
@@ -737,6 +850,8 @@ describe('Kado MCP Live Tests', () => {
 				expectedModified: ts2,
 			});
 			expect(write3.isError).toBeFalsy();
+			// Small delay to let Obsidian flush the write to disk
+			await new Promise(r => setTimeout(r, 100));
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe('# Second update with fresh ts');
 		});
 	});
