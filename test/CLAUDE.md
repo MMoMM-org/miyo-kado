@@ -11,3 +11,6 @@
 ## Test data
 - Use fixtures/factories, not hardcoded production-like data
 - Isolate: each test creates its own data; don't share mutable state
+
+## Live Testing
+- For information how to do live testing with an Obsidian Vault see `docs/live-testing.md`

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Welcome.md",
+                "file": "maybe-allowed/Budget 2026.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Welcome"
+              "title": "Budget 2026"
             }
           }
         ]
@@ -31,10 +31,14 @@
             "id": "3636238e07ec7e27",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "allowed/Daily Note 2026-03-31.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Daily Note 2026-03-31"
             }
           }
         ]
@@ -201,6 +205,18 @@
   },
   "active": "74ece673bdae60c6",
   "lastOpenFiles": [
-    "Welcome.md"
+    "allowed/Daily Note 2026-03-31.md",
+    "allowed/_live-test-scratch.md",
+    "maybe-allowed/Budget 2026.md",
+    "allowed/Project Alpha.md",
+    "Welcome.md",
+    "nope/Incident Report.md",
+    "nope/Credentials.md",
+    "maybe-allowed/Vendor Evaluation.md",
+    "allowed/API Design Draft.md",
+    "allowed/Meeting Notes 2026-03-28.md",
+    "nope",
+    "maybe-allowed",
+    "allowed"
   ]
 }

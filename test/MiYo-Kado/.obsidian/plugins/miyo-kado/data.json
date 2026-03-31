@@ -1,0 +1,157 @@
+{
+  "server": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 23026,
+    "connectionType": "local"
+  },
+  "globalAreas": [
+    {
+      "id": "a9c6fc50-c6d9-45c9-b6e1-bd3dd44d31bb",
+      "label": "Allowed",
+      "pathPatterns": [
+        "allowed/**"
+      ],
+      "listMode": "whitelist",
+      "tags": [],
+      "permissions": {
+        "note": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "frontmatter": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "file": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "dataviewInlineField": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        }
+      }
+    },
+    {
+      "id": "f53716fb-802f-4f54-a53e-25d799129469",
+      "label": "Maybe Allowed",
+      "pathPatterns": [
+        "maybe-allowed/**"
+      ],
+      "listMode": "whitelist",
+      "tags": [],
+      "permissions": {
+        "note": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "frontmatter": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "file": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        },
+        "dataviewInlineField": {
+          "create": true,
+          "read": true,
+          "update": true,
+          "delete": true
+        }
+      }
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "kado_9e1d88c0-4838-47b3-968d-855c77cf86bd",
+      "label": "Testt",
+      "enabled": true,
+      "createdAt": 1774902546365,
+      "areas": [
+        {
+          "areaId": "a9c6fc50-c6d9-45c9-b6e1-bd3dd44d31bb",
+          "tags": [],
+          "permissions": {
+            "note": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "file": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "dataviewInlineField": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": false
+            }
+          }
+        },
+        {
+          "areaId": "f53716fb-802f-4f54-a53e-25d799129469",
+          "tags": [],
+          "permissions": {
+            "note": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": false,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "file": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": true
+            },
+            "dataviewInlineField": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "audit": {
+    "enabled": true,
+    "logDirectory": "logs",
+    "logFileName": "kado-audit.log",
+    "maxSizeBytes": 10485760,
+    "maxRetainedLogs": 3
+  }
+}

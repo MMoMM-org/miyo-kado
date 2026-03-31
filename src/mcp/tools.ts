@@ -125,11 +125,15 @@ async function logAllowed(
 	startHrMs: number,
 ): Promise<void> {
 	if (!auditLogger) return;
-	const path = 'path' in request ? (request.path as string) : undefined;
-	const operation = String(request.operation ?? '');
-	const dataType = extractDataType(request);
-	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
-	await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'allowed', durationMs}));
+	try {
+		const path = 'path' in request ? (request.path as string) : undefined;
+		const operation = String(request.operation ?? '');
+		const dataType = extractDataType(request);
+		const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
+		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'allowed', durationMs}));
+	} catch {
+		// Audit logging must never crash a tool call — log failure is non-fatal
+	}
 }
 
 async function logDenied(
@@ -139,10 +143,14 @@ async function logDenied(
 	gate: string | undefined,
 ): Promise<void> {
 	if (!auditLogger) return;
-	const path = 'path' in request ? (request.path as string) : undefined;
-	const operation = String(request.operation ?? '');
-	const dataType = extractDataType(request);
-	await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'denied', gate}));
+	try {
+		const path = 'path' in request ? (request.path as string) : undefined;
+		const operation = String(request.operation ?? '');
+		const dataType = extractDataType(request);
+		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, decision: 'denied', gate}));
+	} catch {
+		// Audit logging must never crash a tool call — log failure is non-fatal
+	}
 }
 
 // ============================================================

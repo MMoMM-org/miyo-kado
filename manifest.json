@@ -1,10 +1,14 @@
 {
-	"id": "kado",
+	"id": "miyo-kado",
 	"name": "MiYo Kado",
 	"version": "1.0.0",
 	"minAppVersion": "1.5.7",
 	"description": "Security-first MCP gateway for Obsidian vaults",
-	"author": "marcus@mmomm.org",
-	"authorUrl": "",
-	"isDesktopOnly": true
+	"author": "Marcus Breiden <marcus@mmomm.org>",
+	"authorUrl": "https://www.mmomm.org",
+	"isDesktopOnly": true,
+	"fundingUrl": {
+		"Buy Me a Coffee": "https://ko-fi.com/mmomm",
+		"GitHub Sponsor": "https://github.com/sponsors/MMoMM-org"
+	}
 }

@@ -26,6 +26,9 @@ data.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
+# MCP config (contains API keys)
+.mcp.json
+
 # Claude Code
 .claude/
 .claude-docker/

@@ -11,6 +11,7 @@ export default defineConfig({
 		globals: true,
 		environment: 'jsdom',
 		include: ['test/**/*.test.ts'],
+		exclude: ['test/live/**'],
 		coverage: {
 			provider: 'v8',
 			include: ['src/**/*.ts'],
