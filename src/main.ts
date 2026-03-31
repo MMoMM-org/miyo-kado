@@ -70,6 +70,14 @@ export default class KadoPlugin extends Plugin {
 			write: (line: string) => {
 				const logPath = this.resolvedAuditLogPath;
 				writeChain = writeChain.then(async () => {
+					// Ensure the log directory exists before writing
+					const dir = logPath.substring(0, logPath.lastIndexOf('/'));
+					if (dir) {
+						const dirExists = await adapter.exists(dir);
+						if (!dirExists) {
+							await this.app.vault.createFolder(dir).catch(() => {/* already exists */});
+						}
+					}
 					const existing = await adapter.read(logPath).catch(() => '');
 					await adapter.write(logPath, existing + line);
 				});

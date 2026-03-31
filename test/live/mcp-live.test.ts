@@ -291,6 +291,53 @@ function parseResult<T = unknown>(result: ToolResult): T {
 }
 
 // ============================================================
+// Audit log helpers
+// ============================================================
+
+/** Audit log path in the vault — must match the test config. */
+const AUDIT_LOG_PATH = resolve(MIYO_KADO_VAULT_PATH, 'logs/kado-audit.log');
+
+interface AuditEntry {
+	timestamp: number;
+	apiKeyId: string;
+	operation: string;
+	dataType?: string;
+	path?: string;
+	decision: 'allowed' | 'denied';
+	gate?: string;
+	durationMs?: number;
+}
+
+/** Reads the NDJSON audit log and returns parsed entries. */
+function readAuditLog(): AuditEntry[] {
+	try {
+		if (!existsSync(AUDIT_LOG_PATH)) return [];
+		const raw = readFileSync(AUDIT_LOG_PATH, 'utf-8').trim();
+		if (!raw) return [];
+		return raw.split('\n')
+			.filter(line => line.trim().length > 0)
+			.map(line => JSON.parse(line) as AuditEntry);
+	} catch {
+		return [];
+	}
+}
+
+/** Returns the last N entries from the audit log. */
+function lastAuditEntries(n: number): AuditEntry[] {
+	const entries = readAuditLog();
+	return entries.slice(-n);
+}
+
+/** Clears the audit log so each test section starts fresh. */
+function clearAuditLog(): void {
+	try {
+		if (existsSync(AUDIT_LOG_PATH)) {
+			writeFileSync(AUDIT_LOG_PATH, '');
+		}
+	} catch { /* best effort */ }
+}
+
+// ============================================================
 // Tests
 // ============================================================
 
@@ -853,6 +900,130 @@ describe('Kado MCP Live Tests', () => {
 			// Small delay to let Obsidian flush the write to disk
 			await new Promise(r => setTimeout(r, 100));
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe('# Second update with fresh ts');
+		});
+	});
+
+	// --------------------------------------------------------
+	// Audit log — verify operations are logged
+	// --------------------------------------------------------
+
+	describe('Audit log', () => {
+		it('audit log file exists at configured path', async (ctx) => {
+			await requireReady(ctx);
+			// Give Obsidian a moment to flush any pending writes
+			await new Promise(r => setTimeout(r, 500));
+			expect(existsSync(AUDIT_LOG_PATH)).toBe(true);
+		});
+
+		it('audit log contains NDJSON entries', async (ctx) => {
+			await requireReady(ctx);
+			const entries = readAuditLog();
+			expect(entries.length).toBeGreaterThan(0);
+			// Every entry must have required fields
+			for (const entry of entries) {
+				expect(entry.timestamp).toBeGreaterThan(0);
+				expect(entry.apiKeyId).toBeTruthy();
+				expect(entry.operation).toBeTruthy();
+				expect(['allowed', 'denied']).toContain(entry.decision);
+			}
+		});
+
+		it('logs allowed read operations with correct fields', async (ctx) => {
+			await requireReady(ctx);
+			// Clear log, do a fresh read, verify it's logged
+			clearAuditLog();
+			await new Promise(r => setTimeout(r, 200));
+
+			await callTool(apiKey!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			// Wait for async log write to flush
+			await new Promise(r => setTimeout(r, 500));
+			const entries = readAuditLog();
+			expect(entries.length).toBeGreaterThanOrEqual(1);
+
+			const readEntry = entries.find(e =>
+				e.decision === 'allowed' && e.path === 'allowed/Project Alpha.md',
+			);
+			expect(readEntry).toBeDefined();
+			expect(readEntry!.operation).toBe('note');
+			expect(readEntry!.dataType).toBe('note');
+			expect(readEntry!.apiKeyId).toBeTruthy();
+			expect(readEntry!.durationMs).toBeGreaterThanOrEqual(0);
+		});
+
+		it('logs denied operations with gate name', async (ctx) => {
+			await requireReady(ctx);
+			clearAuditLog();
+			await new Promise(r => setTimeout(r, 200));
+
+			await callTool(apiKey!, 'kado-read', {
+				operation: 'note',
+				path: 'nope/Credentials.md',
+			});
+
+			await new Promise(r => setTimeout(r, 500));
+			const entries = readAuditLog();
+			expect(entries.length).toBeGreaterThanOrEqual(1);
+
+			const deniedEntry = entries.find(e =>
+				e.decision === 'denied' && e.path === 'nope/Credentials.md',
+			);
+			expect(deniedEntry).toBeDefined();
+			expect(deniedEntry!.gate).toBeTruthy();
+		});
+
+		it('logs search operations', async (ctx) => {
+			await requireReady(ctx);
+			clearAuditLog();
+			await new Promise(r => setTimeout(r, 200));
+
+			await callTool(apiKey!, 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+			});
+
+			await new Promise(r => setTimeout(r, 500));
+			const entries = readAuditLog();
+			expect(entries.length).toBeGreaterThanOrEqual(1);
+
+			const searchEntry = entries.find(e =>
+				e.decision === 'allowed' && e.operation === 'listDir',
+			);
+			expect(searchEntry).toBeDefined();
+		});
+
+		it('logs write operations', async (ctx) => {
+			await requireReady(ctx);
+			clearAuditLog();
+			await new Promise(r => setTimeout(r, 200));
+
+			// Write a scratch file (may already exist from prior test)
+			const scratchPath = 'allowed/_audit-test-scratch.md';
+			const scratchFsPath = resolve(MIYO_KADO_VAULT_PATH, scratchPath);
+
+			// Clean up first
+			try { if (existsSync(scratchFsPath)) unlinkSync(scratchFsPath); } catch { /* */ }
+
+			await callTool(apiKey!, 'kado-write', {
+				operation: 'note',
+				path: scratchPath,
+				content: '# Audit test',
+			});
+
+			await new Promise(r => setTimeout(r, 500));
+			const entries = readAuditLog();
+
+			const writeEntry = entries.find(e =>
+				e.decision === 'allowed' && e.path === scratchPath,
+			);
+			expect(writeEntry).toBeDefined();
+			expect(writeEntry!.operation).toBe('note');
+
+			// Clean up
+			try { if (existsSync(scratchFsPath)) unlinkSync(scratchFsPath); } catch { /* */ }
 		});
 	});
 });
