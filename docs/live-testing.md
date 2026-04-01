@@ -84,8 +84,8 @@ The test reads it to check:
 |-------|-----------------|
 | `server.enabled` | Is the MCP server turned on? |
 | `server.host` / `server.port` | Where is it listening? |
-| `apiKeys[].areas` | Does the test key have area assignments? |
-| `globalAreas[].pathPatterns` | Which paths are configured? |
+| `apiKeys[].paths` | Does the test key have path assignments? |
+| `security.paths` | Which paths are configured globally? |
 
 **Important**: Obsidian loads `data.json` on plugin start. If you edit the file
 while Obsidian is running, you must reload the plugin (disable → enable) for
@@ -123,7 +123,7 @@ If either check returns `false` (not `'unknown'`) on macOS → skip all.
 Two gates from the `data.json` read in Step 2:
 
 - **Server enabled**: if `server.enabled` is `false` → skip all
-- **Key has areas**: if the test API key has no area assignments → skip all
+- **Key has paths**: if the test API key has no path assignments → skip all
 
 These catch config issues early before the network probe.
 
@@ -152,7 +152,7 @@ If the connection is refused or times out → skip all.
 | Obsidian process running | `pgrep` | skip (`'unknown'`) | yes (macOS) |
 | Vault open | `obsidian.json` | skip (`'unknown'`) | yes (macOS) |
 | `data.json` server enabled | gate check | gate check | yes |
-| `data.json` key has areas | gate check | gate check | yes |
+| `data.json` key has paths | gate check | gate check | yes |
 | MCP server reachable | HTTP probe | HTTP probe | yes |
 
 ### Test Output When Environment Unavailable
@@ -162,7 +162,7 @@ If the connection is refused or times out → skip all.
  ↓ Preflight > Obsidian is running (macOS only)             [skipped]
  ↓ Preflight > MiYo-Kado vault is open (macOS only)         [skipped]
  ↓ Preflight > Kado plugin: server is enabled in data.json  [skipped]
- ↓ Preflight > Kado plugin: API key has area assignments     [skipped]
+ ↓ Preflight > Kado plugin: API key has path assignments     [skipped]
  ↓ Preflight > MCP server is reachable                       [skipped]
  ↓ kado-read > reads a note from allowed area                [skipped]
  ...
@@ -317,7 +317,7 @@ test/MiYo-Kado/
 └── .obsidian/
     └── plugins/miyo-kado/
         ├── main.js                 ← symlink to repo build output (main.js at repo root)
-        └── data.json               ← plugin config (server, areas, keys, audit)
+        └── data.json               ← plugin config (server, security, keys, audit)
 ```
 
 ### Why Three Areas?
@@ -471,11 +471,10 @@ vault-level cleanup.
 The test expects this configuration in `test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json`:
 
 - `server.enabled: true`, `server.port: 23026`
-- Global area "Allowed" with `pathPatterns: ["allowed/**"]`
-- Global area "Maybe Allowed" with `pathPatterns: ["maybe-allowed/**"]`
-- No area for `nope/`
-- API key matching `.mcp.json` with both areas assigned
-- `audit.logFilePath: "plugins/miyo-kado/audit.log"`
+- Global security (whitelist) with paths: `allowed/**`, `maybe-allowed/**`
+- No path for `nope/`
+- API key matching `.mcp.json` with paths assigned (whitelist)
+- `audit.logDirectory: "logs"`, `audit.logFileName: "kado-audit.log"`
 
 ### vitest.live.config.ts
 

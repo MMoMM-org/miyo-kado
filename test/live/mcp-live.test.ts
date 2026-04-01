@@ -16,9 +16,9 @@
  *   3. On macOS: Obsidian running + MiYo-Kado vault open (informational)
  *
  * Expected Kado configuration for these tests:
- *   - Global area "allowed" covering allowed/** with full CRUD
- *   - API key matching .mcp.json with access to "allowed" area
- *   - "nope/" area either not configured or denied for the test key
+ *   - Global security (whitelist) with paths: allowed/**, maybe-allowed/**
+ *   - API key matching .mcp.json with paths assigned (whitelist)
+ *   - "nope/" not in global security → denied for all keys
  */
 
 import {describe, it, expect, beforeAll, afterAll, type TestContext} from 'vitest';
@@ -74,19 +74,25 @@ function buildTestConfig(apiKey: string): Record<string, unknown> {
 
 	return {
 		server: {enabled: true, host: '127.0.0.1', port: MCP_PORT, connectionType: 'local'},
-		globalAreas: [
-			{id: 'test-allowed', label: 'Allowed', pathPatterns: ['allowed/**'], listMode: 'whitelist', tags: [], permissions: fullPerms},
-			{id: 'test-maybe', label: 'Maybe Allowed', pathPatterns: ['maybe-allowed/**'], listMode: 'whitelist', tags: [], permissions: fullPerms},
-		],
+		security: {
+			listMode: 'whitelist',
+			paths: [
+				{path: 'allowed/**', permissions: fullPerms},
+				{path: 'maybe-allowed/**', permissions: fullPerms},
+			],
+			tags: [],
+		},
 		apiKeys: [{
 			id: apiKey,
 			label: 'Live Test Key',
 			enabled: true,
 			createdAt: Date.now(),
-			areas: [
-				{areaId: 'test-allowed', tags: [], permissions: fullPerms},
-				{areaId: 'test-maybe', tags: [], permissions: readPerms},
+			listMode: 'whitelist',
+			paths: [
+				{path: 'allowed/**', permissions: fullPerms},
+				{path: 'maybe-allowed/**', permissions: readPerms},
 			],
+			tags: [],
 		}],
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
@@ -99,8 +105,8 @@ function isTestConfigActive(): boolean {
 	try {
 		if (!existsSync(KADO_DATA_JSON)) return false;
 		const raw = readFileSync(KADO_DATA_JSON, 'utf-8');
-		const data = JSON.parse(raw) as {globalAreas?: Array<{id: string}>};
-		return data.globalAreas?.some(a => a.id === 'test-allowed') ?? false;
+		const data = JSON.parse(raw) as {security?: {paths?: Array<{path: string}>}};
+		return data.security?.paths?.some(p => p.path === 'allowed/**') ?? false;
 	} catch {
 		return false;
 	}
@@ -180,22 +186,22 @@ interface KadoPluginStatus {
 	host: string;
 	port: number;
 	keyConfigured: boolean;
-	keyHasAreas: boolean;
-	areaLabels: string[];
+	keyHasPaths: boolean;
+	globalPaths: string[];
 }
 
 function readKadoPluginConfig(): KadoPluginStatus {
 	const unavailable: KadoPluginStatus = {
 		available: false, serverEnabled: false, host: '', port: 0,
-		keyConfigured: false, keyHasAreas: false, areaLabels: [],
+		keyConfigured: false, keyHasPaths: false, globalPaths: [],
 	};
 	try {
 		if (!existsSync(KADO_DATA_JSON)) return unavailable;
 		const raw = readFileSync(KADO_DATA_JSON, 'utf-8');
 		const data = JSON.parse(raw) as {
 			server?: {enabled?: boolean; host?: string; port?: number};
-			globalAreas?: Array<{label: string}>;
-			apiKeys?: Array<{id: string; enabled?: boolean; areas?: Array<{areaId: string}>}>;
+			security?: {paths?: Array<{path: string}>};
+			apiKeys?: Array<{id: string; enabled?: boolean; paths?: Array<{path: string}>}>;
 		};
 		const apiKey = loadApiKey();
 		const matchingKey = data.apiKeys?.find((k) => k.id === apiKey && k.enabled);
@@ -205,24 +211,47 @@ function readKadoPluginConfig(): KadoPluginStatus {
 			host: data.server?.host ?? '127.0.0.1',
 			port: data.server?.port ?? 23026,
 			keyConfigured: matchingKey !== undefined,
-			keyHasAreas: (matchingKey?.areas?.length ?? 0) > 0,
-			areaLabels: data.globalAreas?.map((a) => a.label) ?? [],
+			keyHasPaths: (matchingKey?.paths?.length ?? 0) > 0,
+			globalPaths: data.security?.paths?.map((p) => p.path) ?? [],
 		};
 	} catch {
 		return unavailable;
 	}
 }
 
-/** Loads the API key from .mcp.json. Returns null if missing or placeholder. */
+/**
+ * Loads an API key from .mcp.json. Tries server names in order:
+ * 'kado-key1', 'kado', then the first entry. Returns null if missing or placeholder.
+ */
 function loadApiKey(): string | null {
+	return loadApiKeyByName('kado-key1') ?? loadApiKeyByName('kado') ?? loadFirstApiKey();
+}
+
+function loadApiKeyByName(name: string): string | null {
 	try {
 		const raw = readFileSync(resolve(REPO_ROOT, '.mcp.json'), 'utf-8');
 		const config = JSON.parse(raw) as {
-			mcpServers?: {kado?: {headers?: {Authorization?: string}}};
+			mcpServers?: Record<string, {headers?: {Authorization?: string}}>;
 		};
-		const auth = config?.mcpServers?.kado?.headers?.Authorization ?? '';
+		const auth = config?.mcpServers?.[name]?.headers?.Authorization ?? '';
 		if (!auth || auth.includes('YOUR_API_KEY_HERE')) return null;
-		// Strip "Bearer " prefix if present — we add it ourselves in requests
+		return auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+	} catch {
+		return null;
+	}
+}
+
+function loadFirstApiKey(): string | null {
+	try {
+		const raw = readFileSync(resolve(REPO_ROOT, '.mcp.json'), 'utf-8');
+		const config = JSON.parse(raw) as {
+			mcpServers?: Record<string, {headers?: {Authorization?: string}}>;
+		};
+		const servers = config?.mcpServers;
+		if (!servers) return null;
+		const first = Object.values(servers)[0];
+		const auth = first?.headers?.Authorization ?? '';
+		if (!auth || auth.includes('YOUR_API_KEY_HERE')) return null;
 		return auth.startsWith('Bearer ') ? auth.slice(7) : auth;
 	} catch {
 		return null;
@@ -298,7 +327,7 @@ function parseResult<T = unknown>(result: ToolResult): T {
 const AUDIT_LOG_PATH = resolve(MIYO_KADO_VAULT_PATH, 'logs/kado-audit.log');
 
 interface AuditEntry {
-	timestamp: number;
+	timestamp: string;
 	apiKeyId: string;
 	operation: string;
 	dataType?: string;
@@ -441,9 +470,9 @@ describe('Kado MCP Live Tests', () => {
 			expect(pluginStatus!.serverEnabled).toBe(true);
 		});
 
-		it('Kado plugin: API key has area assignments', (ctx) => {
-			if (!pluginStatus?.available || !pluginStatus.keyHasAreas) ctx.skip();
-			expect(pluginStatus!.keyHasAreas).toBe(true);
+		it('Kado plugin: API key has path assignments', (ctx) => {
+			if (!pluginStatus?.available || !pluginStatus.keyHasPaths) ctx.skip();
+			expect(pluginStatus!.keyHasPaths).toBe(true);
 		});
 
 		it(`MCP server is reachable at ${MCP_URL}`, (ctx) => {
@@ -921,7 +950,8 @@ describe('Kado MCP Live Tests', () => {
 			expect(entries.length).toBeGreaterThan(0);
 			// Every entry must have required fields
 			for (const entry of entries) {
-				expect(entry.timestamp).toBeGreaterThan(0);
+				expect(typeof entry.timestamp).toBe('string');
+				expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 				expect(entry.apiKeyId).toBeTruthy();
 				expect(entry.operation).toBeTruthy();
 				expect(['allowed', 'denied']).toContain(entry.decision);
