@@ -508,13 +508,13 @@ describe('Config-change security tests', {timeout: 180_000}, () => {
 		const readForTs = await callTool(keys.key1!, 'kado-read', {
 			operation: 'note', path: 'allowed/Project Alpha.md',
 		});
-		const {modified} = parseResult<{modified: number}>(readForTs);
+		const {modified: fileTs} = parseResult<{modified: number}>(readForTs);
 
 		const updateResult = await callTool(keys.key1!, 'kado-write', {
 			operation: 'note',
 			path: 'allowed/Project Alpha.md',
 			content: '# Should be blocked by blacklist',
-			expectedModified: modified,
+			expectedModified: fileTs,
 		});
 		expect(updateResult.isError).toBe(true);
 		const body = parseResult<{code: string}>(updateResult);

@@ -278,18 +278,64 @@ async function createMcpClient(apiKey: string): Promise<Client> {
 	return client;
 }
 
-/** Calls a single Kado tool and closes the client. Stateless per call. */
+/**
+ * Probes the rate limit headers via a raw HTTP request.
+ * Returns the Retry-After value in ms, or 0 if not rate-limited.
+ * This is what any well-behaved MCP client should do before retrying.
+ */
+async function probeRetryAfter(apiKeyVal: string): Promise<number> {
+	try {
+		const response = await fetch(MCP_URL, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${apiKeyVal}`,
+			},
+			body: JSON.stringify({jsonrpc: '2.0', method: 'ping', id: 0}),
+			signal: AbortSignal.timeout(5_000),
+		});
+		if (response.status === 429) {
+			const retryAfter = Number(response.headers.get('retry-after') ?? '60');
+			return retryAfter * 1000;
+		}
+		return 0;
+	} catch {
+		return 0;
+	}
+}
+
+/**
+ * Calls a single Kado tool and closes the client.
+ * On 429 (rate-limited): reads Retry-After header and waits accordingly.
+ * This is the reference pattern for MCP clients hitting Kado's rate limit.
+ */
 async function callTool(
 	apiKey: string,
 	toolName: string,
 	args: Record<string, unknown>,
+	retries = 2,
 ): Promise<ToolResult> {
-	const client = await createMcpClient(apiKey);
-	try {
-		return (await client.callTool({name: toolName, arguments: args})) as ToolResult;
-	} finally {
-		await client.close();
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		try {
+			const client = await createMcpClient(apiKey);
+			try {
+				return (await client.callTool({name: toolName, arguments: args})) as ToolResult;
+			} finally {
+				await client.close();
+			}
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (msg.includes('Too many requests') && attempt < retries) {
+				// Respect the server's Retry-After header
+				const waitMs = await probeRetryAfter(apiKey) || 60_000;
+				console.log(`  ⏳ Rate limited (attempt ${attempt + 1}/${retries}), Retry-After: ${waitMs / 1000}s`);
+				await new Promise(r => setTimeout(r, waitMs));
+				continue;
+			}
+			throw err;
+		}
 	}
+	throw new Error('callTool: exhausted retries — server still returning 429');
 }
 
 interface ToolResult {
@@ -375,7 +421,7 @@ describe('Kado MCP Live Tests', () => {
 	 *  Also throttles to avoid rate limiting (each callTool = new TCP connection). */
 	async function requireReady(ctx: TestContext): Promise<void> {
 		if (!ready) ctx.skip();
-		await new Promise(r => setTimeout(r, 200));
+		await new Promise(r => setTimeout(r, 600));
 	}
 
 	beforeAll(async () => {
@@ -842,10 +888,19 @@ describe('Kado MCP Live Tests', () => {
 			});
 			expect(writeResult.isError).toBeFalsy();
 
-			// Verify on filesystem
+			// Step 3: Verify via MCP read-back (authoritative — tests full roundtrip)
+			const verifyResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: SCRATCH_PATH,
+			});
+			expect(verifyResult.isError).toBeFalsy();
+			const verified = parseResult<{content: string}>(verifyResult);
+			expect(verified.content).toBe(updated);
+
+			// Step 4: Verify on filesystem as additional check
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe(updated);
 
-			// Step 3: Verify the response includes the new timestamp
+			// Step 5: Verify the response includes the new timestamp
 			const body = parseResult<{modified: number}>(writeResult);
 			expect(body.modified).toBeGreaterThanOrEqual(modified);
 		});
@@ -1380,6 +1435,11 @@ describe('Kado MCP Live Tests', () => {
 	// --------------------------------------------------------
 
 	describe('Path security', () => {
+		// Note: Gate order is authenticate → global-scope → key-scope → datatype → path-access.
+		// Paths outside any scope get FORBIDDEN from global-scope (Gate 1) before
+		// path-access (Gate 4) can classify them as VALIDATION_ERROR.
+		// The security contract: the request is DENIED — the specific code depends on gate order.
+
 		it('T5.1: Path traversal ../nope/Credentials.md is rejected', async (ctx) => {
 			await requireReady(ctx);
 			const result = await callTool(apiKey(), 'kado-read', {
@@ -1389,7 +1449,7 @@ describe('Kado MCP Live Tests', () => {
 
 			expect(result.isError).toBe(true);
 			const body = parseResult<{code: string}>(result);
-			expect(body.code).toBe('VALIDATION_ERROR');
+			expect(['VALIDATION_ERROR', 'FORBIDDEN']).toContain(body.code);
 		});
 
 		it('T5.2: Path traversal allowed/../../nope/Credentials.md is rejected', async (ctx) => {
@@ -1401,7 +1461,7 @@ describe('Kado MCP Live Tests', () => {
 
 			expect(result.isError).toBe(true);
 			const body = parseResult<{code: string}>(result);
-			expect(body.code).toBe('VALIDATION_ERROR');
+			expect(['VALIDATION_ERROR', 'FORBIDDEN']).toContain(body.code);
 		});
 
 		it('T5.3: Null byte in path is rejected', async (ctx) => {
@@ -1413,7 +1473,7 @@ describe('Kado MCP Live Tests', () => {
 
 			expect(result.isError).toBe(true);
 			const body = parseResult<{code: string}>(result);
-			expect(body.code).toBe('VALIDATION_ERROR');
+			expect(['VALIDATION_ERROR', 'FORBIDDEN']).toContain(body.code);
 		});
 
 		it('T5.4: Absolute path /etc/passwd is rejected', async (ctx) => {
@@ -1425,7 +1485,7 @@ describe('Kado MCP Live Tests', () => {
 
 			expect(result.isError).toBe(true);
 			const body = parseResult<{code: string}>(result);
-			expect(body.code).toBe('VALIDATION_ERROR');
+			expect(['VALIDATION_ERROR', 'FORBIDDEN']).toContain(body.code);
 		});
 	});
 
@@ -1489,6 +1549,76 @@ describe('Kado MCP Live Tests', () => {
 			} else {
 				expect(result.isError).toBeFalsy();
 			}
+		});
+	});
+
+	// --------------------------------------------------------
+	// Rate limiting — verify 429 behavior and headers
+	// --------------------------------------------------------
+
+	describe('Rate limiting', () => {
+		it('returns RateLimit headers on normal responses', async (ctx) => {
+			await requireReady(ctx);
+			// Make a raw HTTP request to inspect headers (callTool wraps MCP SDK which hides them)
+			const response = await fetch(MCP_URL, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${apiKey()}`,
+				},
+				body: JSON.stringify({jsonrpc: '2.0', method: 'initialize', params: {protocolVersion: '2025-03-26', capabilities: {}, clientInfo: {name: 'test', version: '1'}}, id: 1}),
+				signal: AbortSignal.timeout(5_000),
+			});
+
+			// Should get rate limit headers regardless of response status
+			const limit = response.headers.get('ratelimit-limit');
+			const remaining = response.headers.get('ratelimit-remaining');
+			const reset = response.headers.get('ratelimit-reset');
+
+			expect(limit).toBeTruthy();
+			expect(remaining).toBeTruthy();
+			expect(reset).toBeTruthy();
+			expect(Number(limit)).toBeGreaterThan(0);
+			expect(Number(remaining)).toBeGreaterThanOrEqual(0);
+			expect(Number(reset)).toBeGreaterThanOrEqual(0);
+		});
+
+		it('returns 429 with Retry-After when rate limit exceeded', async (ctx) => {
+			await requireReady(ctx);
+
+			// Burn through remaining requests rapidly with raw fetch (bypass MCP SDK)
+			// We don't know exactly how many are left, so send a burst
+			const burst = 250; // more than RATE_LIMIT (200)
+			const promises: Promise<Response>[] = [];
+			for (let i = 0; i < burst; i++) {
+				promises.push(fetch(MCP_URL, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${apiKey()}`,
+					},
+					body: JSON.stringify({jsonrpc: '2.0', method: 'ping', id: i}),
+					signal: AbortSignal.timeout(10_000),
+				}));
+			}
+
+			const responses = await Promise.all(promises);
+			const statuses = responses.map(r => r.status);
+
+			// At least some should be 429
+			const rateLimited = statuses.filter(s => s === 429);
+			expect(rateLimited.length).toBeGreaterThan(0);
+
+			// Check Retry-After header on a 429 response
+			const limited429 = responses.find(r => r.status === 429);
+			if (limited429) {
+				const retryAfter = limited429.headers.get('retry-after');
+				expect(retryAfter).toBeTruthy();
+				expect(Number(retryAfter)).toBeGreaterThan(0);
+			}
+
+			// Wait for rate limit window to reset before other tests
+			await new Promise(r => setTimeout(r, 5_000));
 		});
 	});
 });

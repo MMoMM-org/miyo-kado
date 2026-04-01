@@ -57,7 +57,16 @@ function rateLimitMiddleware(req: express.Request, res: express.Response, next: 
 	}
 	entry.count++;
 	requestCounts.set(ip, entry);
+
+	// Always set rate-limit headers so clients can throttle proactively
+	const remaining = Math.max(0, RATE_LIMIT - entry.count);
+	const resetSeconds = Math.ceil((entry.resetAt - now) / 1000);
+	res.setHeader('RateLimit-Limit', RATE_LIMIT);
+	res.setHeader('RateLimit-Remaining', remaining);
+	res.setHeader('RateLimit-Reset', resetSeconds);
+
 	if (entry.count > RATE_LIMIT) {
+		res.setHeader('Retry-After', resetSeconds);
 		res.status(429).json({error: 'Too many requests'});
 		return;
 	}

@@ -246,9 +246,11 @@ async function writeFields(app: App, request: CoreWriteRequest): Promise<CoreWri
 
 	const original = await app.vault.read(file);
 	const updated = applyFieldUpdates(original, request.content);
-	await app.vault.modify(file, updated);
+	await app.vault.process(file, () => updated);
 
-	return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
+	const refreshed = app.vault.getFileByPath(request.path);
+	const stat = refreshed?.stat ?? file.stat;
+	return {path: request.path, created: stat.ctime, modified: stat.mtime};
 }
 
 function applyFieldUpdates(content: string, updates: Record<string, unknown>): string {
