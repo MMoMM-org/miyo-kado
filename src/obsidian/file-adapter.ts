@@ -82,6 +82,10 @@ async function writeFile(app: App, request: CoreWriteRequest): Promise<CoreWrite
 // Factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Creates a ReadWriteAdapter for binary vault files (base64 encoded content).
+ * @param app - The Obsidian App instance for vault access.
+ */
 export function createFileAdapter(app: App): ReadWriteAdapter {
 	return {
 		read: (request: CoreReadRequest) => readFile(app, request),

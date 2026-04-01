@@ -24,15 +24,18 @@ import {isCoreReadRequest, isCoreWriteRequest, isCoreSearchRequest} from '../typ
 // Adapter interfaces
 // ============================================================
 
+/** Adapter that handles read and write operations for a single data type. */
 export interface ReadWriteAdapter {
 	read(request: CoreReadRequest): Promise<CoreFileResult>;
 	write(request: CoreWriteRequest): Promise<CoreWriteResult>;
 }
 
+/** Adapter that handles all search operations (byTag, byName, listDir, etc.). */
 export interface SearchAdapter {
 	search(request: CoreSearchRequest): Promise<CoreSearchResult | CoreError>;
 }
 
+/** Registry of all adapters keyed by data type, plus a search adapter. */
 export interface AdapterRegistry {
 	note: ReadWriteAdapter;
 	frontmatter: ReadWriteAdapter;
@@ -64,6 +67,11 @@ function resolveReadWriteAdapter(
 	return map[operation] ?? null;
 }
 
+/**
+ * Creates a routing function that dispatches CoreRequests to the correct adapter.
+ * @param adapters - Registry of read/write and search adapters.
+ * @returns An async function that routes a request and returns the adapter result.
+ */
 export function createOperationRouter(
 	adapters: AdapterRegistry,
 ): (request: CoreRequest) => Promise<RouteResult> {

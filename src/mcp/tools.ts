@@ -38,6 +38,7 @@ import {matchGlob} from '../core/glob-match';
 
 type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreError;
 
+/** Dependencies injected into the MCP tool handlers. */
 export interface ToolDependencies {
 	configManager: ConfigManager;
 	gates: PermissionGate[];
@@ -209,6 +210,11 @@ async function logDenied(
 // Public API
 // ============================================================
 
+/**
+ * Registers the kado-read, kado-write, and kado-search tools on the MCP server.
+ * @param server - The MCP server instance to register tools on.
+ * @param deps - Shared dependencies (config, gates, router, audit logger).
+ */
 export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	registerReadTool(server, deps);
 	registerWriteTool(server, deps);

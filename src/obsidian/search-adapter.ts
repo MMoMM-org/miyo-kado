@@ -229,6 +229,10 @@ function listTags(app: App, scopePatterns?: string[], allowedTags?: string[]): C
 // Public API
 // -----------------------------------------------------------------------
 
+/**
+ * Creates a SearchAdapter supporting six operations: listDir, byTag, byName, listTags, byContent, byFrontmatter.
+ * @param app - The Obsidian App instance for vault and metadata access.
+ */
 export function createSearchAdapter(app: App): SearchAdapter {
 	return {
 		async search(request: CoreSearchRequest): Promise<SearchResult> {

@@ -9,6 +9,7 @@ import type {App} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode} from '../types/canonical';
 
+/** Error thrown by vault adapters, wrapping a CoreError with its error code. */
 export class NoteAdapterError extends Error {
 	readonly code: CoreErrorCode;
 
@@ -59,6 +60,10 @@ async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};
 }
 
+/**
+ * Creates a ReadWriteAdapter for plain markdown note files.
+ * @param app - The Obsidian App instance for vault access.
+ */
 export function createNoteAdapter(app: App): ReadWriteAdapter {
 	return {
 		read: (request: CoreReadRequest) => readNote(app, request),

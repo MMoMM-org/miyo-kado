@@ -11,6 +11,7 @@
 import type {DataTypePermissions, ListMode, PathPermission} from '../../types/canonical';
 import {matchGlob, dirCouldContainMatches} from '../glob-match';
 
+/** Minimal scope definition used by resolveScope (works for both global and key scopes). */
 export interface ScopeConfig {
 	listMode: ListMode;
 	paths: PathPermission[];

@@ -49,6 +49,10 @@ function buildWriteResult(path: string, file: TFile): CoreWriteResult {
 // Adapter factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Creates a ReadWriteAdapter for YAML frontmatter read/write via metadataCache and processFrontMatter.
+ * @param app - The Obsidian App instance for vault and metadata access.
+ */
 export function createFrontmatterAdapter(app: App): ReadWriteAdapter {
 	return {
 		async read(request: CoreReadRequest): Promise<CoreFileResult> {

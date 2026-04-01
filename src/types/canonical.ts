@@ -12,23 +12,27 @@
 // Data Types
 // ============================================================
 
+/** The four data types Kado can read/write through the vault. */
 export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field';
 
 /** 'delete' is reserved for a future kado-delete tool. */
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
+/** Supported search operation identifiers for CoreSearchRequest. */
 export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags' | 'byContent' | 'byFrontmatter';
 
 // ============================================================
 // Core Requests
 // ============================================================
 
+/** Request to read a single vault item (note, frontmatter, file, or inline field). */
 export interface CoreReadRequest {
 	apiKeyId: string;
 	operation: DataType;
 	path: string;
 }
 
+/** Request to create or update a vault item. Includes optional concurrency guard. */
 export interface CoreWriteRequest {
 	apiKeyId: string;
 	operation: DataType;
@@ -37,6 +41,7 @@ export interface CoreWriteRequest {
 	expectedModified?: number;
 }
 
+/** Request to search the vault by tag, name, content, frontmatter, or directory listing. */
 export interface CoreSearchRequest {
 	apiKeyId: string;
 	operation: SearchOperation;
@@ -50,12 +55,14 @@ export interface CoreSearchRequest {
 	allowedTags?: string[];
 }
 
+/** Union of all core request types flowing through the permission chain. */
 export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest;
 
 // ============================================================
 // Core Results
 // ============================================================
 
+/** Result of a read operation, containing file content and metadata. */
 export interface CoreFileResult {
 	path: string;
 	content: string | ArrayBuffer | Record<string, unknown>;
@@ -64,12 +71,14 @@ export interface CoreFileResult {
 	size: number;
 }
 
+/** Result of a write operation, containing path and updated timestamps. */
 export interface CoreWriteResult {
 	path: string;
 	created: number;
 	modified: number;
 }
 
+/** A single item in a search result set. */
 export interface CoreSearchItem {
 	path: string;
 	name: string;
@@ -80,6 +89,7 @@ export interface CoreSearchItem {
 	frontmatter?: Record<string, unknown>;
 }
 
+/** Paginated search result with optional cursor for the next page. */
 export interface CoreSearchResult {
 	items: CoreSearchItem[];
 	cursor?: string;
@@ -90,6 +100,7 @@ export interface CoreSearchResult {
 // Errors
 // ============================================================
 
+/** Standard error codes returned by the core pipeline. */
 export type CoreErrorCode =
 	| 'UNAUTHORIZED'
 	| 'FORBIDDEN'
@@ -98,6 +109,7 @@ export type CoreErrorCode =
 	| 'VALIDATION_ERROR'
 	| 'INTERNAL_ERROR';
 
+/** Structured error returned by core operations and permission gates. */
 export interface CoreError {
 	code: CoreErrorCode;
 	message: string;
@@ -108,10 +120,12 @@ export interface CoreError {
 // Permission Gate
 // ============================================================
 
+/** Outcome of a permission gate evaluation: allowed or denied with error details. */
 export type GateResult =
 	| { allowed: true }
 	| { allowed: false; error: CoreError };
 
+/** A single step in the permission chain that can allow or deny a request. */
 export interface PermissionGate {
 	name: string;
 	evaluate(request: CoreRequest, config: KadoConfig): GateResult;
@@ -121,6 +135,7 @@ export interface PermissionGate {
 // Configuration Types
 // ============================================================
 
+/** Boolean flags for each CRUD operation on a data type. */
 export interface CrudFlags {
 	create: boolean;
 	read: boolean;
@@ -129,6 +144,7 @@ export interface CrudFlags {
 	delete: boolean;
 }
 
+/** CRUD permission flags for each of the four data types. */
 export interface DataTypePermissions {
 	note: CrudFlags;
 	frontmatter: CrudFlags;
@@ -136,6 +152,7 @@ export interface DataTypePermissions {
 	dataviewInlineField: CrudFlags;
 }
 
+/** Whether listed paths are explicitly allowed or explicitly blocked. */
 export type ListMode = 'whitelist' | 'blacklist';
 
 /** A single path rule with its own permission set. */
@@ -154,6 +171,7 @@ export interface SecurityConfig {
 	tags: string[];
 }
 
+/** Configuration for a single API key including its independent scope and permissions. */
 export interface ApiKeyConfig {
 	id: string;
 	label: string;
@@ -167,8 +185,10 @@ export interface ApiKeyConfig {
 	tags: string[];
 }
 
+/** Whether the MCP server binds to localhost or a public network interface. */
 export type ConnectionType = 'local' | 'public';
 
+/** MCP HTTP server configuration (host, port, connection type). */
 export interface ServerConfig {
 	enabled: boolean;
 	host: string;
@@ -177,6 +197,7 @@ export interface ServerConfig {
 	connectionType: ConnectionType;
 }
 
+/** Configuration for the NDJSON audit log (rotation, size limits, file location). */
 export interface AuditConfig {
 	enabled: boolean;
 	/** Vault-relative directory for audit log. Default: 'logs'. */
@@ -188,6 +209,7 @@ export interface AuditConfig {
 	maxRetainedLogs: number;
 }
 
+/** Top-level plugin configuration combining server, security, API keys, and audit settings. */
 export interface KadoConfig {
 	server: ServerConfig;
 	security: SecurityConfig;
@@ -199,10 +221,12 @@ export interface KadoConfig {
 // Factory Functions
 // ============================================================
 
+/** Returns a CrudFlags object with all operations set to false. */
 export function createDefaultCrudFlags(): CrudFlags {
 	return {create: false, read: false, update: false, delete: false};
 }
 
+/** Returns DataTypePermissions with all CRUD flags set to false for every data type. */
 export function createDefaultPermissions(): DataTypePermissions {
 	return {
 		note: createDefaultCrudFlags(),
@@ -212,6 +236,7 @@ export function createDefaultPermissions(): DataTypePermissions {
 	};
 }
 
+/** Returns a SecurityConfig with whitelist mode, no paths, and no tags. */
 export function createDefaultSecurityConfig(): SecurityConfig {
 	return {
 		listMode: 'whitelist',
@@ -220,6 +245,7 @@ export function createDefaultSecurityConfig(): SecurityConfig {
 	};
 }
 
+/** Returns a full KadoConfig with safe defaults (server disabled, empty keys, audit on). */
 export function createDefaultConfig(): KadoConfig {
 	return {
 		server: {

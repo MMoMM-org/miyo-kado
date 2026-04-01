@@ -15,10 +15,12 @@ function format(message: string, data?: Record<string, unknown>): string {
 	return `${PREFIX} ${message} ${JSON.stringify(data)}`;
 }
 
+/** Logs a debug-level message to the console with the [Kado] prefix. */
 export function kadoLog(message: string, data?: Record<string, unknown>): void {
 	console.debug(format(message, data));
 }
 
+/** Logs an error-level message to the console with the [Kado] prefix. */
 export function kadoError(message: string, data?: Record<string, unknown>): void {
 	console.error(format(message, data));
 }

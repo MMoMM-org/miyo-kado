@@ -22,6 +22,7 @@ function forbidden(message: string): GateResult {
 	};
 }
 
+/** Gate 2: checks the request path against the API key's own whitelist/blacklist scope. */
 export const keyScopeGate: PermissionGate = {
 	name: 'key-scope',
 

@@ -32,6 +32,12 @@ function requirePresent(args: Args, field: string, context: string): unknown {
 	return args[field];
 }
 
+/**
+ * Maps raw MCP tool arguments into a CoreReadRequest.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if required fields (operation, path) are missing.
+ */
 export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	const operation = requireString(args, 'operation', 'mapReadRequest') as CoreReadRequest['operation'];
 	const path = requireString(args, 'path', 'mapReadRequest');
@@ -59,6 +65,12 @@ function coerceContent(content: unknown, operation: string): CoreWriteRequest['c
 	return content as CoreWriteRequest['content'];
 }
 
+/**
+ * Maps raw MCP tool arguments into a CoreWriteRequest. Coerces JSON strings to objects for frontmatter/inline-field operations.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if required fields (operation, path, content) are missing.
+ */
 export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	const operation = requireString(args, 'operation', 'mapWriteRequest') as CoreWriteRequest['operation'];
 	const path = requireString(args, 'path', 'mapWriteRequest');
@@ -81,6 +93,12 @@ function normalizeDirPath(path: string, operation: string): string {
 	return path.endsWith('/') ? path : path + '/';
 }
 
+/**
+ * Maps raw MCP tool arguments into a CoreSearchRequest. Normalizes listDir paths to end with '/'.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if the required operation field is missing.
+ */
 export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 	const operation = requireString(args, 'operation', 'mapSearchRequest') as CoreSearchRequest['operation'];
 

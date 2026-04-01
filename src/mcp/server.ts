@@ -26,6 +26,7 @@ type McpRequest = express.Request & {auth?: AuthInfo};
 // Rate limiting (L5) — in-memory, per-IP, no external dependency
 // -----------------------------------------------------------------------
 
+/** Maximum number of requests per IP per rate-limit window (1 minute). */
 export const RATE_LIMIT = 200; // requests per window
 const WINDOW_MS = 60_000; // 1 minute
 
@@ -34,7 +35,7 @@ interface RateLimitEntry {
 	resetAt: number;
 }
 
-/** Exported for testing — allows tests to pre-fill rate limit state. */
+/** In-memory rate-limit state keyed by IP. Exported for testing. */
 export const requestCounts = new Map<string, RateLimitEntry>();
 
 const MAX_TRACKED_IPS = 10_000;
@@ -77,10 +78,15 @@ function rateLimitMiddleware(req: express.Request, res: express.Response, next: 
 // Concurrency cap (PERF-L1-2) — in-process semaphore, no external dependency
 // -----------------------------------------------------------------------
 
+/** Maximum concurrent MCP requests the server will process before returning 503. */
 export const MAX_CONCURRENT = 10;
 
 type Transport = StreamableHTTPServerTransport;
 
+/**
+ * HTTP server lifecycle for the MCP layer.
+ * Owns Express app, CORS, auth, rate limiting, and StreamableHTTP transport.
+ */
 export class KadoMcpServer {
 	private httpServer: http.Server | null = null;
 	private transports: Map<string, Transport> = new Map();

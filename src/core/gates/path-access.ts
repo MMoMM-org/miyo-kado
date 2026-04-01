@@ -49,6 +49,7 @@ function validatePath(normalized: string): string | null {
 	return null;
 }
 
+/** Gate 4: validates and normalizes the request path, rejecting traversal attempts and null bytes. */
 export class PathAccessGate implements PermissionGate {
 	readonly name = 'path-access';
 

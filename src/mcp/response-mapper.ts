@@ -18,6 +18,7 @@ function textResult(data: unknown): CallToolResult {
 	return {content: [{type: 'text', text: JSON.stringify(data)}]};
 }
 
+/** Serializes a CoreFileResult (read response) into a JSON CallToolResult. */
 export function mapFileResult(result: CoreFileResult): CallToolResult {
 	return textResult({
 		path: result.path,
@@ -28,6 +29,7 @@ export function mapFileResult(result: CoreFileResult): CallToolResult {
 	});
 }
 
+/** Serializes a CoreWriteResult (write response) into a JSON CallToolResult. */
 export function mapWriteResult(result: CoreWriteResult): CallToolResult {
 	return textResult({
 		path: result.path,
@@ -36,6 +38,7 @@ export function mapWriteResult(result: CoreWriteResult): CallToolResult {
 	});
 }
 
+/** Serializes a CoreSearchResult (paginated search response) into a JSON CallToolResult. */
 export function mapSearchResult(result: CoreSearchResult): CallToolResult {
 	return textResult({
 		items: result.items,
@@ -44,6 +47,7 @@ export function mapSearchResult(result: CoreSearchResult): CallToolResult {
 	});
 }
 
+/** Serializes a CoreError into a JSON CallToolResult with isError set to true. */
 export function mapError(error: CoreError): CallToolResult {
 	return {
 		content: [{type: 'text', text: JSON.stringify({code: error.code, message: error.message})}],

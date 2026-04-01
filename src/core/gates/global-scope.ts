@@ -23,6 +23,7 @@ function forbidden(message: string): GateResult {
 	};
 }
 
+/** Gate 1: checks the request path against the global whitelist/blacklist scope. */
 export const globalScopeGate: PermissionGate = {
 	name: 'global-scope',
 

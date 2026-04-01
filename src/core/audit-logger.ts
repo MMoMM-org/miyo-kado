@@ -14,6 +14,7 @@ import type {AuditConfig} from '../types/canonical';
 // Types
 // ============================================================
 
+/** A single NDJSON audit log entry recording an allowed or denied operation. */
 export interface AuditEntry {
 	/** ISO 8601 timestamp with local timezone offset, e.g. "2026-03-31T14:29:06.365+02:00". */
 	timestamp: string;
@@ -26,6 +27,7 @@ export interface AuditEntry {
 	durationMs?: number;
 }
 
+/** I/O callbacks injected into AuditLogger for file operations (no Obsidian dependency). */
 export interface AuditLoggerDeps {
 	write: (line: string) => Promise<void>;
 	getSize: () => Promise<number>;
@@ -52,6 +54,7 @@ export class AuditLogger {
 		this.deps = deps;
 	}
 
+	/** Appends an entry to the audit log. Triggers rotation when the log exceeds maxSizeBytes. */
 	async log(entry: AuditEntry): Promise<void> {
 		if (!this.config.enabled) {
 			return;
@@ -97,6 +100,7 @@ export class AuditLogger {
 		await this.deps.write('');
 	}
 
+	/** Replaces the audit configuration (e.g. after settings change). */
 	updateConfig(config: AuditConfig): void {
 		this.config = config;
 	}
@@ -121,6 +125,10 @@ function localIsoTimestamp(): string {
 	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}${sign}${hours}:${minutes}`;
 }
 
+/**
+ * Creates an AuditEntry with the current local ISO 8601 timestamp.
+ * @param params - All entry fields except timestamp.
+ */
 export function createAuditEntry(params: CreateAuditEntryParams): AuditEntry {
 	return {
 		timestamp: localIsoTimestamp(),

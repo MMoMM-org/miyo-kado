@@ -16,6 +16,7 @@ import {
 } from '../types/canonical';
 import {kadoLog} from './logger';
 
+/** Manages the KadoConfig lifecycle: load from storage, merge defaults, save, and key management. */
 export class ConfigManager {
 	private config: KadoConfig;
 

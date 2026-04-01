@@ -16,6 +16,7 @@ function unauthorized(message: string): GateResult {
 	};
 }
 
+/** Gate 0: verifies the request carries a known, enabled API key. */
 export const authenticateGate: PermissionGate = {
 	name: 'authenticate',
 

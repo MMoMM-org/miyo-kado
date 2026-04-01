@@ -78,6 +78,7 @@ function resolveEffectivePermissions(
 	return intersectPermissions(globalPerms, keyPerms);
 }
 
+/** Gate 3: verifies the key has the required CRUD permission for the request's data type. */
 export const dataTypePermissionGate: PermissionGate = {
 	name: 'datatype-permission',
 

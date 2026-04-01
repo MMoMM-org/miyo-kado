@@ -14,6 +14,7 @@ import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult,
 // Types
 // ============================================================
 
+/** A parsed Dataview inline field with its location and wrapping style. */
 export interface InlineField {
 	key: string;
 	value: string;
@@ -27,6 +28,7 @@ export interface InlineField {
 // Error class
 // ============================================================
 
+/** Error thrown by the inline field adapter, wrapping a CoreError with its error code. */
 export class InlineFieldAdapterError extends Error {
 	readonly code: CoreErrorCode;
 
@@ -313,6 +315,10 @@ function escapeRegex(str: string): string {
 // Factory
 // ============================================================
 
+/**
+ * Creates a ReadWriteAdapter for Dataview inline fields embedded in note content.
+ * @param app - The Obsidian App instance for vault access.
+ */
 export function createInlineFieldAdapter(app: App): ReadWriteAdapter {
 	return {
 		read: (request: CoreReadRequest) => readFields(app, request),
