@@ -245,8 +245,9 @@ async function writeFields(app: App, request: CoreWriteRequest): Promise<CoreWri
 	if (!file) throw notFoundError(request.path);
 
 	const original = await app.vault.read(file);
-	const updated = applyFieldUpdates(original, request.content);
-	await app.vault.process(file, () => updated);
+	const updates = applyFieldUpdates(original, request.content);
+	// vault.process() for atomic read-modify-write. No double-write with adapter.
+	await app.vault.process(file, () => updates);
 
 	const refreshed = app.vault.getFileByPath(request.path);
 	const stat = refreshed?.stat ?? file.stat;

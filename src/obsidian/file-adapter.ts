@@ -68,18 +68,14 @@ async function writeFile(app: App, request: CoreWriteRequest): Promise<CoreWrite
 		const file = app.vault.getFileByPath(request.path);
 		if (!file) throw notFoundError(request.path);
 		await app.vault.modifyBinary(file, buffer);
-		const refreshed = app.vault.getFileByPath(request.path);
-		const stat = refreshed?.stat ?? file.stat;
-		return {path: request.path, created: stat.ctime, modified: stat.mtime};
+		return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
 	}
 
 	const existing = app.vault.getFileByPath(request.path);
 	if (existing) throw conflictError(request.path);
 
 	const created = await app.vault.createBinary(request.path, buffer);
-	const refreshed = app.vault.getFileByPath(request.path);
-	const stat = refreshed?.stat ?? created.stat;
-	return {path: request.path, created: stat.ctime, modified: stat.mtime};
+	return {path: request.path, created: created.stat.ctime, modified: created.stat.mtime};
 }
 
 // ---------------------------------------------------------------------------

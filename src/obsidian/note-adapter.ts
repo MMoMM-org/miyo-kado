@@ -43,19 +43,17 @@ async function createNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 	const existing = app.vault.getFileByPath(request.path);
 	if (existing) throw conflictError(request.path);
 	const file = await app.vault.create(request.path, request.content as string);
-	// Re-fetch stat — vault.create() may not have flushed stat cache yet
-	const created = app.vault.getFileByPath(request.path);
-	const stat = created?.stat ?? file.stat;
-	return {path: request.path, created: stat.ctime, modified: stat.mtime};
+	return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
 }
 
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	// Use vault.process() for atomic read-then-write with guaranteed flush.
-	// vault.modify() can resolve before the disk write is fully flushed.
+	// vault.process() is Obsidian's atomic read-modify-write primitive.
+	// Do NOT double-write with adapter.write() — causes a race condition where
+	// Obsidian's internal flush (using string.length for truncation) overwrites
+	// the adapter's correct UTF-8 write, truncating multi-byte characters.
 	await app.vault.process(file, () => request.content as string);
-	// Re-fetch stat after the write completes
 	const updated = app.vault.getFileByPath(request.path);
 	const stat = updated?.stat ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};
