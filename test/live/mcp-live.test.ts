@@ -1048,4 +1048,447 @@ describe('Kado MCP Live Tests', () => {
 			try { if (existsSync(scratchFsPath)) unlinkSync(scratchFsPath); } catch { /* */ }
 		});
 	});
+
+	// --------------------------------------------------------
+	// Key1 — denied operations (T2.x)
+	// --------------------------------------------------------
+
+	describe('Key1 — denied operations', () => {
+		afterAll(() => {
+			// Cleanup files that should not exist, but guard in case a bug created them
+			const paths = [
+				resolve(MIYO_KADO_VAULT_PATH, 'maybe-allowed/_test-deny-create.md'),
+				resolve(MIYO_KADO_VAULT_PATH, 'maybe-allowed/_test-dv.md'),
+				resolve(MIYO_KADO_VAULT_PATH, 'nope/_test-nope.md'),
+			];
+			for (const p of paths) {
+				try { if (existsSync(p)) unlinkSync(p); } catch { /* best effort */ }
+			}
+		});
+
+		it('T2.1: Key1 cannot create notes in maybe-allowed/ (note.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			const path = 'maybe-allowed/_test-deny-create.md';
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path,
+				content: '# test',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
+		});
+
+		it('T2.2: Key1 cannot update notes in maybe-allowed/ (note.update=false)', async (ctx) => {
+			await requireReady(ctx);
+			// Read the file to get its current modified timestamp
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+				content: 'overwritten',
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.3: Key1 cannot create dataview fields in maybe-allowed/ (dv.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			const path = 'maybe-allowed/_test-dv.md';
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'dataview-inline-field',
+				path,
+				content: '[test:: true]',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
+		});
+
+		it('T2.4: Key1 cannot read notes from nope/ (not in global scope)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.5: Key1 cannot read root-level files (not in any path)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'Welcome.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.6: Key1 cannot write to nope/', async (ctx) => {
+			await requireReady(ctx);
+			const path = 'nope/_test-nope.md';
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path,
+				content: '# nope',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
+		});
+	});
+
+	// --------------------------------------------------------
+	// Key2 — no access (default deny) (T3.x)
+	// --------------------------------------------------------
+
+	describe('Key2 — no access (default deny)', () => {
+		afterAll(() => {
+			const p = resolve(MIYO_KADO_VAULT_PATH, 'allowed/_test-key2.md');
+			try { if (existsSync(p)) unlinkSync(p); } catch { /* best effort */ }
+		});
+
+		it('T3.1: Key2 cannot read from allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T3.2: Key2 cannot read from maybe-allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-read', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T3.3: Key2 cannot read from nope/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-read', {
+				operation: 'note',
+				path: 'nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T3.4: Key2 cannot write to allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const path = 'allowed/_test-key2.md';
+			const result = await callTool(keys.key2!, 'kado-write', {
+				operation: 'note',
+				path,
+				content: '# key2 test',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
+		});
+
+		it('T3.5: Key2 search returns FORBIDDEN or empty results', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-search', {
+				operation: 'byName',
+				query: 'Project',
+			});
+
+			// Key2 has no paths — the gate should deny or return no items
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items.length).toBe(0);
+			}
+		});
+
+		it('T3.6: Key2 cannot list directory', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+			});
+
+			// Key2 has no paths — the gate should deny or return no items
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items.length).toBe(0);
+			}
+		});
+	});
+
+	// --------------------------------------------------------
+	// Key3 — read only
+	// --------------------------------------------------------
+
+	describe('Key3 — read only', () => {
+		afterAll(() => {
+			const p = resolve(MIYO_KADO_VAULT_PATH, 'allowed/_test-key3.md');
+			try { if (existsSync(p)) unlinkSync(p); } catch { /* best effort */ }
+		});
+
+		it('T-Key3.1: Key3 can read notes from allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string}>(result);
+			expect(body.content).toContain('# Project Alpha');
+		});
+
+		it('T-Key3.2: Key3 can read frontmatter from allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(result);
+			expect(body.content).toMatchObject({title: 'Project Alpha'});
+		});
+
+		it('T-Key3.3: Key3 can read dataview fields from allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'dataview-inline-field',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, string>}>(result);
+			expect(body.content).toHaveProperty('completion');
+		});
+
+		it('T-Key3.4: Key3 cannot create note in allowed/ (note.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const path = 'allowed/_test-key3.md';
+			const result = await callTool(keys.key3!, 'kado-write', {
+				operation: 'note',
+				path,
+				content: '# key3',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
+		});
+
+		it('T-Key3.5: Key3 cannot update note in allowed/ (note.update=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			// Read to get current modified timestamp
+			const readResult = await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(keys.key3!, 'kado-write', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+				content: 'overwrite',
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.6: Key3 cannot read from maybe-allowed/ (not in key3 paths)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.7: Key3 cannot read from nope/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+	});
+
+	// --------------------------------------------------------
+	// Path security — traversal and injection attacks (T5.x)
+	// --------------------------------------------------------
+
+	describe('Path security', () => {
+		it('T5.1: Path traversal ../nope/Credentials.md is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: '../nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+
+		it('T5.2: Path traversal allowed/../../nope/Credentials.md is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/../../nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+
+		it('T5.3: Null byte in path is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/test\x00.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+
+		it('T5.4: Absolute path /etc/passwd is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: '/etc/passwd',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+	});
+
+	// --------------------------------------------------------
+	// Search scope isolation (T7.x)
+	// --------------------------------------------------------
+
+	describe('Search scope isolation', () => {
+		it('T7.1: Key1 byName search results stay within permitted paths', async (ctx) => {
+			await requireReady(ctx);
+			// 'Report' appears in nope/Incident Report.md — must not leak
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'byName',
+				query: 'Report',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const paths = body.items.map(i => i.path);
+			const leakedPaths = paths.filter(p => p.startsWith('nope/'));
+			expect(leakedPaths).toHaveLength(0);
+		});
+
+		it('T7.2: Key1 byContent search does not leak restricted content', async (ctx) => {
+			await requireReady(ctx);
+			// 'hunter2' exists only in nope/Credentials.md
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'byContent',
+				query: 'hunter2',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			expect(body.items).toHaveLength(0);
+		});
+
+		it('T7.3: Key1 listDir on nope/ is denied', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'nope/',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T7.4: Key1 allowed/** glob matches subdirectories', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/sub/Nested Note.md',
+			});
+
+			// File may not exist in vault — what matters is it's not FORBIDDEN
+			// A missing file would give NOT_FOUND, not FORBIDDEN
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).not.toBe('FORBIDDEN');
+			} else {
+				expect(result.isError).toBeFalsy();
+			}
+		});
+	});
 });
