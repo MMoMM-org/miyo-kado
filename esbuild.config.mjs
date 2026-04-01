@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from 'node:module';
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const banner =
 `/*
@@ -13,7 +13,32 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = (process.argv[2] === "production");
 const outdir = prod ? "build" : ".";
 
-// Copy plugin assets alongside the bundle
+/** Test vault plugin directory — build files are copied here. */
+const VAULT_PLUGIN_DIR = "test/MiYo-Kado/.obsidian/plugins/miyo-kado";
+
+/**
+ * Bumps the patch version in manifest.json and package.json.
+ * Only runs on production builds (npm run build).
+ */
+function bumpPatchVersion() {
+	const manifest = JSON.parse(readFileSync("manifest.json", "utf-8"));
+	const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
+
+	const parts = manifest.version.split(".").map(Number);
+	parts[2]++;
+	const newVersion = parts.join(".");
+
+	manifest.version = newVersion;
+	pkg.version = newVersion;
+
+	writeFileSync("manifest.json", JSON.stringify(manifest, null, "\t") + "\n");
+	writeFileSync("package.json", JSON.stringify(pkg, null, "\t") + "\n");
+
+	console.log(`  Version bumped to ${newVersion}`);
+	return newVersion;
+}
+
+// Copy plugin assets to build/ and test vault
 const copyAssets = {
 	name: 'copy-assets',
 	setup(build) {
@@ -22,6 +47,14 @@ const copyAssets = {
 				mkdirSync("build", { recursive: true });
 				copyFileSync("manifest.json", "build/manifest.json");
 				copyFileSync("styles.css", "build/styles.css");
+
+				// Copy to test vault (replaces old symlinks)
+				if (existsSync(VAULT_PLUGIN_DIR)) {
+					copyFileSync(`${outdir}/main.js`, `${VAULT_PLUGIN_DIR}/main.js`);
+					copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
+					copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
+					console.log(`  Copied build to ${VAULT_PLUGIN_DIR}/`);
+				}
 			}
 		});
 	},
@@ -61,6 +94,7 @@ const context = await esbuild.context({
 });
 
 if (prod) {
+	bumpPatchVersion();
 	await context.rebuild();
 	process.exit(0);
 } else {

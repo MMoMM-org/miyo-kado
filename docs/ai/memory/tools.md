@@ -9,5 +9,5 @@
 - **Release Automation:** semantic-release on push to master. Config in `.releaserc.json`. Requires Conventional Commits. Plugins: commit-analyzer, changelog, npm (no publish), exec (version-bump.mjs), git, github (uploads build/ assets)
 - **CI Workflows:** `lint.yml` runs build + test + lint on all branches (Node 20/22). `release.yml` runs build + test + semantic-release on master only
 - **ESLint Ignores:** `claude-docker-home/`, `test/MiYo-Kado/`, `test/__mocks__/`, `test/**/*.test.ts`, `build/` are all globally ignored in eslint.config.mts
-- **Test Vault Plugin Update:** The test vault (`test/MiYo-Kado/.obsidian/plugins/miyo-kado/`) uses symlinks to root `main.js`, `styles.css`, `manifest.json`. The root `main.js` is only auto-updated when the **build tracker** (`npm run dev`) is running. Without it, `main.js` must be manually copied from `build/` after `npm run build`.
+- **Test Vault Plugin Update:** `npm run build` auto-bumps the patch version and copies `main.js`, `manifest.json`, `styles.css` directly into the test vault (`test/MiYo-Kado/.obsidian/plugins/miyo-kado/`). No symlinks — real file copies. Plugin must still be disabled/enabled in Obsidian to load the new code (hot-reload does not detect copied files).
 - **@types/node:** Bumped to ^22.0.0 (required by vitest peer dependency)
