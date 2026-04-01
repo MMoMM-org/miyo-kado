@@ -1557,6 +1557,177 @@ describe('Kado MCP Live Tests', () => {
 	});
 
 	// --------------------------------------------------------
+	// Binary file operations (T11) — file data type via base64
+	// --------------------------------------------------------
+
+	describe('Binary file operations', () => {
+		const PNG_PATH = 'allowed/test-image.png';
+		const PDF_PATH = 'allowed/test-document.pdf';
+		const LARGE_PATH = 'allowed/test-large.bin';
+		const SCRATCH_BIN_PATH = 'allowed/_test-binary-scratch.bin';
+		const SCRATCH_BIN_FS = resolve(MIYO_KADO_VAULT_PATH, SCRATCH_BIN_PATH);
+
+		afterAll(() => {
+			try { if (existsSync(SCRATCH_BIN_FS)) unlinkSync(SCRATCH_BIN_FS); } catch { /* */ }
+		});
+
+		it('T11.1: reads PNG as base64 with valid PNG header', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'file',
+				path: PNG_PATH,
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string}>(result);
+			expect(typeof body.content).toBe('string');
+			// Decode and verify PNG magic bytes: 89 50 4E 47
+			const buf = Buffer.from(body.content, 'base64');
+			expect(buf[0]).toBe(0x89);
+			expect(buf[1]).toBe(0x50); // P
+			expect(buf[2]).toBe(0x4E); // N
+			expect(buf[3]).toBe(0x47); // G
+		});
+
+		it('T11.2: reads PDF as base64 with valid PDF header', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'file',
+				path: PDF_PATH,
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string}>(result);
+			const decoded = Buffer.from(body.content, 'base64').toString('utf-8');
+			expect(decoded.startsWith('%PDF')).toBe(true);
+		});
+
+		it('T11.3: creates binary file from base64 input', async (ctx) => {
+			await requireReady(ctx);
+			// Clean up first
+			try { if (existsSync(SCRATCH_BIN_FS)) unlinkSync(SCRATCH_BIN_FS); } catch { /* */ }
+
+			// 16 bytes of test data
+			const testData = Buffer.from([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
+			const base64 = testData.toString('base64');
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'file',
+				path: SCRATCH_BIN_PATH,
+				content: base64,
+			});
+
+			expect(result.isError).toBeFalsy();
+
+			// Verify on filesystem
+			expect(existsSync(SCRATCH_BIN_FS)).toBe(true);
+			const onDisk = readFileSync(SCRATCH_BIN_FS);
+			expect(Buffer.compare(onDisk, testData)).toBe(0);
+		});
+
+		it('T11.4: updates binary file with expectedModified', async (ctx) => {
+			await requireReady(ctx);
+			expect(existsSync(SCRATCH_BIN_FS)).toBe(true);
+
+			// Read to get timestamp
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'file',
+				path: SCRATCH_BIN_PATH,
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			// Update with new content
+			const newData = Buffer.from([0xFF, 0xFE, 0xFD, 0xFC]);
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'file',
+				path: SCRATCH_BIN_PATH,
+				content: newData.toString('base64'),
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBeFalsy();
+		});
+
+		it('T11.5: reading binary from nope/ is FORBIDDEN', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'file',
+				path: 'nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T11.6: Key2 cannot read binary from allowed/', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+
+			const result = await callTool(keys.key2!, 'kado-read', {
+				operation: 'file',
+				path: PNG_PATH,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T11.7: Key3 can read binary from allowed/ (file.read=true)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'file',
+				path: PNG_PATH,
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string}>(result);
+			// Verify it's valid base64 that decodes to PNG
+			const buf = Buffer.from(body.content, 'base64');
+			expect(buf[0]).toBe(0x89);
+		});
+
+		it('T11.8: Key3 cannot write binary to allowed/ (file.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+
+			const result = await callTool(keys.key3!, 'kado-write', {
+				operation: 'file',
+				path: 'allowed/_test-key3-bin.bin',
+				content: Buffer.from([0x00]).toString('base64'),
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T11.9: reads large binary file (150KB) with intact base64 roundtrip', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'file',
+				path: LARGE_PATH,
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string; size: number}>(result);
+
+			// Verify size matches fixture
+			expect(body.size).toBe(153600);
+
+			// Verify base64 roundtrip: decode and compare against fixture on disk
+			const decoded = Buffer.from(body.content, 'base64');
+			const fixture = readFileSync(resolve(MIYO_KADO_VAULT_PATH, LARGE_PATH));
+			expect(decoded.length).toBe(fixture.length);
+			expect(Buffer.compare(decoded, fixture)).toBe(0);
+		});
+	});
+
+	// --------------------------------------------------------
 	// Rate limiting — verify 429 behavior and headers
 	// --------------------------------------------------------
 
