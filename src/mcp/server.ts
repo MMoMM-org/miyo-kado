@@ -86,6 +86,10 @@ export class KadoMcpServer {
 	private transports: Map<string, Transport> = new Map();
 	private running = false;
 	private activeRequests = 0;
+	/** Pending retry timeout handle — cleared by stop() to prevent orphaned retries. */
+	private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+	/** In-flight stop() promise — ensures double-stop is idempotent. */
+	private stopping: Promise<void> | null = null;
 	constructor(
 		private readonly configManager: ConfigManager,
 		private readonly registerToolsFn: (server: McpServer) => void,
@@ -105,12 +109,18 @@ export class KadoMcpServer {
 		this.activeRequests--;
 	}
 
-	/** Exposed for testing — allows resetting concurrency state. */
+	/**
+	 * Exposed for testing — allows resetting concurrency state.
+	 * @internal
+	 */
 	resetActiveRequests(): void {
 		this.activeRequests = 0;
 	}
 
-	/** Exposed for testing — allows setting concurrency state to any value. */
+	/**
+	 * Exposed for testing — allows setting concurrency state to any value.
+	 * @internal
+	 */
 	setActiveRequestsForTesting(n: number): void {
 		this.activeRequests = n;
 	}
@@ -143,8 +153,10 @@ export class KadoMcpServer {
 			this.httpServer.on('error', (err: Error & {code?: string}) => {
 				if (err.code === 'EADDRINUSE' && !retried) {
 					kadoLog('Port in use, retrying after delay', {port: config.port});
+					this.httpServer?.close();
 					this.httpServer = null;
-					setTimeout(() => {
+					this.retryTimeout = setTimeout(() => {
+						this.retryTimeout = null;
 						void this.tryListen(config, true).then(resolve);
 					}, 500);
 					return;
@@ -165,8 +177,22 @@ export class KadoMcpServer {
 		});
 	}
 
-	/** Closes all active transports and the HTTP server. Safe to call multiple times. */
-	async stop(): Promise<void> {
+	/** Closes all active transports and the HTTP server. Safe to call multiple times (idempotent). */
+	stop(): Promise<void> {
+		if (this.stopping) return this.stopping;
+		this.stopping = this.doStop().finally(() => {
+			this.stopping = null;
+		});
+		return this.stopping;
+	}
+
+	private async doStop(): Promise<void> {
+		// Cancel any pending EADDRINUSE retry so it doesn't fire after stop
+		if (this.retryTimeout !== null) {
+			clearTimeout(this.retryTimeout);
+			this.retryTimeout = null;
+		}
+
 		const closePromises = Array.from(this.transports.values()).map((t) =>
 			t.close().catch((err: unknown) => {
 				kadoError('Transport close error', {error: String(err)});
@@ -197,7 +223,15 @@ export class KadoMcpServer {
 		return app;
 	}
 
-	/** Creates a fresh McpServer per request — the SDK forbids reusing a connected instance. */
+	/**
+	 * Creates a fresh McpServer per request.
+	 *
+	 * This is intentional: the MCP SDK throws "Already connected to a transport"
+	 * if the same McpServer instance is connected to a second transport. Because
+	 * our transport is stateless (sessionIdGenerator: undefined), each HTTP request
+	 * gets its own McpServer+Transport pair. The overhead is negligible — McpServer
+	 * construction only registers handlers and allocates no I/O resources.
+	 */
 	private createMcpServer(): McpServer {
 		const server = new McpServer({name: 'kado', version: this.version});
 		this.registerToolsFn(server);

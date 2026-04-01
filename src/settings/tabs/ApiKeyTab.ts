@@ -297,10 +297,8 @@ export class ConfirmModal extends Modal {
 	onOpen(): void {
 		const {contentEl} = this;
 		contentEl.empty();
-		const heading = contentEl.createEl('h3', {text: this.title, attr: {id: 'kado-confirm-title'}});
+		contentEl.createEl('h3', {text: this.title, attr: {id: 'kado-confirm-title'}});
 		contentEl.closest('[role="dialog"]')?.setAttribute('aria-labelledby', 'kado-confirm-title');
-		// Ensure heading reference is used
-		void heading;
 		contentEl.createEl('p', {text: this.message});
 
 		const btnRow = contentEl.createDiv({cls: 'kado-confirm-buttons'});

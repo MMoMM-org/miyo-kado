@@ -139,17 +139,18 @@ export function computeScopePatterns(keyId: string, config: KadoConfig): string[
 /**
  * Returns the effective tag patterns a key may use for tag-based operations.
  * The result is the intersection of global security tags and the key's own tags.
- * Empty array means no tag access. Undefined means no restriction.
+ * Returns undefined when neither global nor key have tags configured (unrestricted).
+ * Returns [] when there is an explicit empty intersection (no access).
  */
-export function computeAllowedTags(keyId: string, config: KadoConfig): string[] {
+export function computeAllowedTags(keyId: string, config: KadoConfig): string[] | undefined {
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return [];
 
 	const globalTags = config.security.tags ?? [];
 	const keyTags = key.tags ?? [];
 
-	// Both empty → no tag access
-	if (globalTags.length === 0 && keyTags.length === 0) return [];
+	// Both empty → tags not configured at all; no restriction
+	if (globalTags.length === 0 && keyTags.length === 0) return undefined;
 
 	// If one is empty, the other is the effective set
 	if (globalTags.length === 0) return keyTags;
@@ -292,7 +293,15 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 			const result = await deps.router(request);
 			if (isCoreError(result)) return mapError(result);
 
-			const searchResult = result as CoreSearchResult;
+			let searchResult = result as CoreSearchResult;
+
+			// When both global and key are in blacklist mode, computeScopePatterns returns
+			// undefined and the adapter cannot pre-filter by scope. Apply post-hoc filtering
+			// here so blacklisted paths are never returned to the caller.
+			if (request.scopePatterns === undefined && request.operation !== 'listTags') {
+				const filtered = filterResultsByScope(searchResult.items, keyId, config);
+				searchResult = {...searchResult, items: filtered, total: filtered.length};
+			}
 
 			await logAllowed(deps.auditLogger, keyId, request, startMs);
 			return mapSearchResult(searchResult);

@@ -11,6 +11,8 @@ const DOUBLE_STAR_PLACEHOLDER = '__KADO_DOUBLE_STAR__';
 /** Cache compiled RegExp objects keyed by pattern string. */
 const regexCache = new Map<string, RegExp>();
 
+const REGEX_CACHE_MAX = 1000;
+
 /**
  * Converts a glob pattern into a RegExp for path matching.
  * Results are memoized — safe because glob patterns are small and finite.
@@ -20,6 +22,8 @@ const regexCache = new Map<string, RegExp>();
 function globToRegExp(pattern: string): RegExp {
 	const cached = regexCache.get(pattern);
 	if (cached) return cached;
+	// Evict entire cache when it grows too large to prevent unbounded memory use
+	if (regexCache.size >= REGEX_CACHE_MAX) regexCache.clear();
 	const escaped = pattern
 		.replace(/[.+^${}()|[\]\\]/g, '\\$&')
 		.replace(/\*\*/g, DOUBLE_STAR_PLACEHOLDER)

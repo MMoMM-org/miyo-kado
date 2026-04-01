@@ -8,7 +8,7 @@
 
 import {describe, it, expect, vi} from 'vitest';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools, filterResultsByScope, computeAllowedTags} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
@@ -627,9 +627,9 @@ describe('computeAllowedTags()', () => {
 		};
 	}
 
-	it('returns empty array when both global and key tags are empty', () => {
+	it('returns undefined when both global and key tags are empty (tags not configured = no restriction)', () => {
 		const result = computeAllowedTags('key-1', makeTagConfig([], []));
-		expect(result).toEqual([]);
+		expect(result).toBeUndefined();
 	});
 
 	it('returns key tags when global tags are empty', () => {
@@ -654,6 +654,63 @@ describe('computeAllowedTags()', () => {
 
 	it('returns empty for unknown key', () => {
 		const result = computeAllowedTags('unknown', makeTagConfig(['project'], ['project']));
+		expect(result).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// computeScopePatterns (M7)
+// ---------------------------------------------------------------------------
+
+describe('computeScopePatterns()', () => {
+	function makeConfig(
+		globalListMode: 'whitelist' | 'blacklist',
+		globalPaths: string[],
+		keyListMode: 'whitelist' | 'blacklist',
+		keyPaths: string[],
+	): KadoConfig {
+		return {
+			...createDefaultConfig(),
+			security: makeSecurityConfig({
+				listMode: globalListMode,
+				paths: globalPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+			}),
+			apiKeys: [
+				makeApiKey('key-1', {
+					listMode: keyListMode,
+					paths: keyPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+				}),
+			],
+		};
+	}
+
+	it('returns key paths when key is whitelist mode', () => {
+		const config = makeConfig('whitelist', ['projects/**'], 'whitelist', ['projects/alpha/**']);
+		const result = computeScopePatterns('key-1', config);
+		expect(result).toEqual(['projects/alpha/**']);
+	});
+
+	it('returns global whitelist paths when key is blacklist and global is whitelist', () => {
+		const config = makeConfig('whitelist', ['allowed/**', 'shared/**'], 'blacklist', ['allowed/secret/**']);
+		const result = computeScopePatterns('key-1', config);
+		expect(result).toEqual(['allowed/**', 'shared/**']);
+	});
+
+	it('returns undefined when both global and key are blacklist mode', () => {
+		const config = makeConfig('blacklist', ['private/**'], 'blacklist', ['restricted/**']);
+		const result = computeScopePatterns('key-1', config);
+		expect(result).toBeUndefined();
+	});
+
+	it('returns empty array for unknown key', () => {
+		const config = makeConfig('whitelist', ['docs/**'], 'whitelist', ['docs/**']);
+		const result = computeScopePatterns('unknown-key', config);
+		expect(result).toEqual([]);
+	});
+
+	it('returns empty key paths when key whitelist has no configured paths', () => {
+		const config = makeConfig('whitelist', ['docs/**'], 'whitelist', []);
+		const result = computeScopePatterns('key-1', config);
 		expect(result).toEqual([]);
 	});
 });

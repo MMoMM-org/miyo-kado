@@ -57,6 +57,15 @@ function isGlobQuery(query: string): boolean {
 	return query.includes('*') || query.includes('?');
 }
 
+/**
+ * Converts a user-facing search glob into a RegExp.
+ *
+ * Intentional divergence from matchGlob() in glob-match.ts:
+ * - Here `*` matches across slashes (any characters including '/') because
+ *   users expect "#project/*" to match "#project/alpha" in tag queries.
+ * - In permission globs, `*` must NOT cross slash boundaries so that
+ *   "Calendar/*" cannot silently permit "Calendar/sub/secret.md".
+ */
 function globQueryToRegExp(pattern: string, anchored = false): RegExp {
 	const escaped = pattern
 		.replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -105,17 +114,21 @@ function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 }
 
 function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
-	const query = request.query ?? '';
+	// Normalize the query once: Obsidian caches tags with '#' prefix, so ensure
+	// the query has it. The permission check strips '#' because allowedTags are
+	// stored without it.
+	const rawQuery = request.query ?? '';
+	const query = rawQuery.startsWith('#') || isGlobQuery(rawQuery) ? rawQuery : `#${rawQuery}`;
 	const allowed = request.allowedTags;
 
 	// If tag permissions are set, validate the queried tag is permitted
 	if (allowed !== undefined && allowed.length === 0) {
-		return {code: 'FORBIDDEN', message: 'No tag permissions configured for this key'};
+		return {code: 'FORBIDDEN', message: 'Access denied'};
 	}
 	if (allowed !== undefined && !isGlobQuery(query)) {
 		const normalized = normalizeTag(query);
 		if (normalized !== null && !allowed.some((p) => matchTag(normalized, p))) {
-			return {code: 'FORBIDDEN', message: `Tag '${query}' is not within the permitted tag scope`};
+			return {code: 'FORBIDDEN', message: 'Access denied'};
 		}
 	}
 
@@ -149,7 +162,12 @@ function byName(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSearchItem[]> {
 	const query = (request.query ?? '').toLowerCase();
 	const prefix = request.path ?? '';
-	const files = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
+	// Apply scope filtering before reading file contents to avoid reading out-of-scope files.
+	// scopePatterns is set by the search handler when the key has whitelist-based scoping.
+	const allFiles = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
+	const files = request.scopePatterns !== undefined
+		? allFiles.filter((f) => fileInScope(f, request.scopePatterns!))
+		: allFiles;
 	const results: CoreSearchItem[] = [];
 	for (let i = 0; i < files.length; i += BATCH_SIZE) {
 		const batch = files.slice(i, i + BATCH_SIZE);

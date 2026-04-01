@@ -48,7 +48,11 @@ function coerceContent(content: unknown, operation: string): CoreWriteRequest['c
 		try {
 			const parsed: unknown = JSON.parse(content);
 			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-				return parsed as Record<string, unknown>;
+				const safe = parsed as Record<string, unknown>;
+				// Strip prototype-pollution keys before the object enters the core pipeline
+				delete safe['__proto__'];
+				delete safe['constructor'];
+				return safe;
 			}
 		} catch { /* not JSON — pass through as string */ }
 	}

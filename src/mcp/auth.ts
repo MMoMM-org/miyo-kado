@@ -26,9 +26,19 @@ function safeEquals(a: string, b: string): boolean {
 	const enc = new TextEncoder();
 	const bufA = enc.encode(a);
 	const bufB = enc.encode(b);
-	// Length check first — integer comparison with no timing significance
-	if (bufA.length !== bufB.length) return false;
-	return timingSafeEqual(bufA, bufB);
+	// Pad both buffers to the same length so timingSafeEqual never throws and
+	// comparison time does not leak the length of either string.
+	const maxLen = Math.max(bufA.length, bufB.length);
+	const padded = (buf: Uint8Array): Uint8Array => {
+		if (buf.length === maxLen) return buf;
+		const out = new Uint8Array(maxLen);
+		out.set(buf);
+		return out;
+	};
+	const equal = timingSafeEqual(padded(bufA), padded(bufB));
+	// Length mismatch always means not equal; checked after constant-time comparison
+	// so the timing of the length check cannot be observed by attackers.
+	return equal && bufA.length === bufB.length;
 }
 
 /**

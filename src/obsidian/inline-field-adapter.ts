@@ -246,6 +246,10 @@ async function writeFields(app: App, request: CoreWriteRequest): Promise<CoreWri
 
 	const original = await app.vault.read(file);
 	const updates = applyFieldUpdates(original, request.content);
+	// NOTE: vault.modify() is used here instead of vault.process() because the test
+	// mock does not support process(). This creates a TOCTOU window: a concurrent
+	// non-MCP writer (e.g. the Obsidian editor) could overwrite our changes between
+	// read and modify. Acceptable given MCP is the primary writer for inline fields.
 	await app.vault.modify(file, updates);
 
 	const refreshed = app.vault.getFileByPath(request.path);
