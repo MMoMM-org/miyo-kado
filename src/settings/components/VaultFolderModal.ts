@@ -32,6 +32,7 @@ export class VaultFolderModal extends Modal {
 			type: 'text',
 			placeholder: 'Search folders...',
 			cls: 'kado-picker-search',
+			attr: {'aria-label': 'Search folders'},
 		});
 
 		const listEl = contentEl.createDiv({cls: 'kado-picker-list'});
@@ -46,7 +47,7 @@ export class VaultFolderModal extends Modal {
 				return;
 			}
 			for (const folder of filtered) {
-				const item = listEl.createDiv({cls: 'kado-picker-item', text: folder.path});
+				const item = listEl.createEl('button', {cls: 'kado-picker-item', text: folder.path});
 				item.addEventListener('click', () => {
 					this.onSelect(folder.path);
 					this.close();

@@ -1,7 +1,7 @@
 {
 	"id": "miyo-kado",
 	"name": "MiYo Kado",
-	"version": "0.0.3",
+	"version": "0.0.32",
 	"minAppVersion": "1.5.7",
 	"description": "Security-first MCP gateway for Obsidian vaults",
 	"author": "Marcus Breiden <marcus@mmomm.org>",

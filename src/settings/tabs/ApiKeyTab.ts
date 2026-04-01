@@ -40,17 +40,18 @@ function renderKeyManagement(
 	new Setting(containerEl).setName('Key management').setHeading();
 
 	// Rename
+	let renameInput: HTMLInputElement | null = null;
 	new Setting(containerEl)
 		.setName('Key name')
-		.addText(text => text
-			.setValue(key.label)
-			.onChange(() => { /* defer to rename button */ }))
+		.addText(text => {
+			renameInput = text.inputEl;
+			text.setValue(key.label).onChange(() => { /* defer to rename button */ });
+		})
 		.addButton(btn => btn
 			.setButtonText('Rename')
 			.onClick(async () => {
-				const input = containerEl.querySelector<HTMLInputElement>('.setting-item:nth-child(2) input');
-				if (input) {
-					key.label = input.value;
+				if (renameInput) {
+					key.label = renameInput.value;
 					await plugin.saveSettings();
 					onRedisplay();
 				}
@@ -61,6 +62,7 @@ function renderKeyManagement(
 	keyDisplay.descEl.createSpan({cls: 'kado-key-display', text: key.id});
 	keyDisplay.addButton(btn => {
 		btn.setButtonText('Copy');
+		btn.buttonEl.setAttribute('aria-live', 'polite');
 		btn.onClick(() => {
 			void navigator.clipboard.writeText(key.id).then(
 				() => {
@@ -136,9 +138,10 @@ function renderKeyPermissions(
 	}
 
 	// Add path — only from global paths not yet assigned to this key
-	const addPathBtn = containerEl.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
+	const addPathContainer = containerEl.createDiv();
+	const addPathBtn = addPathContainer.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
 	addPathBtn.addEventListener('click', () => {
-		renderGlobalPathPicker(containerEl, globalSecurity.paths, key, plugin, onRedisplay);
+		renderGlobalPathPicker(addPathContainer, globalSecurity.paths, key, plugin, onRedisplay);
 	});
 
 	// ── Tags Section ──
@@ -184,7 +187,7 @@ function renderKeyPathEntry(
 ): void {
 	const row = containerEl.createDiv({cls: 'kado-path-entry'});
 
-	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', title: 'Remove path'});
+	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', attr: {'aria-label': 'Remove path'}});
 	removeBtn.addEventListener('click', onRemove);
 
 	// Read-only path label (user picks from global, doesn't type)
@@ -219,8 +222,15 @@ function renderGlobalPathPicker(
 
 	// Inline picker rendered below the button
 	const picker = containerEl.createDiv({cls: 'kado-picker-list'});
+	const closeAbort = new AbortController();
+
+	const closePicker = (): void => {
+		closeAbort.abort();
+		picker.remove();
+	};
+
 	for (const globalPath of available) {
-		const item = picker.createDiv({cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
+		const item = picker.createEl('button', {cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
 		item.addEventListener('click', () => {
 			key.paths.push({path: globalPath.path, permissions: createDefaultPermissions()});
 			void plugin.saveSettings();
@@ -228,14 +238,19 @@ function renderGlobalPathPicker(
 		});
 	}
 
-	// Close picker on outside click
-	const closeHandler = (e: MouseEvent): void => {
-		if (!picker.contains(e.target as Node)) {
-			picker.remove();
-			document.removeEventListener('click', closeHandler);
-		}
-	};
-	setTimeout(() => { document.addEventListener('click', closeHandler); }, 0);
+	// Focus first item for keyboard accessibility
+	const firstItem = picker.querySelector<HTMLElement>('.kado-picker-item');
+	firstItem?.focus();
+
+	// Close picker on outside click or Escape
+	setTimeout(() => {
+		document.addEventListener('click', (e: MouseEvent) => {
+			if (!picker.contains(e.target as Node)) closePicker();
+		}, {signal: closeAbort.signal});
+	}, 0);
+	picker.addEventListener('keydown', (e: KeyboardEvent) => {
+		if (e.key === 'Escape') closePicker();
+	});
 }
 
 function renderDangerZone(
@@ -282,7 +297,10 @@ export class ConfirmModal extends Modal {
 	onOpen(): void {
 		const {contentEl} = this;
 		contentEl.empty();
-		contentEl.createEl('h3', {text: this.title});
+		const heading = contentEl.createEl('h3', {text: this.title, attr: {id: 'kado-confirm-title'}});
+		contentEl.closest('[role="dialog"]')?.setAttribute('aria-labelledby', 'kado-confirm-title');
+		// Ensure heading reference is used
+		void heading;
 		contentEl.createEl('p', {text: this.message});
 
 		const btnRow = contentEl.createDiv({cls: 'kado-confirm-buttons'});

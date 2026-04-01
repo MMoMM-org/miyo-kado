@@ -20,7 +20,9 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		label: 'Test Key',
 		enabled: true,
 		createdAt: 1700000000000,
-		areas: [],
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
 		...overrides,
 	};
 }
@@ -28,7 +30,7 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 function makeConfig(keys: ApiKeyConfig[] = []): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const},
-		globalAreas: [],
+		security: {listMode: 'whitelist', paths: [], tags: []},
 		apiKeys: keys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};

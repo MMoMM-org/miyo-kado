@@ -113,24 +113,23 @@ describe('NoteAdapter', () => {
 	});
 
 	describe('write() — update (with expectedModified)', () => {
-		it('calls vault.modify and returns updated CoreWriteResult', async () => {
+		it('writes via vault.adapter and returns updated CoreWriteResult', async () => {
 			const file = makeTFile({ctime: 1000, mtime: 5000, size: 15});
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-			vi.mocked(app.vault.modify).mockResolvedValue(undefined);
-
-			// After modify, stat reflects updated mtime — simulate by mutating
-			file.stat.mtime = 5000;
+			vi.mocked(app.vault.adapter.write).mockResolvedValue(undefined);
+			vi.mocked(app.vault.adapter.stat).mockResolvedValue({ctime: 1000, mtime: 6000, size: 20, type: 'file'});
 
 			const adapter = createNoteAdapter(app);
 			const result = await adapter.write(
 				makeWriteRequest({content: 'updated content', expectedModified: 2000}),
 			);
 
-			expect(app.vault.modify).toHaveBeenCalledWith(file, 'updated content');
+			// Uses adapter.write to avoid Obsidian truncation bug (see note-adapter.ts)
+			expect(app.vault.adapter.write).toHaveBeenCalledWith('notes/test.md', 'updated content');
 			expect(result).toEqual({
 				path: 'notes/test.md',
 				created: 1000,
-				modified: 5000,
+				modified: 6000,
 			});
 		});
 

@@ -20,7 +20,7 @@ function makeRequest(): CoreRequest {
 function makeConfig(): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const},
-		globalAreas: [],
+		security: {listMode: 'whitelist', paths: [], tags: []},
 		apiKeys: [],
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};

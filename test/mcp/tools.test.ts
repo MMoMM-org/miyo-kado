@@ -8,7 +8,7 @@
 
 import {describe, it, expect, vi} from 'vitest';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools, filterResultsByScope} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope, computeAllowedTags} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
@@ -440,7 +440,7 @@ describe('kado-search handler', () => {
 		expect(result.content[0].text).toContain('VALIDATION_ERROR');
 	});
 
-	it('filters search results to only include paths within the key permitted scope', async () => {
+	it('injects scopePatterns from key config into the search request', async () => {
 		const security = makeSecurityConfig({
 			listMode: 'whitelist',
 			paths: [{path: 'projects/**', permissions: makeReadPermissions()}],
@@ -456,21 +456,49 @@ describe('kado-search handler', () => {
 		const searchResult = makeSearchResult({
 			items: [
 				{path: 'projects/a.md', name: 'a.md', created: 1000, modified: 2000, size: 10},
-				{path: 'journal/private.md', name: 'private.md', created: 1000, modified: 2000, size: 10},
-				{path: 'projects/b.md', name: 'b.md', created: 1000, modified: 2000, size: 10},
 			],
 		});
 		const router = vi.fn(async () => searchResult);
 		const deps = makeDeps({router, configManager: makeConfigManager(config)});
 		const handler = getSearchHandler(deps);
 
-		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
+		await handler({operation: 'byTag', query: 'x'}, makeExtra());
+
+		// The router receives the request with scopePatterns injected
+		const routedRequest = router.mock.calls[0][0];
+		expect(routedRequest.scopePatterns).toEqual(['projects/**']);
+	});
+
+	it('passes through adapter-filtered results without re-filtering', async () => {
+		const security = makeSecurityConfig({
+			listMode: 'whitelist',
+			paths: [{path: 'projects/**', permissions: makeReadPermissions()}],
+		});
+		const config: Partial<KadoConfig> = {
+			security,
+			apiKeys: [
+				makeApiKey('kado_test-key', {
+					paths: [{path: 'projects/**', permissions: makeReadPermissions()}],
+				}),
+			],
+		};
+		// Simulate adapter already filtered — only in-scope items returned
+		const searchResult = makeSearchResult({
+			items: [
+				{path: 'projects/a.md', name: 'a.md', created: 1000, modified: 2000, size: 10},
+			],
+			total: 1,
+		});
+		const router = vi.fn(async () => searchResult);
+		const deps = makeDeps({router, configManager: makeConfigManager(config)});
+		const handler = getSearchHandler(deps);
+
+		const result = await handler({operation: 'byName', query: 'a'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
 		const parsed = JSON.parse(result.content[0].text);
-		expect(parsed.items).toHaveLength(2);
-		expect(parsed.items[0].path).toBe('projects/a.md');
-		expect(parsed.items[1].path).toBe('projects/b.md');
+		expect(parsed.items).toHaveLength(1);
+		expect(parsed.total).toBe(1);
 	});
 });
 
@@ -572,5 +600,60 @@ describe('filterResultsByScope()', () => {
 
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].path).toBe('projects/a.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// computeAllowedTags
+// ---------------------------------------------------------------------------
+
+describe('computeAllowedTags()', () => {
+	function makeTagConfig(globalTags: string[], keyTags: string[]): KadoConfig {
+		return {
+			...createDefaultConfig(),
+			security: {
+				...createDefaultConfig().security,
+				tags: globalTags,
+			},
+			apiKeys: [{
+				id: 'key-1',
+				label: 'Test',
+				enabled: true,
+				createdAt: Date.now(),
+				listMode: 'whitelist',
+				paths: [],
+				tags: keyTags,
+			}],
+		};
+	}
+
+	it('returns empty array when both global and key tags are empty', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig([], []));
+		expect(result).toEqual([]);
+	});
+
+	it('returns key tags when global tags are empty', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig([], ['project', 'active']));
+		expect(result).toEqual(['project', 'active']);
+	});
+
+	it('returns global tags when key tags are empty', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig(['project', 'active'], []));
+		expect(result).toEqual(['project', 'active']);
+	});
+
+	it('returns intersection when both have tags', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig(['project', 'active', 'archive'], ['project', 'archive']));
+		expect(result).toEqual(['project', 'archive']);
+	});
+
+	it('returns empty when intersection is empty', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig(['project'], ['archive']));
+		expect(result).toEqual([]);
+	});
+
+	it('returns empty for unknown key', () => {
+		const result = computeAllowedTags('unknown', makeTagConfig(['project'], ['project']));
+		expect(result).toEqual([]);
 	});
 });

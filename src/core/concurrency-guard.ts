@@ -26,6 +26,17 @@ export function validateConcurrency(request: CoreRequest, currentMtime: number |
 	}
 
 	if (request.expectedModified === undefined) {
+		// No expectedModified + file exists → update without concurrency check is unsafe
+		if (currentMtime !== undefined) {
+			return {
+				allowed: false,
+				error: {
+					code: 'CONFLICT',
+					message: 'expectedModified is required when updating an existing file. Read the file first to get the current modified timestamp.',
+				},
+			};
+		}
+		// No expectedModified + file doesn't exist → create
 		return {allowed: true};
 	}
 

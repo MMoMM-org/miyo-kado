@@ -78,20 +78,6 @@ function rateLimitMiddleware(req: express.Request, res: express.Response, next: 
 // -----------------------------------------------------------------------
 
 export const MAX_CONCURRENT = 10;
-let activeRequests = 0;
-
-function acquireConcurrencySlot(res: express.Response): boolean {
-	if (activeRequests >= MAX_CONCURRENT) {
-		res.status(503).json({error: 'Server busy'});
-		return false;
-	}
-	activeRequests++;
-	return true;
-}
-
-function releaseConcurrencySlot(): void {
-	activeRequests--;
-}
 
 type Transport = StreamableHTTPServerTransport;
 
@@ -99,11 +85,35 @@ export class KadoMcpServer {
 	private httpServer: http.Server | null = null;
 	private transports: Map<string, Transport> = new Map();
 	private running = false;
-
+	private activeRequests = 0;
 	constructor(
 		private readonly configManager: ConfigManager,
 		private readonly registerToolsFn: (server: McpServer) => void,
+		private readonly version: string = '0.0.0',
 	) {}
+
+	private acquireConcurrencySlot(res: express.Response): boolean {
+		if (this.activeRequests >= MAX_CONCURRENT) {
+			res.status(503).json({error: 'Server busy'});
+			return false;
+		}
+		this.activeRequests++;
+		return true;
+	}
+
+	private releaseConcurrencySlot(): void {
+		this.activeRequests--;
+	}
+
+	/** Exposed for testing — allows resetting concurrency state. */
+	resetActiveRequests(): void {
+		this.activeRequests = 0;
+	}
+
+	/** Exposed for testing — allows setting concurrency state to any value. */
+	setActiveRequestsForTesting(n: number): void {
+		this.activeRequests = n;
+	}
 
 	/** Returns true when the HTTP server is listening. */
 	isRunning(): boolean {
@@ -112,10 +122,15 @@ export class KadoMcpServer {
 
 	/**
 	 * Creates and starts the Express + MCP HTTP server on the given host:port.
-	 * On EADDRINUSE the error is logged and the method resolves (no crash).
+	 * On EADDRINUSE retries once after a short delay (covers hot-reload race).
+	 * Other errors are logged and the method resolves (no crash).
 	 */
 	async start(config: ServerConfig): Promise<void> {
 		if (this.running || this.httpServer !== null) return;
+		await this.tryListen(config);
+	}
+
+	private async tryListen(config: ServerConfig, retried = false): Promise<void> {
 		const app = this.buildApp();
 		this.httpServer = http.createServer(app);
 
@@ -126,8 +141,16 @@ export class KadoMcpServer {
 			}
 
 			this.httpServer.on('error', (err: Error & {code?: string}) => {
+				if (err.code === 'EADDRINUSE' && !retried) {
+					kadoLog('Port in use, retrying after delay', {port: config.port});
+					this.httpServer = null;
+					setTimeout(() => {
+						void this.tryListen(config, true).then(resolve);
+					}, 500);
+					return;
+				}
 				if (err.code === 'EADDRINUSE') {
-					kadoError('Port in use', {port: config.port});
+					kadoError('Port still in use after retry', {port: config.port});
 				} else {
 					kadoError('Server error', {message: err.message, code: err.code ?? 'UNKNOWN'});
 				}
@@ -167,68 +190,53 @@ export class KadoMcpServer {
 			origin: false,
 			methods: ['GET', 'POST', 'DELETE'],
 		}));
-		app.use(express.json());
+		app.use(express.json({limit: '1mb'}));
 		app.use(rateLimitMiddleware);
 		app.use(createAuthMiddleware(this.configManager));
 		this.mountMcpRoutes(app);
 		return app;
 	}
 
-	/** Creates a fresh McpServer with tools registered for a single request. */
-	private createPerRequestServer(): McpServer {
-		const server = new McpServer({name: 'kado', version: '1.0.0'});
+	/** Creates a fresh McpServer per request — the SDK forbids reusing a connected instance. */
+	private createMcpServer(): McpServer {
+		const server = new McpServer({name: 'kado', version: this.version});
 		this.registerToolsFn(server);
 		return server;
 	}
 
+	private async handleMcpRequest(req: express.Request, res: express.Response, body?: unknown): Promise<void> {
+		if (!this.acquireConcurrencySlot(res)) return;
+		try {
+			const mcpServer = this.createMcpServer();
+			const transport = new StreamableHTTPServerTransport({
+				sessionIdGenerator: undefined,
+			});
+			const sessionId = this.nextSessionId();
+			this.transports.set(sessionId, transport);
+
+			transport.onclose = () => {
+				this.transports.delete(sessionId);
+			};
+			res.on('close', () => {
+				this.transports.delete(sessionId);
+				transport.close().catch(() => {});
+			});
+
+			await mcpServer.connect(transport);
+			await transport.handleRequest(req as unknown as McpRequest, res, body);
+		} catch (err: unknown) {
+			kadoError('Route error', {error: String(err)});
+			if (!res.headersSent) {
+				res.status(500).json({error: 'Internal server error'});
+			}
+		} finally {
+			this.releaseConcurrencySlot();
+		}
+	}
+
 	private mountMcpRoutes(app: express.Express): void {
-		app.post('/mcp', async (req, res) => {
-			if (!acquireConcurrencySlot(res)) return;
-			try {
-				const mcpServer = this.createPerRequestServer();
-				const transport = new StreamableHTTPServerTransport({
-					sessionIdGenerator: undefined,
-				});
-				const sessionId = this.nextSessionId();
-				this.transports.set(sessionId, transport);
-
-				transport.onclose = () => {
-					this.transports.delete(sessionId);
-				};
-
-				await mcpServer.connect(transport);
-				await transport.handleRequest(req as unknown as McpRequest, res, req.body);
-			} catch (err: unknown) {
-				kadoError('Route error', {error: String(err)});
-				res.status(500).json({error: 'Internal server error'});
-			} finally {
-				releaseConcurrencySlot();
-			}
-		});
-
-		app.get('/mcp', async (req, res) => {
-			if (!acquireConcurrencySlot(res)) return;
-			try {
-				const mcpServer = this.createPerRequestServer();
-				const transport = new StreamableHTTPServerTransport({
-					sessionIdGenerator: undefined,
-				});
-				const sessionId = this.nextSessionId();
-				this.transports.set(sessionId, transport);
-
-				transport.onclose = () => {
-					this.transports.delete(sessionId);
-				};
-
-				await mcpServer.connect(transport);
-				await transport.handleRequest(req as unknown as McpRequest, res);
-			} catch (err: unknown) {
-				kadoError('Route error', {error: String(err)});
-				res.status(500).json({error: 'Internal server error'});
-			} finally {
-				releaseConcurrencySlot();
-			}
-		});
+		app.post('/mcp', (req, res) => void this.handleMcpRequest(req, res, req.body));
+		app.get('/mcp', (req, res) => void this.handleMcpRequest(req, res));
 
 		app.delete('/mcp', (_req, res) => {
 			res.status(405).json({error: 'Session termination not supported in stateless mode'});

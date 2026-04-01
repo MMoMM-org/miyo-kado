@@ -40,9 +40,12 @@
 
 .kado-tab {
 	padding: 8px 16px;
+	min-block-size: 44px;
 	cursor: pointer;
 	white-space: nowrap;
+	border: none;
 	border-bottom: 2px solid transparent;
+	background: none;
 	font-size: var(--font-small);
 	color: var(--text-muted);
 	transition: color 0.15s, border-color 0.15s;
@@ -211,7 +214,12 @@
 	color: var(--text-error);
 	cursor: pointer;
 	font-size: 16px;
-	padding: 2px 6px;
+	padding: 10px 12px;
+	min-width: 44px;
+	min-height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	border-radius: 4px;
 }
 
@@ -275,11 +283,18 @@
 }
 
 .kado-picker-item {
+	display: block;
+	width: 100%;
 	padding: 6px 8px;
+	min-block-size: 44px;
 	cursor: pointer;
 	font-family: var(--font-monospace);
 	font-size: var(--font-small);
+	border: none;
+	background: none;
+	text-align: left;
 	border-radius: 4px;
+	color: var(--text-normal);
 }
 
 .kado-picker-item:hover {
@@ -367,6 +382,26 @@
 	font-size: var(--font-small);
 	color: var(--text-muted);
 	word-break: break-all;
+	user-select: all;
+}
+
+/* Accessibility helpers */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+.kado-perm-fieldset {
+	border: none;
+	padding: 0;
+	margin: 0;
 }
 
 /* Area assignment detail (key tab) */

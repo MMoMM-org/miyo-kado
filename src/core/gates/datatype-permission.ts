@@ -113,8 +113,8 @@ function evaluateSearchPermission(
 	// Derive search-level note read permission by checking all path combinations.
 	// A key with whitelist scope needs at least one path granting note.read.
 	// A key with blacklist scope has note.read unless all paths block it.
-	const globalPerms = resolveSearchPermissions(config.security);
-	const keyPerms = resolveSearchPermissions({listMode: key.listMode, paths: key.paths});
+	const globalPerms = resolveSearchNotePermissions(config.security);
+	const keyPerms = resolveSearchNotePermissions({listMode: key.listMode, paths: key.paths});
 	const effective = intersectPermissions(globalPerms, keyPerms);
 	if (effective.note[action]) {
 		return {allowed: true};
@@ -128,7 +128,8 @@ function evaluateSearchPermission(
  * Whitelist with no paths: no access.
  * Blacklist: full access unless all paths block it (conservatively grants full access).
  */
-function resolveSearchPermissions(scope: {listMode: string; paths: {path: string; permissions: DataTypePermissions}[]}): DataTypePermissions {
+/** Resolves note-level permissions for pathless search operations (union of all path entries). */
+function resolveSearchNotePermissions(scope: {listMode: string; paths: {path: string; permissions: DataTypePermissions}[]}): DataTypePermissions {
 	if (scope.listMode === 'blacklist') {
 		return createAllPermissions();
 	}

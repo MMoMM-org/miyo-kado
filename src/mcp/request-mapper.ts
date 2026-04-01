@@ -39,10 +39,27 @@ export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	return {apiKeyId: keyId, operation, path};
 }
 
+/** Operations where content should be a Record, not a string. */
+const OBJECT_CONTENT_OPS = new Set(['frontmatter', 'dataview-inline-field']);
+
+/** If content is a JSON string for an operation that expects an object, parse it. */
+function coerceContent(content: unknown, operation: string): CoreWriteRequest['content'] {
+	if (typeof content === 'string' && OBJECT_CONTENT_OPS.has(operation)) {
+		try {
+			const parsed: unknown = JSON.parse(content);
+			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+				return parsed as Record<string, unknown>;
+			}
+		} catch { /* not JSON — pass through as string */ }
+	}
+	return content as CoreWriteRequest['content'];
+}
+
 export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	const operation = requireString(args, 'operation', 'mapWriteRequest') as CoreWriteRequest['operation'];
 	const path = requireString(args, 'path', 'mapWriteRequest');
-	const content = requirePresent(args, 'content', 'mapWriteRequest') as CoreWriteRequest['content'];
+	const rawContent = requirePresent(args, 'content', 'mapWriteRequest');
+	const content = coerceContent(rawContent, operation);
 
 	const result: CoreWriteRequest = {apiKeyId: keyId, operation, path, content};
 
@@ -53,13 +70,20 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	return result;
 }
 
+/** Ensures directory paths end with '/' for consistent prefix matching. */
+function normalizeDirPath(path: string, operation: string): string {
+	if (operation !== 'listDir') return path;
+	if (path === '' || path === '/') return '';
+	return path.endsWith('/') ? path : path + '/';
+}
+
 export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 	const operation = requireString(args, 'operation', 'mapSearchRequest') as CoreSearchRequest['operation'];
 
 	const result: CoreSearchRequest = {apiKeyId: keyId, operation};
 
 	if (typeof args['query'] === 'string') result.query = args['query'];
-	if (typeof args['path'] === 'string') result.path = args['path'];
+	if (typeof args['path'] === 'string') result.path = normalizeDirPath(args['path'], operation);
 	if (typeof args['cursor'] === 'string') result.cursor = args['cursor'];
 	if (typeof args['limit'] === 'number') result.limit = args['limit'];
 

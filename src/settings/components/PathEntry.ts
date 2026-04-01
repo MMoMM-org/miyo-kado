@@ -33,7 +33,7 @@ export function renderPathEntry(
 	const row = containerEl.createDiv({cls: 'kado-path-entry'});
 
 	// Remove button
-	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', title: 'Remove path'});
+	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', attr: {'aria-label': 'Remove path'}});
 	removeBtn.addEventListener('click', options.onRemove);
 
 	// Path input
@@ -42,15 +42,18 @@ export function renderPathEntry(
 		cls: 'kado-path-input',
 		placeholder: 'Notes/folder/...',
 		value: rule.path,
+		attr: {'aria-label': 'Path pattern'},
 	});
 	pathInput.addEventListener('change', () => {
 		const value = pathInput.value.trim();
 		// Validate: no traversal, no absolute paths
 		if (value.includes('..') || value.startsWith('/') || value.startsWith('\\')) {
 			pathInput.addClass('kado-input-error');
+			pathInput.setAttribute('aria-invalid', 'true');
 			return;
 		}
 		pathInput.removeClass('kado-input-error');
+		pathInput.setAttribute('aria-invalid', 'false');
 		rule.path = value;
 		options.onChange();
 	});

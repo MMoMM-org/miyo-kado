@@ -2,15 +2,21 @@
  * SearchAdapter — Obsidian Interface layer adapter for search operations.
  *
  * Implements SearchAdapter by delegating to Obsidian's vault and metadataCache
- * APIs. Supports four operations: listDir, byTag, byName, listTags.
- * Pagination uses a base64-encoded offset cursor.
+ * APIs. Supports six operations: listDir, byTag, byName, listTags, byContent,
+ * byFrontmatter. Pagination uses a base64-encoded offset cursor.
  */
 
 import type {App, TFile} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
-import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem} from '../types/canonical';
+import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
+import {matchGlob} from '../core/glob-match';
+import {normalizeTag, matchTag} from '../core/tag-utils';
 
 const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 500;
+const BATCH_SIZE = 20;
+
+type SearchResult = CoreSearchResult | CoreError;
 
 function encodeOffset(offset: number): string {
 	return btoa(String(offset));
@@ -42,13 +48,89 @@ function paginate(items: CoreSearchItem[], cursor: string | undefined, limit: nu
 	};
 }
 
+function normalizeDir(path: string): string {
+	if (path === '' || path === '/') return '';
+	return path.endsWith('/') ? path : path + '/';
+}
+
+function isGlobQuery(query: string): boolean {
+	return query.includes('*') || query.includes('?');
+}
+
+function globQueryToRegExp(pattern: string, anchored = false): RegExp {
+	const escaped = pattern
+		.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+		.replace(/\*/g, '.*')
+		.replace(/\?/g, '.');
+	const src = anchored ? `^${escaped}$` : escaped;
+	return new RegExp(src, 'i');
+}
+
+/** Returns true when the file's path matches at least one scope pattern. */
+function fileInScope(file: TFile, patterns: string[]): boolean {
+	if (patterns.length === 0) return false;
+	return patterns.some((p) => matchGlob(p, file.path));
+}
+
+/** Filters search result items to only include paths matching at least one scope pattern. */
+function filterItemsByScope(items: CoreSearchItem[], patterns: string[]): CoreSearchItem[] {
+	if (patterns.length === 0) return [];
+	return items.filter((item) => patterns.some((p) => matchGlob(p, item.path)));
+}
+
+/**
+ * Returns true when the given tag (with '#' prefix) is permitted by the allowedTags list.
+ * Tags in config are stored without '#'; Obsidian cache stores them with '#'.
+ */
+function isTagPermitted(tag: string, allowedTags: string[]): boolean {
+	const normalized = normalizeTag(tag);
+	if (normalized === null) return false;
+	return allowedTags.some((pattern) => matchTag(normalized, pattern));
+}
+
+function requireQuery(request: CoreSearchRequest, operation: string): CoreError | null {
+	if (!request.query || request.query.trim() === '') {
+		return {code: 'VALIDATION_ERROR', message: `${operation} requires a non-empty query`};
+	}
+	return null;
+}
+
+// -----------------------------------------------------------------------
+// Operations
+// -----------------------------------------------------------------------
+
 function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] {
-	const prefix = request.path ?? '';
+	const prefix = normalizeDir(request.path ?? '');
 	return app.vault.getFiles().filter((f) => f.path.startsWith(prefix)).map(mapFileToItem);
 }
 
-function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] {
+function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
 	const query = request.query ?? '';
+	const allowed = request.allowedTags;
+
+	// If tag permissions are set, validate the queried tag is permitted
+	if (allowed !== undefined && allowed.length === 0) {
+		return {code: 'FORBIDDEN', message: 'No tag permissions configured for this key'};
+	}
+	if (allowed !== undefined && !isGlobQuery(query)) {
+		const normalized = normalizeTag(query);
+		if (normalized !== null && !allowed.some((p) => matchTag(normalized, p))) {
+			return {code: 'FORBIDDEN', message: `Tag '${query}' is not within the permitted tag scope`};
+		}
+	}
+
+	if (isGlobQuery(query)) {
+		const re = globQueryToRegExp(query, true);
+		return app.vault.getMarkdownFiles().filter((f) => {
+			const cache = app.metadataCache.getFileCache(f);
+			const tags = cache?.tags?.filter((t) => re.test(t.tag)) ?? [];
+			// If allowed tags are set, further restrict to permitted tags
+			if (allowed !== undefined) {
+				return tags.some((t) => isTagPermitted(t.tag, allowed));
+			}
+			return tags.length > 0;
+		}).map(mapFileToItem);
+	}
 	return app.vault.getMarkdownFiles().filter((f) => {
 		const cache = app.metadataCache.getFileCache(f);
 		return cache?.tags?.some((t) => t.tag === query) ?? false;
@@ -57,6 +139,10 @@ function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 
 function byName(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 	const query = (request.query ?? '').toLowerCase();
+	if (isGlobQuery(request.query ?? '')) {
+		const re = globQueryToRegExp(request.query ?? '');
+		return app.vault.getFiles().filter((f) => re.test(f.name)).map(mapFileToItem);
+	}
 	return app.vault.getFiles().filter((f) => f.name.toLowerCase().includes(query)).map(mapFileToItem);
 }
 
@@ -65,10 +151,13 @@ async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSear
 	const prefix = request.path ?? '';
 	const files = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
 	const results: CoreSearchItem[] = [];
-	for (const file of files) {
-		const content = await app.vault.read(file);
-		if (content.toLowerCase().includes(query)) {
-			results.push(mapFileToItem(file));
+	for (let i = 0; i < files.length; i += BATCH_SIZE) {
+		const batch = files.slice(i, i + BATCH_SIZE);
+		const contents = await Promise.all(batch.map(f => app.vault.read(f)));
+		for (let j = 0; j < batch.length; j++) {
+			if ((contents[j] ?? '').toLowerCase().includes(query)) {
+				results.push(mapFileToItem(batch[j]!));
+			}
 		}
 	}
 	return results;
@@ -87,12 +176,24 @@ function byFrontmatter(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 	}).map(mapFileToItem);
 }
 
-function listTags(app: App): CoreSearchItem[] {
+/**
+ * Lists tags, scoped by both file paths and tag permissions.
+ * - scopePatterns: only count tags from files whose path matches
+ * - allowedTags: only include tags the key has permission for
+ */
+function listTags(app: App, scopePatterns?: string[], allowedTags?: string[]): CoreSearchItem[] {
+	// No tag permissions → no tag access
+	if (allowedTags !== undefined && allowedTags.length === 0) return [];
+
 	const counts = new Map<string, number>();
 	for (const file of app.vault.getMarkdownFiles()) {
+		if (scopePatterns !== undefined) {
+			if (scopePatterns.length === 0 || !fileInScope(file, scopePatterns)) continue;
+		}
 		const cache = app.metadataCache.getFileCache(file);
 		if (!cache?.tags) continue;
 		for (const {tag} of cache.tags) {
+			if (allowedTags !== undefined && !isTagPermitted(tag, allowedTags)) continue;
 			counts.set(tag, (counts.get(tag) ?? 0) + 1);
 		}
 	}
@@ -106,23 +207,37 @@ function listTags(app: App): CoreSearchItem[] {
 	}));
 }
 
+// -----------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------
+
 export function createSearchAdapter(app: App): SearchAdapter {
 	return {
-		async search(request: CoreSearchRequest): Promise<CoreSearchResult> {
-			const limit = request.limit ?? DEFAULT_LIMIT;
+		async search(request: CoreSearchRequest): Promise<SearchResult> {
+			const limit = Math.min(request.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+
+			// Validate query for operations that require one
+			if (request.operation !== 'listDir' && request.operation !== 'listTags') {
+				const err = requireQuery(request, request.operation);
+				if (err) return err;
+			}
+
 			let items: CoreSearchItem[];
 			switch (request.operation) {
 				case 'listDir':
 					items = listDir(app, request);
 					break;
-				case 'byTag':
-					items = byTag(app, request);
+				case 'byTag': {
+					const tagResult = byTag(app, request);
+					if ('code' in tagResult) return tagResult;
+					items = tagResult;
 					break;
+				}
 				case 'byName':
 					items = byName(app, request);
 					break;
 				case 'listTags':
-					items = listTags(app);
+					items = listTags(app, request.scopePatterns, request.allowedTags);
 					break;
 				case 'byContent':
 					items = await byContent(app, request);
@@ -131,6 +246,13 @@ export function createSearchAdapter(app: App): SearchAdapter {
 					items = byFrontmatter(app, request);
 					break;
 			}
+
+			// Apply scope filtering before pagination so total and cursor are accurate.
+			// listTags is already pre-filtered at the file level inside listTags().
+			if (request.scopePatterns !== undefined && request.operation !== 'listTags') {
+				items = filterItemsByScope(items, request.scopePatterns);
+			}
+
 			return paginate(items, request.cursor, limit);
 		},
 	};

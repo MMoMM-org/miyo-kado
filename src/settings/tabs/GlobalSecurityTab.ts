@@ -103,9 +103,9 @@ function renderAccessModeToggle(
 			}));
 
 	if (currentMode === 'blacklist' && hasZeroRules) {
-		containerEl.createDiv({
-			cls: 'kado-listmode-warning',
-			text: '\u26a0 Blacklist with no rules grants full access',
-		});
+		const warning = containerEl.createDiv({cls: 'kado-listmode-warning'});
+		warning.setAttribute('role', 'alert');
+		warning.createSpan({attr: {'aria-hidden': 'true'}, text: '\u26a0 '});
+		warning.createSpan({text: 'Blacklist with no rules grants full access'});
 	}
 }

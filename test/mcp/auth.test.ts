@@ -93,7 +93,7 @@ describe('createAuthMiddleware — valid Bearer token', () => {
 
 		middleware(req as Request, res as Response, next);
 
-		expect((req as Request & {auth?: unknown}).auth).toEqual({token: ENABLED_KEY.id, clientId: ENABLED_KEY.id});
+		expect((req as Request & {auth?: unknown}).auth).toEqual({token: ENABLED_KEY.id, clientId: ENABLED_KEY.id, scopes: []});
 	});
 
 	it('does not respond with 401 when the key is valid', () => {

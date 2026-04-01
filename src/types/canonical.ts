@@ -44,6 +44,10 @@ export interface CoreSearchRequest {
 	path?: string;
 	cursor?: string;
 	limit?: number;
+	/** Glob patterns for file-level scope filtering (set by tools layer from key config). */
+	scopePatterns?: string[];
+	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */
+	allowedTags?: string[];
 }
 
 export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest;

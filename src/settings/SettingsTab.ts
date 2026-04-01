@@ -41,9 +41,11 @@ export class KadoSettingsTab extends PluginSettingTab {
 		const config = this.plugin.configManager.getConfig();
 		const tabBar = containerEl.createDiv({cls: 'kado-tab-bar'});
 
-		const scrollLeft = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-left', text: '\u2039'});
-		const tabStrip = tabBar.createDiv({cls: 'kado-tab-strip'});
-		const scrollRight = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-right', text: '\u203a'});
+		const scrollLeft = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-left', attr: {'aria-label': 'Scroll tabs left'}});
+		scrollLeft.createEl('span', {text: '\u2039', attr: {'aria-hidden': 'true'}});
+		const tabStrip = tabBar.createDiv({cls: 'kado-tab-strip', attr: {role: 'tablist'}});
+		const scrollRight = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-right', attr: {'aria-label': 'Scroll tabs right'}});
+		scrollRight.createEl('span', {text: '\u203a', attr: {'aria-hidden': 'true'}});
 
 		const updateScrollButtons = (): void => {
 			scrollLeft.toggleClass('kado-hidden', tabStrip.scrollLeft <= 0);
@@ -68,7 +70,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 		}
 
 		// Content area
-		const contentEl = containerEl.createDiv({cls: 'kado-tab-content'});
+		const contentEl = containerEl.createDiv({cls: 'kado-tab-content', attr: {role: 'tabpanel', id: 'kado-tab-content'}});
 		this.renderActiveTab(contentEl);
 
 		// Defer scroll button check to after render
@@ -76,9 +78,15 @@ export class KadoSettingsTab extends PluginSettingTab {
 	}
 
 	private addTab(tabStrip: HTMLElement, id: string, label: string): void {
-		const tab = tabStrip.createDiv({
-			cls: `kado-tab${id === this.activeTab ? ' is-active' : ''}`,
+		const isActive = id === this.activeTab;
+		const tab = tabStrip.createEl('button', {
+			cls: `kado-tab${isActive ? ' is-active' : ''}`,
 			text: label,
+			attr: {
+				role: 'tab',
+				'aria-selected': String(isActive),
+				'aria-controls': 'kado-tab-content',
+			},
 		});
 		tab.addEventListener('click', () => {
 			this.activeTab = id;

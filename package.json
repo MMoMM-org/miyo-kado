@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-kado",
-	"version": "0.0.3",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"version": "0.0.32",
+	"description": "Security-first MCP gateway for Obsidian vaults",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
@@ -40,7 +40,9 @@
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"cors": "^2.8.6",
 		"express": "^5.2.1",
-		"obsidian": "^1.7.2",
 		"zod": "^4.3.6"
+	},
+	"peerDependencies": {
+		"obsidian": ">=1.5.7"
 	}
 }

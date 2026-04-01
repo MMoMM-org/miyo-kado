@@ -27,7 +27,7 @@ export function renderTagEntry(
 	const row = containerEl.createDiv({cls: 'kado-tag-entry'});
 
 	// Remove button
-	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', title: 'Remove tag'});
+	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', attr: {'aria-label': 'Remove tag'}});
 	removeBtn.addEventListener('click', options.onRemove);
 
 	// Tag input (displays with # prefix, stores without)
@@ -36,6 +36,7 @@ export function renderTagEntry(
 		cls: 'kado-tag-input',
 		placeholder: '#tag, #nested/tag, tag/*',
 		value: tag ? `#${tag}` : '',
+		attr: {'aria-label': 'Tag pattern'},
 	});
 	tagInput.addEventListener('blur', () => {
 		const normalized = normalizeTag(tagInput.value);

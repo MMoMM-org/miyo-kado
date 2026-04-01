@@ -22,8 +22,8 @@ This is a high-priority engineering project tracked in the allowed area.
 ## Notes
 
 Some inline dataview fields for testing:
-[completion:: 40%]
-[estimate:: 3 weeks]
+[completion:: 60%]
+[estimate:: 2 weeks]
 [category:: backend]
 
 Related: [[Meeting Notes 2026-03-28]], [[API Design Draft]]

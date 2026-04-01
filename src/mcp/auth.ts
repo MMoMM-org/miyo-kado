@@ -11,7 +11,7 @@ import type {ConfigManager} from '../core/config-manager';
 
 declare module 'express-serve-static-core' {
 	interface Request {
-		auth?: {token: string; clientId: string};
+		auth?: {token: string; clientId: string; scopes: string[]};
 	}
 }
 
@@ -26,12 +26,9 @@ function safeEquals(a: string, b: string): boolean {
 	const enc = new TextEncoder();
 	const bufA = enc.encode(a);
 	const bufB = enc.encode(b);
-	const len = Math.max(bufA.length, bufB.length);
-	const padA = new Uint8Array(len);
-	padA.set(bufA);
-	const padB = new Uint8Array(len);
-	padB.set(bufB);
-	return timingSafeEqual(padA, padB) && bufA.length === bufB.length;
+	// Length check first — integer comparison with no timing significance
+	if (bufA.length !== bufB.length) return false;
+	return timingSafeEqual(bufA, bufB);
 }
 
 /**
@@ -52,7 +49,7 @@ export function createAuthMiddleware(configManager: ConfigManager): RequestHandl
 			return;
 		}
 
-		req.auth = {token, clientId: token};
+		req.auth = {token, clientId: token, scopes: []};
 		next();
 	};
 }

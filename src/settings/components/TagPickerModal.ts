@@ -49,6 +49,7 @@ export class TagPickerModal extends Modal {
 			type: 'text',
 			placeholder: '#tag, #nested/tag, tag/*',
 			cls: 'kado-picker-search',
+			attr: {'aria-label': 'Search tags'},
 		});
 		const confirmBtn = inputRow.createEl('button', {text: 'Add', cls: 'mod-cta'});
 		confirmBtn.addEventListener('click', () => {
@@ -80,7 +81,7 @@ export class TagPickerModal extends Modal {
 				return;
 			}
 			for (const tag of filtered) {
-				const item = listEl.createDiv({cls: 'kado-picker-item', text: `#${tag}`});
+				const item = listEl.createEl('button', {cls: 'kado-picker-item', text: `#${tag}`});
 				item.addEventListener('click', () => {
 					this.onSelect(tag);
 					this.close();

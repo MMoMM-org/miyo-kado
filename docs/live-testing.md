@@ -92,6 +92,12 @@ while Obsidian is running, you must reload the plugin (disable → enable) for
 changes to take effect. Obsidian may also overwrite the file when saving its
 own state.
 
+**Hot-reload vs disable/enable**: Copying a new `main.js` while Obsidian is
+running triggers a hot-reload, but this has limitations. The settings tab UI,
+MCP server version, and other stateful components may retain old code until
+a full disable → enable cycle. Always use disable → enable after deploying
+a new build to ensure all code paths are fresh.
+
 ### Step 3 — macOS Checks (Obsidian process + vault open)
 
 On macOS, two checks run in sequence:

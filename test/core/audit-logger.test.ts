@@ -171,6 +171,36 @@ describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => 
 		expect(deps.write).toHaveBeenCalled();
 	});
 
+	it('renames files in the correct shift order for maxRetainedLogs = 3', async () => {
+		const base = 'logs/kado-audit.log';
+		const deps = {
+			write: vi.fn().mockResolvedValue(undefined),
+			getSize: vi.fn().mockResolvedValue(2048),
+			// All candidate paths exist so every rename branch executes
+			exists: vi.fn().mockResolvedValue(true),
+			rename: vi.fn().mockResolvedValue(undefined),
+			remove: vi.fn().mockResolvedValue(undefined),
+			getLogPath: vi.fn().mockReturnValue(base),
+		};
+		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024, maxRetainedLogs: 3}), deps);
+
+		await logger.log(makeEntry());
+
+		// Oldest file (base.3) is removed first
+		expect(deps.remove).toHaveBeenCalledWith(`${base}.3`);
+
+		// Shift: base.2 → base.3, then base.1 → base.2
+		const renameCalls = deps.rename.mock.calls as [string, string][];
+		expect(renameCalls[0]).toEqual([`${base}.2`, `${base}.3`]);
+		expect(renameCalls[1]).toEqual([`${base}.1`, `${base}.2`]);
+
+		// Current log is archived to base.1
+		expect(renameCalls[2]).toEqual([base, `${base}.1`]);
+
+		// Fresh log is created via an empty write before the entry write
+		expect(deps.write).toHaveBeenCalledWith('');
+	});
+
 	it('does not call rotation deps when file size is within maxSizeBytes', async () => {
 		const deps = makeDeps({size: 512});
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);

@@ -120,6 +120,38 @@ describe('mapWriteRequest()', () => {
 
 		expect(() => mapWriteRequest(args, KEY_ID)).toThrow();
 	});
+
+	it('coerces JSON string content to object for frontmatter operation', () => {
+		const args = {operation: 'frontmatter', path: 'a.md', content: '{"status":"done"}'};
+
+		const result = mapWriteRequest(args, KEY_ID) as CoreWriteRequest;
+
+		expect(result.content).toEqual({status: 'done'});
+	});
+
+	it('coerces JSON string content to object for dataview-inline-field operation', () => {
+		const args = {operation: 'dataview-inline-field', path: 'a.md', content: '{"priority":"high"}'};
+
+		const result = mapWriteRequest(args, KEY_ID) as CoreWriteRequest;
+
+		expect(result.content).toEqual({priority: 'high'});
+	});
+
+	it('keeps string content as-is for note operation', () => {
+		const args = {operation: 'note', path: 'a.md', content: '{"not":"parsed"}'};
+
+		const result = mapWriteRequest(args, KEY_ID) as CoreWriteRequest;
+
+		expect(result.content).toBe('{"not":"parsed"}');
+	});
+
+	it('keeps non-JSON string as-is for frontmatter operation', () => {
+		const args = {operation: 'frontmatter', path: 'a.md', content: 'not json'};
+
+		const result = mapWriteRequest(args, KEY_ID) as CoreWriteRequest;
+
+		expect(result.content).toBe('not json');
+	});
 });
 
 // ---------------------------------------------------------------------------

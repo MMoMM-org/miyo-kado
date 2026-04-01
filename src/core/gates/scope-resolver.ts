@@ -9,7 +9,7 @@
  */
 
 import type {DataTypePermissions, ListMode, PathPermission} from '../../types/canonical';
-import {matchGlob} from '../glob-match';
+import {matchGlob, dirCouldContainMatches} from '../glob-match';
 
 export interface ScopeConfig {
 	listMode: ListMode;
@@ -44,9 +44,15 @@ export function invertPermissions(p: DataTypePermissions): DataTypePermissions {
  *
  * Blacklist: if no entry matches, full access is granted. If an entry matches,
  * its permissions represent what is BLOCKED, so they are inverted before return.
+ *
+ * Directory paths (ending with '/') also match patterns that would contain files
+ * under that directory, e.g. 'allowed/' matches 'allowed/**'.
  */
 export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypePermissions | null {
-	const match = scope.paths.find((p) => matchGlob(p.path, requestPath));
+	const isDir = requestPath.endsWith('/');
+	const match = scope.paths.find((p) =>
+		matchGlob(p.path, requestPath) || (isDir && dirCouldContainMatches(p.path, requestPath)),
+	);
 
 	if (scope.listMode === 'whitelist') {
 		return match ? match.permissions : null;

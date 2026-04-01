@@ -54,7 +54,9 @@ export function renderPermissionMatrix(
 	permissions: DataTypePermissions,
 	options: PermissionMatrixOptions,
 ): void {
-	const grid = containerEl.createDiv({cls: 'kado-perm-matrix'});
+	const fieldset = containerEl.createEl('fieldset', {cls: 'kado-perm-fieldset'});
+	fieldset.createEl('legend', {cls: 'kado-perm-legend sr-only', text: 'Data type permissions'});
+	const grid = fieldset.createDiv({cls: 'kado-perm-matrix'});
 
 	// Header row: corner + C R U D
 	const header = grid.createDiv({cls: 'kado-perm-row kado-perm-header'});
@@ -86,8 +88,15 @@ export function renderPermissionMatrix(
 				title: `${op} — ${RESOURCE_LABELS[resource]}`,
 			});
 			dot.setAttribute('role', 'checkbox');
-			dot.setAttribute('tabindex', '0');
 			dot.setAttribute('aria-checked', String(isOn));
+			dot.setAttribute('aria-label', `${op} ${RESOURCE_LABELS[resource]}`);
+
+			if (!isAllowed) {
+				dot.setAttribute('aria-disabled', 'true');
+				dot.setAttribute('tabindex', '-1');
+			} else {
+				dot.setAttribute('tabindex', '0');
+			}
 
 			if (!options.readOnly && isAllowed) {
 				const toggle = (): void => {

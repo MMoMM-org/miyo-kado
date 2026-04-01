@@ -111,13 +111,13 @@ function buildSkippedLineSet(lines: string[]): Set<number> {
 
 function parseLineFields(line: string, lineIdx: number, charOffset: number, results: InlineField[]): void {
 	// Try bracket and paren fields first — these can be anywhere in the line
+	const prevLen = results.length;
 	parseBracketFields(line, lineIdx, charOffset, results);
 	parseParenFields(line, lineIdx, charOffset, results);
 
 	// Only attempt bare field if no bracket/paren fields were found on this line
 	// (bare fields are full-line, so mixing doesn't apply)
-	const hasBracketOrParen = results.some(f => f.line === lineIdx && (f.wrapping === 'bracket' || f.wrapping === 'paren'));
-	if (!hasBracketOrParen) {
+	if (results.length === prevLen) {
 		parseBareField(line, lineIdx, charOffset, results);
 	}
 }
@@ -246,8 +246,7 @@ async function writeFields(app: App, request: CoreWriteRequest): Promise<CoreWri
 
 	const original = await app.vault.read(file);
 	const updates = applyFieldUpdates(original, request.content);
-	// vault.process() for atomic read-modify-write. No double-write with adapter.
-	await app.vault.process(file, () => updates);
+	await app.vault.modify(file, updates);
 
 	const refreshed = app.vault.getFileByPath(request.path);
 	const stat = refreshed?.stat ?? file.stat;
@@ -257,16 +256,39 @@ async function writeFields(app: App, request: CoreWriteRequest): Promise<CoreWri
 function applyFieldUpdates(content: string, updates: Record<string, unknown>): string {
 	let result = content;
 
+	// Process bracket and paren replacements on full content
 	for (const [key, newValue] of Object.entries(updates)) {
 		const valueStr = String(newValue);
-		result = applySingleFieldUpdate(result, key, valueStr);
+		result = applyBracketOrParenUpdate(result, key, valueStr);
 	}
 
-	return result;
+	// Process bare field updates in a single split-join pass
+	const lines = result.split('\n');
+	const bareUpdates = new Map<string, string>();
+	for (const [key, newValue] of Object.entries(updates)) {
+		bareUpdates.set(key, String(newValue));
+	}
+
+	const updatedLines = lines.map(line => {
+		const stripped = line.replace(LIST_MARKER_RE, '');
+		const markerLength = line.length - stripped.length;
+		const match = BARE_RE.exec(stripped);
+		if (match) {
+			const matchedKey = (match[1] ?? '').trim();
+			const bareValue = bareUpdates.get(matchedKey);
+			if (bareValue !== undefined) {
+				const marker = line.slice(0, markerLength);
+				return `${marker}${matchedKey}:: ${bareValue}`;
+			}
+		}
+		return line;
+	});
+
+	return updatedLines.join('\n');
 }
 
-function applySingleFieldUpdate(content: string, key: string, newValue: string): string {
-	// Try bracket first — single replace call, check if anything changed
+function applyBracketOrParenUpdate(content: string, key: string, newValue: string): string {
+	// Try bracket first
 	const bracketRe = new RegExp(`\\[${escapeRegex(key)}\\s*::\\s*[^\\]]*?\\]`, 'g');
 	const bracketResult = content.replace(bracketRe, () => `[${key}:: ${newValue}]`);
 	if (bracketResult !== content) return bracketResult;
@@ -276,20 +298,7 @@ function applySingleFieldUpdate(content: string, key: string, newValue: string):
 	const parenResult = content.replace(parenRe, () => `(${key}:: ${newValue})`);
 	if (parenResult !== content) return parenResult;
 
-	// Try bare field (line-level)
-	const lines = content.split('\n');
-	const updatedLines = lines.map(line => {
-		const stripped = line.replace(LIST_MARKER_RE, '');
-		const markerLength = line.length - stripped.length;
-		const match = BARE_RE.exec(stripped);
-		if (match && (match[1] ?? '').trim() === key) {
-			const marker = line.slice(0, markerLength);
-			return `${marker}${key}:: ${newValue}`;
-		}
-		return line;
-	});
-
-	return updatedLines.join('\n');
+	return content;
 }
 
 function escapeRegex(str: string): string {

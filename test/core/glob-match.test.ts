@@ -5,7 +5,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {matchGlob, pathMatchesPatterns} from '../../src/core/glob-match';
+import {matchGlob, pathMatchesPatterns, dirCouldContainMatches} from '../../src/core/glob-match';
 
 // ============================================================
 // matchGlob — literal matching
@@ -20,8 +20,28 @@ describe('matchGlob() — literal match', () => {
 		expect(matchGlob('notes/daily.md', 'notes/weekly.md')).toBe(false);
 	});
 
-	it('does not match a partial path (no anchoring drift)', () => {
-		expect(matchGlob('notes', 'notes/daily.md')).toBe(false);
+	it('bare name matches files inside that directory', () => {
+		expect(matchGlob('notes', 'notes/daily.md')).toBe(true);
+	});
+
+	it('bare name matches nested files inside that directory', () => {
+		expect(matchGlob('notes', 'notes/2026/03/daily.md')).toBe(true);
+	});
+
+	it('bare name matches the directory itself', () => {
+		expect(matchGlob('notes', 'notes')).toBe(true);
+	});
+
+	it('bare name does not match a different directory', () => {
+		expect(matchGlob('notes', 'archive/daily.md')).toBe(false);
+	});
+
+	it('bare name does not match a similarly-prefixed directory', () => {
+		expect(matchGlob('notes', 'notes-old/daily.md')).toBe(false);
+	});
+
+	it('bare name with space matches files in that directory', () => {
+		expect(matchGlob('100 Inbox', '100 Inbox/new-note.md')).toBe(true);
 	});
 });
 
@@ -117,5 +137,45 @@ describe('pathMatchesPatterns()', () => {
 
 	it('returns true when the first pattern matches (short-circuits)', () => {
 		expect(pathMatchesPatterns('notes/daily.md', ['notes/**', 'notes/*.md'])).toBe(true);
+	});
+});
+
+// ============================================================
+// dirCouldContainMatches
+// ============================================================
+
+describe('dirCouldContainMatches()', () => {
+	it('returns true when dir path is the prefix of a ** pattern', () => {
+		expect(dirCouldContainMatches('allowed/**', 'allowed/')).toBe(true);
+	});
+
+	it('returns true for nested dir under a ** pattern', () => {
+		expect(dirCouldContainMatches('allowed/**', 'allowed/sub/')).toBe(true);
+	});
+
+	it('returns false when dir path does not match the pattern prefix', () => {
+		expect(dirCouldContainMatches('allowed/**', 'forbidden/')).toBe(false);
+	});
+
+	it('returns false when dir path partially overlaps but is a different folder', () => {
+		expect(dirCouldContainMatches('allow/**', 'allowed/')).toBe(false);
+	});
+
+	it('handles mid-path ** patterns', () => {
+		expect(dirCouldContainMatches('vault/**/docs/**', 'vault/project/docs/')).toBe(true);
+	});
+
+	it('returns true for exact directory pattern match', () => {
+		expect(dirCouldContainMatches('notes/*', 'notes/')).toBe(true);
+	});
+
+	it('returns false for a parent of the pattern root', () => {
+		// "projects/" cannot contain matches for "projects/alpha/**"
+		// because "projects/__probe__" does not match "projects/alpha/**"
+		expect(dirCouldContainMatches('projects/alpha/**', 'projects/')).toBe(false);
+	});
+
+	it('returns false for a sibling directory of the pattern', () => {
+		expect(dirCouldContainMatches('notes/**', 'archive/')).toBe(false);
 	});
 });

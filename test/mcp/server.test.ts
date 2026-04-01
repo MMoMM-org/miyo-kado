@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {KadoMcpServer, RATE_LIMIT, requestCounts} from '../../src/mcp/server';
+import {KadoMcpServer, RATE_LIMIT, MAX_CONCURRENT, requestCounts} from '../../src/mcp/server';
 import {ConfigManager} from '../../src/core/config-manager';
 import type {ServerConfig} from '../../src/types/canonical';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -253,6 +253,56 @@ describe('KadoMcpServer — multiple sequential requests', () => {
 		}
 	});
 
+	it('handles two sequential authenticated requests without "Already connected" crash', async () => {
+		const port = await getFreePort();
+		const apiKeyId = 'kado_sequential-test-key';
+		const cm = new ConfigManager(
+			async () => ({apiKeys: [{id: apiKeyId, label: 'Test', enabled: true, createdAt: Date.now(), listMode: 'whitelist', paths: [], tags: []}]}),
+			async () => {},
+		);
+		await cm.load();
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		const makeRequest = (id: number): Promise<{status: number; body: string}> =>
+			new Promise((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json, text/event-stream',
+							'Authorization': `Bearer ${apiKeyId}`,
+						},
+					},
+					(res) => {
+						let data = '';
+						res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+						res.on('end', () => resolve({status: res.statusCode ?? 0, body: data}));
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id, params: {protocolVersion: '2025-03-26', capabilities: {}, clientInfo: {name: 'test', version: '0.1.0'}}}));
+				req.end();
+			});
+
+		try {
+			const res1 = await makeRequest(1);
+			const res2 = await makeRequest(2);
+
+			// Both must reach the MCP handler (200) — not 500 from "Already connected" error
+			expect(res1.status).toBe(200);
+			expect(res2.status).toBe(200);
+			expect(res1.body).toContain('protocolVersion');
+			expect(res2.body).toContain('protocolVersion');
+		} finally {
+			await server.stop();
+		}
+	});
+
 	it('handles two sequential GET requests without crashing', async () => {
 		const port = await getFreePort();
 		const server = makeKadoMcpServer();
@@ -278,6 +328,54 @@ describe('KadoMcpServer — multiple sequential requests', () => {
 			// Both get 401 — not 500
 			expect(status1).toBe(401);
 			expect(status2).toBe(401);
+		} finally {
+			await server.stop();
+		}
+	});
+
+	it('does not return 500 on the second authenticated request (regression: "Already connected")', async () => {
+		// This test specifically guards against the bug where a cached McpServer
+		// instance would throw "Already connected to a transport" on the second request.
+		const port = await getFreePort();
+		const apiKeyId = 'kado_regression-test-key';
+		const cm = new ConfigManager(
+			async () => ({apiKeys: [{id: apiKeyId, label: 'Test', enabled: true, createdAt: Date.now(), listMode: 'whitelist', paths: [], tags: []}]}),
+			async () => {},
+		);
+		await cm.load();
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		const makeRequest = (): Promise<number> =>
+			new Promise((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json, text/event-stream',
+							'Authorization': `Bearer ${apiKeyId}`,
+						},
+					},
+					(res) => {
+						res.resume();
+						resolve(res.statusCode ?? 0);
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1, params: {protocolVersion: '2025-03-26', capabilities: {}, clientInfo: {name: 'test', version: '0.1.0'}}}));
+				req.end();
+			});
+
+		try {
+			await makeRequest(); // first request — warms the server
+			const secondStatus = await makeRequest();
+
+			// The second request MUST NOT be 500 — that was the old bug
+			expect(secondStatus).not.toBe(500);
 		} finally {
 			await server.stop();
 		}
@@ -459,6 +557,57 @@ describe('KadoMcpServer — rate limiting', () => {
 			expect(statusCode).toBe(401);
 		} finally {
 			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Concurrency cap — 503 response when MAX_CONCURRENT is reached
+// ---------------------------------------------------------------------------
+
+describe('KadoMcpServer — concurrency cap', () => {
+	it('returns 503 when activeRequests reaches MAX_CONCURRENT', async () => {
+		const port = await getFreePort();
+		// Create a config with a valid API key so auth middleware passes
+		const apiKeyId = 'kado_concurrency-test-key';
+		const cm = new ConfigManager(
+			async () => ({apiKeys: [{id: apiKeyId, label: 'Test', enabled: true, createdAt: Date.now(), listMode: 'whitelist', paths: [], tags: []}]}),
+			async () => {},
+		);
+		await cm.load();
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		// Saturate all concurrency slots via testing helper
+		server.setActiveRequestsForTesting(MAX_CONCURRENT);
+
+		try {
+			const statusCode = await new Promise<number>((resolve, reject) => {
+				const req = http.request(
+					{
+						host: '127.0.0.1',
+						port,
+						method: 'POST',
+						path: '/mcp',
+						headers: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${apiKeyId}`,
+						},
+					},
+					(res) => {
+						res.resume();
+						resolve(res.statusCode ?? 0);
+					},
+				);
+				req.on('error', reject);
+				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+				req.end();
+			});
+
+			expect(statusCode).toBe(503);
+		} finally {
+			server.setActiveRequestsForTesting(0);
 			await server.stop();
 		}
 	});

@@ -30,7 +30,7 @@ export interface ReadWriteAdapter {
 }
 
 export interface SearchAdapter {
-	search(request: CoreSearchRequest): Promise<CoreSearchResult>;
+	search(request: CoreSearchRequest): Promise<CoreSearchResult | CoreError>;
 }
 
 export interface AdapterRegistry {

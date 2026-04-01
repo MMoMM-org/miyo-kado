@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "maybe-allowed/Budget 2026.md",
+                "file": "Welcome.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Budget 2026"
+              "title": "Welcome"
             }
           }
         ]
@@ -203,11 +203,23 @@
       "bases:Create new base": false
     }
   },
-  "active": "74ece673bdae60c6",
+  "active": "34c7bca4298e080b",
   "lastOpenFiles": [
-    "allowed/Daily Note 2026-03-31.md",
+    "allowed/_test-binary-scratch.bin",
+    "allowed/_audit-test-scratch.md",
     "allowed/_live-test-scratch.md",
+    "allowed/_diag-truncation.md",
+    "allowed/test-large.bin",
+    "allowed/test-document.pdf",
+    "allowed/test-image.png",
     "maybe-allowed/Budget 2026.md",
+    "maybe-allowed/Quarterly Review.md",
+    "allowed/Tagging Examples.md",
+    "allowed/sub/Nested Note.md",
+    "allowed/sub",
+    "logs/kado-audit.log",
+    "logs",
+    "allowed/Daily Note 2026-03-31.md",
     "allowed/Project Alpha.md",
     "Welcome.md",
     "nope/Incident Report.md",

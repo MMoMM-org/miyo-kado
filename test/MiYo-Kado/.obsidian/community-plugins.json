@@ -1,5 +1,5 @@
 [
-  "hot-reload",
   "kado",
-  "miyo-kado"
+  "miyo-kado",
+  "hot-reload"
 ]

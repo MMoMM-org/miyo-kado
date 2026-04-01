@@ -124,6 +124,7 @@ describe('KadoPlugin', () => {
 	describe('loadSettings', () => {
 		it('returns default config when storage is empty', async () => {
 			const plugin = getMockPlugin();
+			await plugin.onload();
 			plugin.loadData = vi.fn(async () => null);
 			await plugin.loadSettings();
 			const defaults = createDefaultConfig();
@@ -132,6 +133,7 @@ describe('KadoPlugin', () => {
 
 		it('returns default config when storage returns empty object', async () => {
 			const plugin = getMockPlugin();
+			await plugin.onload();
 			plugin.loadData = vi.fn(async () => ({}));
 			await plugin.loadSettings();
 			const defaults = createDefaultConfig();
@@ -143,6 +145,8 @@ describe('KadoPlugin', () => {
 			plugin.loadData = vi.fn(async () => ({
 				server: {enabled: true, host: '0.0.0.0', port: 9999},
 			}));
+			await plugin.onload();
+			// loadSettings reloads via the same configManager bound to loadData
 			await plugin.loadSettings();
 			expect(plugin.settings.server.enabled).toBe(true);
 			expect(plugin.settings.server.port).toBe(9999);
@@ -153,6 +157,7 @@ describe('KadoPlugin', () => {
 			plugin.loadData = vi.fn(async () => ({
 				server: {enabled: true, host: '0.0.0.0', port: 9999},
 			}));
+			await plugin.onload();
 			await plugin.loadSettings();
 			const defaults = createDefaultConfig();
 			expect(plugin.settings.apiKeys).toEqual(defaults.apiKeys);

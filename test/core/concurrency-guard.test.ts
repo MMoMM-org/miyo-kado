@@ -77,14 +77,18 @@ describe('validateConcurrency — write with expectedModified not matching curre
 // Write requests without expectedModified (create path)
 // ---------------------------------------------------------------------------
 
-describe('validateConcurrency — write without expectedModified (create)', () => {
-	it('returns allowed when no expectedModified is provided', () => {
+describe('validateConcurrency — write without expectedModified', () => {
+	it('returns CONFLICT when file exists but no expectedModified is provided', () => {
 		const request = makeWriteRequest();
 		const result = validateConcurrency(request, 1700000000000);
-		expect(result).toEqual({allowed: true});
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('CONFLICT');
+			expect(result.error.message).toContain('expectedModified is required');
+		}
 	});
 
-	it('returns allowed when no expectedModified and no currentMtime', () => {
+	it('returns allowed when file does not exist (create)', () => {
 		const request = makeWriteRequest();
 		const result = validateConcurrency(request, undefined);
 		expect(result).toEqual({allowed: true});
