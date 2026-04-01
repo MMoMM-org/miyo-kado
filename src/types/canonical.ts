@@ -3,7 +3,7 @@
  *
  * This file is the single source of truth for all request, result, error,
  * permission-gate, and configuration types used across the four-layer
- * architecture (ADR-001). It has ZERO imports from `obsidian` or
+ * architecture. It has ZERO imports from `obsidian` or
  * `@modelcontextprotocol/sdk` so that the Kado Core can be tested in
  * isolation without either dependency.
  */
