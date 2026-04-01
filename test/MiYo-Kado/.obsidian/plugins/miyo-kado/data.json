@@ -7,7 +7,7 @@
   },
   "globalAreas": [
     {
-      "id": "a9c6fc50-c6d9-45c9-b6e1-bd3dd44d31bb",
+      "id": "test-allowed",
       "label": "Allowed",
       "pathPatterns": [
         "allowed/**"
@@ -42,7 +42,7 @@
       }
     },
     {
-      "id": "f53716fb-802f-4f54-a53e-25d799129469",
+      "id": "test-maybe",
       "label": "Maybe Allowed",
       "pathPatterns": [
         "maybe-allowed/**"
@@ -80,12 +80,12 @@
   "apiKeys": [
     {
       "id": "kado_9e1d88c0-4838-47b3-968d-855c77cf86bd",
-      "label": "Testt",
+      "label": "Live Test",
       "enabled": true,
-      "createdAt": 1774902546365,
+      "createdAt": 1774995094488,
       "areas": [
         {
-          "areaId": "a9c6fc50-c6d9-45c9-b6e1-bd3dd44d31bb",
+          "areaId": "test-allowed",
           "tags": [],
           "permissions": {
             "note": {
@@ -98,24 +98,24 @@
               "create": true,
               "read": true,
               "update": true,
-              "delete": false
+              "delete": true
             },
             "file": {
               "create": true,
               "read": true,
               "update": true,
-              "delete": false
+              "delete": true
             },
             "dataviewInlineField": {
               "create": true,
               "read": true,
               "update": true,
-              "delete": false
+              "delete": true
             }
           }
         },
         {
-          "areaId": "f53716fb-802f-4f54-a53e-25d799129469",
+          "areaId": "test-maybe",
           "tags": [],
           "permissions": {
             "note": {
