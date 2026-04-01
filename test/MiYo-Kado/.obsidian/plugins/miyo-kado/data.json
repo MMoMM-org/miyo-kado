@@ -74,7 +74,7 @@
   "apiKeys": [
     {
       "id": "kado_9e1d88c0-4838-47b3-968d-855c77cf86bd",
-      "label": "Live Test",
+      "label": "Key1 Full Access",
       "enabled": true,
       "createdAt": 1774995094488,
       "listMode": "whitelist",
@@ -128,6 +128,56 @@
               "read": true,
               "update": true,
               "delete": true
+            },
+            "dataviewInlineField": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            }
+          }
+        }
+      ],
+      "tags": [
+        "inlinetag/yes"
+      ]
+    },
+    {
+      "id": "kado_e8ffd8c0-c6b6-4402-bacc-abd04bdba330",
+      "label": "Key2 No Access",
+      "enabled": true,
+      "createdAt": 1775041945969,
+      "listMode": "whitelist",
+      "paths": [],
+      "tags": []
+    },
+    {
+      "id": "kado_91d353cb-6115-4f4b-b907-8ecc5c697357",
+      "label": "Key3 Read Only",
+      "enabled": true,
+      "createdAt": 1775041946000,
+      "listMode": "whitelist",
+      "paths": [
+        {
+          "path": "allowed/**",
+          "permissions": {
+            "note": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "file": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
             },
             "dataviewInlineField": {
               "create": false,
