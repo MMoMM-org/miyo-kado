@@ -59,73 +59,65 @@ const KADO_DATA_JSON = resolve(REPO_ROOT, 'test/MiYo-Kado/.obsidian/plugins/miyo
 const KADO_DATA_BACKUP = KADO_DATA_JSON + '.bak';
 
 // ============================================================
-// Test fixture config — written to data.json before tests
+// Test fixture config — loaded from test/fixtures/live-test-config.json
 // ============================================================
 
-/**
- * Builds the expected plugin config for live tests.
- * Requires the API key from .mcp.json to be passed in.
- */
-function buildTestConfig(apiKey: string): Record<string, unknown> {
-	const fullCrud = {create: true, read: true, update: true, delete: true};
-	const readOnly = {create: false, read: true, update: false, delete: false};
-	const fullPerms = {note: fullCrud, frontmatter: fullCrud, file: fullCrud, dataviewInlineField: fullCrud};
-	const readPerms = {note: readOnly, frontmatter: {...readOnly, update: true}, file: fullCrud, dataviewInlineField: readOnly};
+/** Path to the canonical test fixture config. */
+const FIXTURE_CONFIG_PATH = resolve(REPO_ROOT, 'test/fixtures/live-test-config.json');
 
+/** Placeholder key IDs in the fixture — replaced at runtime with real keys from .mcp.json. */
+const KEY1_PLACEHOLDER = 'kado_test-key1-full-access';
+const KEY2_PLACEHOLDER = 'kado_test-key2-no-access';
+const KEY3_PLACEHOLDER = 'kado_test-key3-read-only';
+
+interface McpKeys {
+	key1: string | null;
+	key2: string | null;
+	key3: string | null;
+}
+
+/**
+ * Loads all API keys from .mcp.json. Expects server entries named
+ * 'kado-key1', 'kado-key2', 'kado-key3' (or falls back to 'kado' for key1).
+ */
+function loadApiKeys(): McpKeys {
 	return {
-		server: {enabled: true, host: '127.0.0.1', port: MCP_PORT, connectionType: 'local'},
-		security: {
-			listMode: 'whitelist',
-			paths: [
-				{path: 'allowed/**', permissions: fullPerms},
-				{path: 'maybe-allowed/**', permissions: fullPerms},
-			],
-			tags: [],
-		},
-		apiKeys: [{
-			id: apiKey,
-			label: 'Live Test Key',
-			enabled: true,
-			createdAt: Date.now(),
-			listMode: 'whitelist',
-			paths: [
-				{path: 'allowed/**', permissions: fullPerms},
-				{path: 'maybe-allowed/**', permissions: readPerms},
-			],
-			tags: [],
-		}],
-		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+		key1: loadApiKeyByName('kado-key1') ?? loadApiKeyByName('kado') ?? loadFirstApiKey(),
+		key2: loadApiKeyByName('kado-key2'),
+		key3: loadApiKeyByName('kado-key3'),
 	};
 }
 
 /**
- * Checks if data.json already contains our test config (by checking area IDs).
+ * Loads the fixture config and replaces placeholder key IDs with real keys.
+ * Always writes fresh to data.json (the fixture IS the ground truth).
  */
-function isTestConfigActive(): boolean {
+function loadAndWriteFixtureConfig(keys: McpKeys): boolean {
 	try {
-		if (!existsSync(KADO_DATA_JSON)) return false;
-		const raw = readFileSync(KADO_DATA_JSON, 'utf-8');
-		const data = JSON.parse(raw) as {security?: {paths?: Array<{path: string}>}};
-		return data.security?.paths?.some(p => p.path === 'allowed/**') ?? false;
-	} catch {
-		return false;
-	}
-}
+		if (!existsSync(FIXTURE_CONFIG_PATH)) return false;
+		const raw = readFileSync(FIXTURE_CONFIG_PATH, 'utf-8');
+		let config = raw;
 
-/**
- * Writes the test config to data.json and backs up the original.
- * Skips if test config is already active.
- * Returns true if config is ready (either already active or freshly written).
- */
-function setupTestConfig(apiKey: string): boolean {
-	try {
-		if (isTestConfigActive()) return true;
-		// Backup current config
+		// Replace placeholder key IDs with real keys from .mcp.json
+		if (keys.key1) config = config.replace(new RegExp(KEY1_PLACEHOLDER, 'g'), keys.key1);
+		if (keys.key2) config = config.replace(new RegExp(KEY2_PLACEHOLDER, 'g'), keys.key2);
+		if (keys.key3) config = config.replace(new RegExp(KEY3_PLACEHOLDER, 'g'), keys.key3);
+
+		// Remove keys that don't have a real key assigned (keep only substituted ones)
+		const parsed = JSON.parse(config) as {apiKeys: Array<{id: string}>; [k: string]: unknown};
+		parsed.apiKeys = parsed.apiKeys.filter(k =>
+			!k.id.startsWith('kado_test-key'),
+		);
+
+		// Remove the _comment field
+		delete (parsed as Record<string, unknown>)['_comment'];
+
+		// Backup current config if no backup exists
 		if (existsSync(KADO_DATA_JSON) && !existsSync(KADO_DATA_BACKUP)) {
 			copyFileSync(KADO_DATA_JSON, KADO_DATA_BACKUP);
 		}
-		const testConfig = buildTestConfig(apiKey);
-		writeFileSync(KADO_DATA_JSON, JSON.stringify(testConfig, null, 2));
+
+		writeFileSync(KADO_DATA_JSON, JSON.stringify(parsed, null, 2));
 		return true;
 	} catch {
 		return false;
@@ -219,10 +211,7 @@ function readKadoPluginConfig(): KadoPluginStatus {
 	}
 }
 
-/**
- * Loads an API key from .mcp.json. Tries server names in order:
- * 'kado-key1', 'kado', then the first entry. Returns null if missing or placeholder.
- */
+/** Loads the primary API key (key1) for backward-compatible helpers like readKadoPluginConfig. */
 function loadApiKey(): string | null {
 	return loadApiKeyByName('kado-key1') ?? loadApiKeyByName('kado') ?? loadFirstApiKey();
 }
@@ -376,8 +365,11 @@ describe('Kado MCP Live Tests', () => {
 	let pluginStatus: KadoPluginStatus | null = null;
 	let configWritten = false;
 	let mcpUp = false;
-	let apiKey: string | null = null;
+	let keys: McpKeys = {key1: null, key2: null, key3: null};
 	let ready = false;
+
+	/** The primary API key used by most tests (Key1 = full access). */
+	function apiKey(): string { return keys.key1!; }
 
 	/** Skips the current test when the full preflight hasn't passed.
 	 *  Also throttles to avoid rate limiting (each callTool = new TCP connection). */
@@ -387,12 +379,12 @@ describe('Kado MCP Live Tests', () => {
 	}
 
 	beforeAll(async () => {
-		// 1. Load API key first — needed regardless of environment
-		apiKey = loadApiKey();
-		if (!apiKey) return;
+		// 1. Load API keys — needed regardless of environment
+		keys = loadApiKeys();
+		if (!keys.key1) return;
 
-		// 2. Write deterministic test config to data.json
-		configWritten = setupTestConfig(apiKey);
+		// 2. Load fixture config and write to data.json (always overwrite — fixture is ground truth)
+		configWritten = loadAndWriteFixtureConfig(keys);
 
 		// 3. Read back to verify it's correct
 		pluginStatus = readKadoPluginConfig();
@@ -412,7 +404,7 @@ describe('Kado MCP Live Tests', () => {
 		//    If config was just written, the plugin needs a reload.
 		//    Try a test read — if it fails with FORBIDDEN, config is stale.
 		try {
-			const probe = await callTool(apiKey, 'kado-read', {
+			const probe = await callTool(keys.key1, 'kado-read', {
 				operation: 'note',
 				path: 'allowed/Project Alpha.md',
 			});
@@ -444,8 +436,8 @@ describe('Kado MCP Live Tests', () => {
 
 	describe('Preflight', () => {
 		it('API key is configured in .mcp.json', (ctx) => {
-			if (!apiKey) ctx.skip();
-			expect(apiKey).toBeTruthy();
+			if (!keys.key1) ctx.skip();
+			expect(keys.key1).toBeTruthy();
 		});
 
 		it('Obsidian is running (macOS only)', (ctx) => {
@@ -476,7 +468,7 @@ describe('Kado MCP Live Tests', () => {
 		});
 
 		it(`MCP server is reachable at ${MCP_URL}`, (ctx) => {
-			if (!apiKey) ctx.skip();
+			if (!keys.key1) ctx.skip();
 			if (obsidianStatus === false || vaultStatus === false) ctx.skip();
 			if (!mcpUp) ctx.skip();
 			expect(mcpUp).toBe(true);
@@ -490,7 +482,7 @@ describe('Kado MCP Live Tests', () => {
 	describe('kado-read', () => {
 		it('reads a note from allowed area', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'allowed/Project Alpha.md',
 			});
@@ -503,7 +495,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('reads frontmatter as structured object', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'frontmatter',
 				path: 'allowed/Project Alpha.md',
 			});
@@ -519,7 +511,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('reads dataview inline fields', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'dataview-inline-field',
 				path: 'allowed/Project Alpha.md',
 			});
@@ -533,7 +525,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('reads list-item inline fields (- key:: value)', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'dataview-inline-field',
 				path: 'maybe-allowed/Budget 2026.md',
 			});
@@ -548,7 +540,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('reads both bracket and list-item inline fields from same file', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'dataview-inline-field',
 				path: 'maybe-allowed/Budget 2026.md',
 			});
@@ -565,7 +557,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('reads a different note to verify non-cached results', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'allowed/Meeting Notes 2026-03-28.md',
 			});
@@ -583,7 +575,7 @@ describe('Kado MCP Live Tests', () => {
 	describe('kado-search', () => {
 		it('finds notes by tag', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'byTag',
 				query: '#engineering',
 			});
@@ -597,7 +589,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('finds notes by name', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'byName',
 				query: 'Budget',
 			});
@@ -611,7 +603,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('lists directory contents', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'listDir',
 				path: 'allowed/',
 			});
@@ -624,7 +616,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('lists all tags in the vault', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'listTags',
 			});
 
@@ -644,7 +636,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('searches by content substring', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'byContent',
 				query: 'Sprint Planning',
 			});
@@ -658,7 +650,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('searches by frontmatter field', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'byFrontmatter',
 				query: 'status=active',
 			});
@@ -670,7 +662,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('respects pagination limit', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-search', {
+			const result = await callTool(apiKey(),'kado-search', {
 				operation: 'listDir',
 				path: 'allowed/',
 				limit: 2,
@@ -689,7 +681,7 @@ describe('Kado MCP Live Tests', () => {
 	describe('Permission gates', () => {
 		it('denies read access to restricted area (nope/)', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'nope/Credentials.md',
 			});
@@ -701,7 +693,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('denies write access to restricted area', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-write', {
+			const result = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: 'nope/should-not-exist.md',
 				content: 'This write must fail.',
@@ -714,7 +706,7 @@ describe('Kado MCP Live Tests', () => {
 
 		it('denies frontmatter read in restricted area', async (ctx) => {
 			requireReady(ctx);
-			const result = await callTool(apiKey!, 'kado-read', {
+			const result = await callTool(apiKey(),'kado-read', {
 				operation: 'frontmatter',
 				path: 'nope/Incident Report.md',
 			});
@@ -795,7 +787,7 @@ describe('Kado MCP Live Tests', () => {
 			requireReady(ctx);
 			expect(existsSync(SCRATCH_FS_PATH)).toBe(false);
 
-			const result = await callTool(apiKey!, 'kado-write', {
+			const result = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: SCRATCH_CONTENT,
@@ -816,7 +808,7 @@ describe('Kado MCP Live Tests', () => {
 			requireReady(ctx);
 			expect(existsSync(SCRATCH_FS_PATH)).toBe(true);
 
-			const result = await callTool(apiKey!, 'kado-write', {
+			const result = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: 'Should not overwrite.',
@@ -831,7 +823,7 @@ describe('Kado MCP Live Tests', () => {
 			requireReady(ctx);
 
 			// Step 1: Read to get current modified timestamp
-			const readResult = await callTool(apiKey!, 'kado-read', {
+			const readResult = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 			});
@@ -842,7 +834,7 @@ describe('Kado MCP Live Tests', () => {
 
 			// Step 2: Update with the timestamp from read
 			const updated = '# Live Test Scratch\n\nUpdated via read→update flow.';
-			const writeResult = await callTool(apiKey!, 'kado-write', {
+			const writeResult = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: updated,
@@ -864,7 +856,7 @@ describe('Kado MCP Live Tests', () => {
 			await new Promise(r => setTimeout(r, 1000));
 			const contentBefore = readFileSync(SCRATCH_FS_PATH, 'utf-8');
 
-			const result = await callTool(apiKey!, 'kado-write', {
+			const result = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: 'Stale edit — should fail.',
@@ -882,14 +874,14 @@ describe('Kado MCP Live Tests', () => {
 		it('update: second write after first update needs fresh timestamp', async (ctx) => {
 			requireReady(ctx);
 			// Read to get current state
-			const read1 = await callTool(apiKey!, 'kado-read', {
+			const read1 = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 			});
 			const {modified: ts1} = parseResult<{modified: number}>(read1);
 
 			// First update succeeds
-			const write1 = await callTool(apiKey!, 'kado-write', {
+			const write1 = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: '# First update',
@@ -898,7 +890,7 @@ describe('Kado MCP Live Tests', () => {
 			expect(write1.isError).toBeFalsy();
 
 			// Second update with the OLD timestamp fails (stale)
-			const write2 = await callTool(apiKey!, 'kado-write', {
+			const write2 = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: '# Second update with stale ts',
@@ -912,14 +904,14 @@ describe('Kado MCP Live Tests', () => {
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe('# First update');
 
 			// Re-read, get fresh timestamp, second update succeeds
-			const read2 = await callTool(apiKey!, 'kado-read', {
+			const read2 = await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 			});
 			const {modified: ts2} = parseResult<{modified: number}>(read2);
 			expect(ts2).toBeGreaterThanOrEqual(ts1);
 
-			const write3 = await callTool(apiKey!, 'kado-write', {
+			const write3 = await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: SCRATCH_PATH,
 				content: '# Second update with fresh ts',
@@ -964,7 +956,7 @@ describe('Kado MCP Live Tests', () => {
 			clearAuditLog();
 			await new Promise(r => setTimeout(r, 200));
 
-			await callTool(apiKey!, 'kado-read', {
+			await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'allowed/Project Alpha.md',
 			});
@@ -989,7 +981,7 @@ describe('Kado MCP Live Tests', () => {
 			clearAuditLog();
 			await new Promise(r => setTimeout(r, 200));
 
-			await callTool(apiKey!, 'kado-read', {
+			await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'nope/Credentials.md',
 			});
@@ -1010,7 +1002,7 @@ describe('Kado MCP Live Tests', () => {
 			clearAuditLog();
 			await new Promise(r => setTimeout(r, 200));
 
-			await callTool(apiKey!, 'kado-search', {
+			await callTool(apiKey(),'kado-search', {
 				operation: 'listDir',
 				path: 'allowed/',
 			});
@@ -1037,7 +1029,7 @@ describe('Kado MCP Live Tests', () => {
 			// Clean up first
 			try { if (existsSync(scratchFsPath)) unlinkSync(scratchFsPath); } catch { /* */ }
 
-			await callTool(apiKey!, 'kado-write', {
+			await callTool(apiKey(),'kado-write', {
 				operation: 'note',
 				path: scratchPath,
 				content: '# Audit test',

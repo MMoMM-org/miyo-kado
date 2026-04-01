@@ -1,0 +1,104 @@
+{
+  "_comment": "Canonical test config — loaded by live tests before every run. Do not edit data.json directly for test purposes; edit this file instead.",
+  "server": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 23026,
+    "connectionType": "local"
+  },
+  "security": {
+    "listMode": "whitelist",
+    "paths": [
+      {
+        "path": "allowed/**",
+        "permissions": {
+          "note": { "create": true, "read": true, "update": true, "delete": true },
+          "frontmatter": { "create": true, "read": true, "update": true, "delete": true },
+          "file": { "create": true, "read": true, "update": true, "delete": true },
+          "dataviewInlineField": { "create": true, "read": true, "update": true, "delete": true }
+        }
+      },
+      {
+        "path": "maybe-allowed/**",
+        "permissions": {
+          "note": { "create": true, "read": true, "update": true, "delete": true },
+          "frontmatter": { "create": false, "read": true, "update": true, "delete": false },
+          "file": { "create": true, "read": true, "update": true, "delete": true },
+          "dataviewInlineField": { "create": true, "read": true, "update": true, "delete": true }
+        }
+      }
+    ],
+    "tags": [
+      "inlinetag/yes"
+    ]
+  },
+  "apiKeys": [
+    {
+      "id": "kado_test-key1-full-access",
+      "label": "Key1 Full Access",
+      "enabled": true,
+      "createdAt": 1774995094488,
+      "listMode": "whitelist",
+      "paths": [
+        {
+          "path": "allowed/**",
+          "permissions": {
+            "note": { "create": true, "read": true, "update": true, "delete": false },
+            "frontmatter": { "create": true, "read": true, "update": true, "delete": true },
+            "file": { "create": true, "read": true, "update": true, "delete": true },
+            "dataviewInlineField": { "create": true, "read": true, "update": true, "delete": true }
+          }
+        },
+        {
+          "path": "maybe-allowed/**",
+          "permissions": {
+            "note": { "create": false, "read": true, "update": false, "delete": false },
+            "frontmatter": { "create": false, "read": true, "update": true, "delete": false },
+            "file": { "create": true, "read": true, "update": true, "delete": true },
+            "dataviewInlineField": { "create": false, "read": true, "update": false, "delete": false }
+          }
+        }
+      ],
+      "tags": [
+        "inlinetag/yes"
+      ]
+    },
+    {
+      "id": "kado_test-key2-no-access",
+      "label": "Key2 No Access",
+      "enabled": true,
+      "createdAt": 1775041945969,
+      "listMode": "whitelist",
+      "paths": [],
+      "tags": []
+    },
+    {
+      "id": "kado_test-key3-read-only",
+      "label": "Key3 Read Only",
+      "enabled": true,
+      "createdAt": 1775041946000,
+      "listMode": "whitelist",
+      "paths": [
+        {
+          "path": "allowed/**",
+          "permissions": {
+            "note": { "create": false, "read": true, "update": false, "delete": false },
+            "frontmatter": { "create": false, "read": true, "update": false, "delete": false },
+            "file": { "create": false, "read": true, "update": false, "delete": false },
+            "dataviewInlineField": { "create": false, "read": true, "update": false, "delete": false }
+          }
+        }
+      ],
+      "tags": [
+        "inlinetag/yes"
+      ]
+    }
+  ],
+  "audit": {
+    "enabled": true,
+    "logDirectory": "logs",
+    "logFileName": "kado-audit.log",
+    "maxSizeBytes": 10485760,
+    "maxRetainedLogs": 3
+  }
+}
