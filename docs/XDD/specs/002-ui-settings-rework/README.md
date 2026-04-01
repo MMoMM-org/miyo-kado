@@ -6,14 +6,14 @@
 |-------|-------|
 | **Created** | 2026-03-31 |
 | **Current Phase** | Ready |
-| **Last Updated** | 2026-03-31 |
+| **Last Updated** | 2026-04-01 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | v1.1 — all user feedback incorporated, all questions resolved |
-| solution.md | completed | v1.0 — all ADRs confirmed, full design documented |
+| requirements.md | completed | v2.0 — updated for v2 rework (single scope, independent key listMode, per-path permissions) |
+| solution.md | completed | v2.0 — updated for v2 rework (new data model, revised ADRs) |
 | plan/ | completed | 5 phases, 22 tasks |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -24,7 +24,7 @@
 |------|----------|-----------|
 | 2026-03-31 | Initialize spec 002 | UI settings rework based on v3 mockup analysis |
 | 2026-03-31 | Audit log: vault-relative path | User wants log visible, syncable, with directory picker. No .obsidian hidden path. |
-| 2026-03-31 | Keep two-layer permission model | GlobalAreas → Keys inherit. Add whitelist/blacklist toggle per scope. Default = whitelist, nothing allowed. Keys restricted to global's available paths/tags. |
+| 2026-03-31 | Keep two-layer permission model | ~~GlobalAreas → Keys inherit.~~ (Superseded by v2 rework: single global scope + independent key scopes.) Default = whitelist, nothing allowed. Keys restricted to global's available paths/tags. |
 | 2026-03-31 | Tags: Read-only filter only | Tags are a filter mechanism ("files from allowed paths with tag X"). CUD not applicable to tags. Fixed R permission. |
 | 2026-03-31 | Delete key: confirmation dialog, default=No | Prevent accidental key deletion. |
 | 2026-03-31 | Add regenerate key button | Allow key rotation without losing assignments. Confirmation required. |
@@ -55,6 +55,12 @@
 | 2026-03-31 | Validation: add ServerConfig.connectionType | Added to SDD data model |
 | 2026-03-31 | Validation: tag×path filter moved to Phase 4 | May need production code, not just Phase 5 verification |
 | 2026-03-31 | Validation: all MEDIUM findings fixed | PRD v1.2, SDD v1.1, PLAN v1.1 |
+| 2026-04-01 | v2 rework: single scope replaces multi-area | `globalAreas: GlobalArea[]` replaced by `security: SecurityConfig` with one flat scope. No more area labels, add/remove area buttons, area IDs. Per-path permissions instead of per-area. |
+| 2026-04-01 | v2 rework: independent key listMode | Each API key has its own whitelist/blacklist toggle, not inherited from global. `ApiKeyConfig.areas` replaced by `ApiKeyConfig.listMode`, `.paths`, `.tags`. |
+| 2026-04-01 | v2 rework: per-path permissions | Permissions are now per-path, not per-area. Each path entry has its own 4x4 permission matrix in both global security and API keys. |
+| 2026-04-01 | v2 rework: ISO 8601 audit timestamps | `AuditEntry.timestamp` changed from `number` (epoch ms) to `string` (ISO 8601 with local timezone offset). |
+| 2026-04-01 | v2 rework: version header from manifest | Uses `manifest.name`, `manifest.version`, author name linked to `manifest.authorUrl`, docs link to GitHub. |
+| 2026-04-01 | v2 rework: whitelist/blacklist flip preserves config | When toggling, only listMode changes. Permission booleans stay the same. Display mapping inverts. |
 
 ## Context
 

@@ -1,8 +1,10 @@
 ---
 title: "UI Settings Rework"
 status: draft
-version: "1.0"
+version: "2.0"
 ---
+
+> **v2.0 (2026-04-01):** Updated for the v2 rework. Key changes: multi-area replaced by single `SecurityConfig` scope, per-path permissions, independent key listMode, ISO 8601 audit timestamps, version header from manifest, scope-resolver for enforcement logic. See `docs/XDD/ideas/2026-04-01-settings-ui-rework-v2.md` for full rationale.
 
 # Solution Design Document
 
@@ -99,7 +101,8 @@ version: "1.0"
 ### Implementation Boundaries
 
 - **Must Preserve**: Core permission chain (5 gates), MCP tool handlers, adapter layer, all existing tests
-- **Can Modify**: `settings.ts` (replace entirely), `types/canonical.ts` (extend), `config-manager.ts` (add methods), `audit-logger.ts` (rotation extension), `main.ts` (audit path resolution)
+- **Can Modify**: `settings.ts` (replace entirely), `types/canonical.ts` (extend — replace GlobalArea[] with SecurityConfig, update ApiKeyConfig), `config-manager.ts` (update for new model), `audit-logger.ts` (rotation extension, ISO timestamps), `main.ts` (audit path resolution)
+- **New Files**: `core/scope-resolver.ts` (whitelist/blacklist enforcement per scope layer)
 - **Must Not Touch**: `mcp/server.ts`, `mcp/auth.ts`, `mcp/request-mapper.ts`, `mcp/response-mapper.ts`, `core/gates/*`, `core/permission-chain.ts`, `core/glob-match.ts`, `obsidian/*-adapter.ts`
 
 ### External Interfaces
@@ -149,10 +152,10 @@ Test:    npx vitest            # Unit tests
 graph LR
     subgraph Settings Layer
         ST[SettingsTab] --> GM[GeneralTab]
-        ST --> GS[GlobalSecurityTab]
-        ST --> AK[ApiKeyTab]
+        ST --> GS[GlobalSecurityTab<br/>single scope]
+        ST --> AK[ApiKeyTab<br/>independent scope]
 
-        GS --> PM[PermissionMatrix]
+        GS --> PM[PermissionMatrix<br/>per-path]
         GS --> PE[PathEntry]
         GS --> TE[TagEntry]
         AK --> PM
@@ -185,19 +188,20 @@ src/
 │   ├── SettingsTab.ts                   # NEW: Tab bar, routing, version header
 │   ├── tabs/
 │   │   ├── GeneralTab.ts               # NEW: Server config, API key creation, audit
-│   │   ├── GlobalSecurityTab.ts         # NEW: Areas with list mode, paths, tags
-│   │   └── ApiKeyTab.ts                # NEW: Per-key config, rename, copy, delete, regen
+│   │   ├── GlobalSecurityTab.ts         # NEW: Single security scope with list mode, per-path permissions, tags
+│   │   └── ApiKeyTab.ts                # NEW: Per-key scope (independent listMode), constrained permissions, rename, copy, delete, regen
 │   └── components/
-│       ├── PermissionMatrix.ts          # NEW: 4×4 resource × CRUD grid
-│       ├── PathEntry.ts                 # NEW: Path row with browse + matrix
+│       ├── PermissionMatrix.ts          # NEW: 4×4 resource × CRUD grid (supports constrained/greyed-out state)
+│       ├── PathEntry.ts                 # NEW: Path row with browse + per-path matrix
 │       ├── TagEntry.ts                  # NEW: Tag row with picker + read indicator
 │       ├── VaultFolderModal.ts          # NEW: Directory picker modal
 │       └── TagPickerModal.ts            # NEW: Tag picker modal
 ├── types/
-│   └── canonical.ts                     # MODIFY: Extend GlobalArea, AuditConfig
+│   └── canonical.ts                     # MODIFY: Replace GlobalArea[] with SecurityConfig, update ApiKeyConfig
 ├── core/
-│   ├── config-manager.ts               # MODIFY: Add tag/listMode helpers
-│   └── audit-logger.ts                 # MODIFY: Multi-file rotation with retention
+│   ├── scope-resolver.ts               # NEW: resolveScope() for whitelist/blacklist interpretation per layer
+│   ├── config-manager.ts               # MODIFY: Update for SecurityConfig, remove area helpers
+│   └── audit-logger.ts                 # MODIFY: Multi-file rotation with retention, ISO 8601 timestamps
 ├── main.ts                              # MODIFY: Audit path resolution (vault-relative)
 └── styles.css                           # MODIFY: Add .kado- layout classes
 ```
@@ -209,14 +213,21 @@ src/
 ```yaml
 # types/canonical.ts modifications
 
-Type: GlobalArea (MODIFIED)
-  EXISTING: id, label, pathPatterns, permissions
-  ADD: listMode: 'whitelist' | 'blacklist'    # default: 'whitelist'
-  ADD: tags: string[]                          # stored without '#', e.g. ['project/miyo', 'important']
+Type: SecurityConfig (NEW — replaces globalAreas: GlobalArea[])
+  listMode: ListMode                           # default: 'whitelist'
+  paths: Array<PathPermission>                 # per-path permissions
+  tags: string[]                               # stored without '#'
 
-Type: KeyAreaConfig (MODIFIED)
-  EXISTING: areaId, permissions
-  ADD: tags: string[]                          # subset of parent GlobalArea.tags
+Type: PathPermission (NEW)
+  path: string                                 # vault-relative path
+  permissions: DataTypePermissions             # 4x4 CRUD matrix for this path
+
+Type: ApiKeyConfig (MODIFIED — replaces areas: KeyAreaConfig[])
+  EXISTING: id, label
+  REMOVE: areas: KeyAreaConfig[]
+  ADD: listMode: ListMode                      # independent per key, default: 'whitelist'
+  ADD: paths: Array<PathPermission>            # per-path permissions, constrained by global
+  ADD: tags: string[]                          # subset of global security tags
 
 Type: AuditConfig (MODIFIED)
   EXISTING: enabled, maxSizeBytes
@@ -224,6 +235,11 @@ Type: AuditConfig (MODIFIED)
   ADD: logDirectory: string                    # vault-relative folder, default: 'logs'
   ADD: logFileName: string                     # filename only, default: 'kado-audit.log'
   ADD: maxRetainedLogs: number                 # rotation count, default: 3
+
+Type: AuditEntry (MODIFIED)
+  EXISTING: action, keyId, path, ...
+  CHANGE: timestamp: string                    # was number (epoch ms), now ISO 8601 with local TZ offset
+                                               # e.g. "2026-03-31T14:29:06.365+02:00"
 
 Type: ListMode (NEW)
   = 'whitelist' | 'blacklist'
@@ -237,8 +253,9 @@ Type: ServerConfig (MODIFIED)
 # Factory updates
 createDefaultConfig():
   server.connectionType: 'local'             # NEW default
-createDefaultConfig():
-  globalAreas: []                              # unchanged
+  security.listMode: 'whitelist'             # NEW (replaces globalAreas: [])
+  security.paths: []                          # NEW
+  security.tags: []                           # NEW
   audit.logDirectory: 'logs'                   # NEW default
   audit.logFileName: 'kado-audit.log'          # NEW default
   audit.maxRetainedLogs: 3                     # NEW default
@@ -247,24 +264,36 @@ createDefaultConfig():
 #### Application Data Models
 
 ```pseudocode
-ENTITY: GlobalArea (MODIFIED)
+ENTITY: SecurityConfig (NEW — replaces GlobalArea[])
+  FIELDS:
+    listMode: ListMode — default 'whitelist'
+    paths: Array<PathPermission>
+    tags: string[] — stored without '#'
+
+  BEHAVIORS:
+    resolveScope(requestPath): Perms | null — interprets listMode for path matching
+    tag matching: prefix match for wildcards (tag/*), exact match otherwise
+
+ENTITY: PathPermission (NEW)
+  FIELDS:
+    path: string — vault-relative path
+    permissions: DataTypePermissions — 4x4 CRUD matrix for this specific path
+
+ENTITY: ApiKeyConfig (MODIFIED)
   FIELDS:
     id: string
     label: string
-    pathPatterns: string[]
-    permissions: DataTypePermissions
-    + listMode: ListMode (NEW) — default 'whitelist'
-    + tags: string[] (NEW) — stored without '#'
+    - areas: KeyAreaConfig[] (REMOVED)
+    + listMode: ListMode (NEW) — independent per key, default 'whitelist'
+    + paths: Array<PathPermission> (NEW) — constrained by global security
+    + tags: string[] (NEW) — subset of global security tags
 
   BEHAVIORS:
-    existing: glob matching via pathMatchesPatterns()
-    + tag matching: prefix match for wildcards (tag/*), exact match otherwise
+    resolveScope(requestPath): Perms | null — same as SecurityConfig but independent listMode
 
-ENTITY: KeyAreaConfig (MODIFIED)
+ENTITY: AuditEntry (MODIFIED)
   FIELDS:
-    areaId: string
-    permissions: DataTypePermissions
-    + tags: string[] (NEW) — must be subset of parent GlobalArea.tags
+    ~ timestamp: string (CHANGED from number — ISO 8601 with local TZ offset)
 
 ENTITY: AuditConfig (MODIFIED)
   FIELDS:
@@ -351,8 +380,9 @@ export function renderPermissionMatrix(
   containerEl: HTMLElement,
   permissions: DataTypePermissions,
   options: {
-    maxPermissions?: DataTypePermissions;  // ceiling from global area (for key tabs)
-    readOnly?: boolean;                     // for effective permissions display
+    listMode: ListMode;                     // current scope's list mode (affects display rendering)
+    maxPermissions?: DataTypePermissions;   // ceiling from global security (for key tabs)
+    readOnly?: boolean;
     onChange: () => void;
   }
 ): void {
@@ -592,7 +622,7 @@ async function rotateWithRetention(
 5. User changes a setting → `onChange` handler updates config, calls `plugin.saveSettings()`
 6. If server config changed while running → fields are disabled (read-only)
 
-### Primary Flow: Create Global Area
+### Primary Flow: Configure Global Security
 
 ```mermaid
 sequenceDiagram
@@ -601,19 +631,19 @@ sequenceDiagram
     participant CM as ConfigManager
     participant Storage as data.json
 
-    Admin->>GST: Click "Add Area"
-    GST->>CM: addGlobalArea({id, label:'', pathPatterns:[], tags:[], listMode:'whitelist', permissions: allFalse})
-    CM->>Storage: save()
-    GST->>GST: Re-render areas section
+    Admin->>GST: Set access mode toggle (Whitelist/Blacklist)
+    GST->>CM: Update security.listMode, save()
+    Admin->>GST: Click "Add Path"
+    GST->>GST: New path row with empty path + per-path permission matrix (all false)
     Admin->>GST: Click "Browse" on path entry
     GST->>GST: Open VaultFolderModal
     Admin->>GST: Select folder "Projects/MiYo"
-    GST->>CM: Update area.pathPatterns, save()
-    Admin->>GST: Click dots in permission matrix
-    GST->>CM: Update area.permissions, save()
+    GST->>CM: Update security.paths[n].path, save()
+    Admin->>GST: Click dots in per-path permission matrix
+    GST->>CM: Update security.paths[n].permissions, save()
     Admin->>GST: Click "Add Tag", open TagPickerModal
     Admin->>GST: Select tag "project/miyo"
-    GST->>CM: Update area.tags, save()
+    GST->>CM: Update security.tags, save()
 ```
 
 ### Primary Flow: API Key Lifecycle
@@ -715,9 +745,9 @@ Kado Settings
 │   │       ├── Max retained logs (number)
 │   │       └── View Log button (if log exists)
 │   ├── Global Security
-│   │   ├── List Mode toggle (Whitelist / Blacklist) + description text
+│   │   ├── Access Mode toggle (Whitelist / Blacklist) + description text
 │   │   ├── Paths Section
-│   │   │   ├── [Path entries with permission matrices]
+│   │   │   ├── [Path entries, each with its own per-path permission matrix]
 │   │   │   └── + Add Path button
 │   │   └── Tags Section
 │   │       ├── [Tag entries with fixed Read permission]
@@ -727,9 +757,10 @@ Kado Settings
 │       │   ├── Key name + Rename button
 │       │   ├── Key value (full display) + Copy button
 │       │   └── Regenerate Key button
-│       ├── Area Assignments
-│       │   └── [Per area: toggle + constrained permission matrix]
-│       ├── Effective Permissions (read-only summary)
+│       ├── Key Scope (independent listMode)
+│       │   ├── Access Mode toggle (Whitelist / Blacklist)
+│       │   ├── Paths (picked from global, per-path constrained permission matrix — greyed out = globally unavailable)
+│       │   └── Tags (picked from global)
 │       └── Delete Key button (danger, with confirmation)
 ```
 
@@ -765,7 +796,7 @@ stateDiagram-v2
 
 ### System-Wide Patterns
 
-- **Security**: UI enforces default-deny visually (all dots off on new area). Whitelist/blacklist description text updates dynamically. Key permissions constrained by global area ceiling.
+- **Security**: UI enforces default-deny visually (all dots off on new path). Whitelist/blacklist description text updates dynamically. Key permissions constrained by global security ceiling (greyed-out cells). Each scope has independent listMode.
 - **Error Handling**: Validate at input boundary (onChange handlers). Never save invalid state. Show inline errors, not alerts.
 - **Logging**: Settings changes logged to audit log if audit is enabled (via existing AuditLogger).
 - **Auto-save**: Every Setting onChange triggers `plugin.saveSettings()`. No explicit "Save" button.
@@ -822,9 +853,9 @@ stateDiagram-v2
   - Trade-offs: More files to navigate, but each is focused and testable.
   - User confirmed: **Yes**
 
-- [x] **ADR-2 Data Model Extensions**: Extend `GlobalArea` with `listMode` + `tags`, extend `AuditConfig` with `logDirectory` + `logFileName` + `maxRetainedLogs`, extend `KeyAreaConfig` with `tags`.
-  - Rationale: Minimal change to existing types. Tags as simple string arrays sufficient for read-only filtering.
-  - Trade-offs: No separate TagRule type (simpler but less extensible if CUD needed later).
+- [x] **ADR-2 Data Model Extensions** (v2: revised): Replace `globalAreas: GlobalArea[]` with `security: SecurityConfig` (single scope, per-path permissions). Replace `ApiKeyConfig.areas: KeyAreaConfig[]` with `ApiKeyConfig.listMode` + `.paths` + `.tags` (independent key scope). Change `AuditEntry.timestamp` from `number` to `string` (ISO 8601). Extend `AuditConfig` with `logDirectory` + `logFileName` + `maxRetainedLogs`.
+  - Rationale: Single scope is simpler than multi-area. Per-path permissions give more granular control. Independent key listMode allows flexible configurations. ISO timestamps are human-readable in log files.
+  - Trade-offs: No area labels or grouping (simpler but less organizational). Keys reference paths by value, not by area ID.
   - User confirmed: **Yes**
 
 - [x] **ADR-3 Obsidian Modal for Pickers**: Use `Modal` class (not `SuggestModal` or `FuzzySuggestModal`) for both folder and tag pickers.
@@ -837,9 +868,9 @@ stateDiagram-v2
   - Trade-offs: Must strip `#` on input and add on display. Wildcard limited to suffix only.
   - User confirmed: **Yes**
 
-- [x] **ADR-5 Whitelist/Blacklist as Scope-Level Property**: `listMode` on `GlobalArea`, applies to both paths and tags. Key inherits area's mode.
-  - Rationale: Simpler mental model. One toggle per area, not per rule type.
-  - Trade-offs: Cannot mix whitelist paths with blacklist tags in same area.
+- [x] **ADR-5 Whitelist/Blacklist as Independent Per-Scope Property** (v2: revised): `listMode` on `SecurityConfig` (global) and independently on each `ApiKeyConfig`. Keys do NOT inherit from global — each scope has its own toggle. When toggling, only `listMode` changes; permission booleans stay the same; display rendering inverts.
+  - Rationale: Independent listMode per scope allows 4 combinations (WL/WL, WL/BL, BL/WL, BL/BL) for flexible security patterns. Config preservation on flip prevents accidental data loss.
+  - Trade-offs: More complex enforcement logic (resolveScope per layer, AND intersection). Cannot mix whitelist paths with blacklist tags in same scope.
   - User confirmed: **Yes**
 
 ## Quality Requirements
@@ -863,20 +894,19 @@ stateDiagram-v2
 - [x] WHEN audit log exceeds maxSizeBytes, THE SYSTEM SHALL rotate files: current→.1, .1→.2, ..., delete beyond maxRetainedLogs
 
 **Permission Configuration (PRD F5, F6, F7)**
-- [x] WHEN a new global area is created, THE SYSTEM SHALL set all permissions to false and listMode to 'whitelist'
-- [x] THE SYSTEM SHALL render a 4×4 permission matrix (Notes, Frontmatter, Dataview, Files × C, R, U, D) for each path entry
-- [x] WHEN the user toggles listMode, THE SYSTEM SHALL update the inline description text to reflect current semantics
+- [x] WHEN a new path is added to global security, THE SYSTEM SHALL set all its permissions to false (default-deny) and the global listMode defaults to 'whitelist'
+- [x] THE SYSTEM SHALL render a 4×4 permission matrix (Notes, Frontmatter, Dataview, Files × C, R, U, D) per path entry (not shared across paths)
+- [x] WHEN the user toggles listMode, THE SYSTEM SHALL update only the listMode field; per-path permission booleans SHALL NOT change; display rendering SHALL invert (whitelist true=checkmark, blacklist true=empty; whitelist false=empty, blacklist false=X cross)
 - [x] WHEN a scope is in blacklist mode with zero rules, THE SYSTEM SHALL display a warning: "Blacklist with no rules grants full access"
-- [x] WHEN a key is assigned to an area, THE SYSTEM SHALL show the area's list mode as a read-only label and allow the user to narrow (but not expand) the area's permissions
 - [x] WHEN the user adds a tag, THE SYSTEM SHALL normalize it (strip `#`, trim) and display with `#` prefix
 - [x] THE SYSTEM SHALL display tag permissions as Read-only (fixed, no CUD toggles)
 - [x] WHEN a tag includes `/*` suffix, THE SYSTEM SHALL match all descendant tags via prefix matching
 
 **API Key Management (PRD F8, F9)**
 - [x] WHEN the user clicks "Delete Key", THE SYSTEM SHALL show a confirmation dialog with default selection on Cancel
-- [x] WHEN the user clicks "Regenerate Key", THE SYSTEM SHALL replace the key secret, preserve all assignments, and display the new key
-- [x] WHILE a key is assigned to an area, THE SYSTEM SHALL constrain key permissions to the area's maximum (disabled dots for disallowed operations)
-- [x] WHEN a global area removes a permission, THE SYSTEM SHALL automatically revoke exceeding key permissions on next render
+- [x] WHEN the user clicks "Regenerate Key", THE SYSTEM SHALL replace the key secret, preserve all scope configuration, and display the new key
+- [x] THE SYSTEM SHALL constrain key per-path permissions to the global maximum for the same path (disabled/greyed-out dots at 0.3 opacity for globally unavailable operations)
+- [x] WHEN a global path permission changes, THE SYSTEM SHALL reflect the constraint on the key's permission matrix on next render (greyed-out state, no silent data deletion)
 
 **Tab Navigation (PRD F1)**
 - [x] THE SYSTEM SHALL render a horizontal tab bar with scroll buttons when tabs overflow
@@ -893,7 +923,8 @@ stateDiagram-v2
 
 - Current audit log rotation only handles single backup (log → log.1). Must be extended for N-file rotation.
 - `search-adapter.ts` `byTag()` uses per-file `metadataCache.getFileCache().tags` iteration. For the tag picker, use `app.metadataCache.getTags()` which returns the vault-wide merged tag set.
-- `filterResultsByScope()` in `mcp/tools.ts` filters search results by key's permitted paths. Verify it also applies to `byTag` results. If not, extend it — tag queries must return only files within allowed paths (tag × path intersection rule).
+- `filterResultsByScope()` in `mcp/tools.ts` filters search results by key's permitted paths. Must be updated to use the new `SecurityConfig` / `ApiKeyConfig` structure (no more area IDs). Verify it also applies to `byTag` results — tag queries must return only files within allowed paths (tag x path intersection rule).
+- The new `scope-resolver.ts` handles listMode interpretation per layer. This is new enforcement logic that must be integrated with the existing permission chain.
 
 ### Implementation Gotchas
 
@@ -905,7 +936,9 @@ stateDiagram-v2
 - **Clipboard API**: `navigator.clipboard.writeText()` returns a Promise. Must handle rejection (some browsers/Electron versions restrict clipboard access).
 - **Modal lifecycle**: Obsidian `Modal.close()` removes DOM. Don't hold references to modal DOM elements after close.
 - **CSS variable names**: Obsidian uses `--background-modifier-border` (not `--border-color`), `--text-on-accent` (not `--text-inverse`). Check Obsidian's `app.css` for exact variable names.
-- **Config merge on load**: `ConfigManager.load()` merges stored config with defaults. New fields (`listMode`, `tags`, `logDirectory`, etc.) must have defaults in `createDefaultConfig()` so old configs get them automatically.
+- **Config merge on load**: `ConfigManager.load()` merges stored config with defaults. New top-level `security` object (replacing `globalAreas`) and new fields on `ApiKeyConfig` (`listMode`, `paths`, `tags`) must have defaults in `createDefaultConfig()` so old configs get them automatically.
+- **Scope resolution**: `scope-resolver.ts` implements `resolveScope()` which interprets listMode per layer. The outer enforcement function intersects (AND) global and key results. Global is always the ceiling. See the v2 rework doc for the 4-combination matrix.
+- **Audit timestamps**: `createAuditEntry()` must emit ISO 8601 strings with local timezone offset (e.g., `2026-03-31T14:29:06.365+02:00`), not `Date.now()`. The `AuditEntry.timestamp` type is `string`, not `number`.
 
 ## Glossary
 
@@ -913,8 +946,8 @@ stateDiagram-v2
 
 | Term | Definition | Context |
 |------|------------|---------|
-| Global Area | A named permission scope defining which vault paths/tags are accessible and with what CRUD permissions | Core security building block. Areas are global — keys reference them. |
-| List Mode | Whether an area operates as whitelist (only listed items accessible) or blacklist (everything except listed items accessible) | Per-area toggle. Default: whitelist. |
+| Security Scope | A flat permission scope defining which vault paths/tags are accessible and with what per-path CRUD permissions | Two instances: one global (SecurityConfig), one per API key (on ApiKeyConfig). Replaces the former multi-area concept. |
+| List Mode | Whether a scope operates as whitelist (only listed items accessible) or blacklist (everything except listed items accessible) | Independent per scope (global and each key). Default: whitelist. |
 | Permission Matrix | 4×4 grid of resources (Notes, Frontmatter, Dataview, Files) × CRUD operations | Visual representation of DataTypePermissions |
 | Default-Deny | Security model where nothing is accessible until explicitly granted | L1 constitutional rule. All new areas/keys start with zero permissions. |
 | Tag Filter | Read-only scope narrowing by Obsidian tag. Results are intersection of tag matches AND allowed paths. | Tags don't grant access — they narrow it. |
