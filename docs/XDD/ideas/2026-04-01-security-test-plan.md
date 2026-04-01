@@ -184,44 +184,64 @@ These are the untested enforcement edge cases from the validation.
 | T10.4 | Update with stale timestamp | CONFLICT |
 | T10.5 | Update non-existent file (with expectedModified) | NOT_FOUND or CONFLICT |
 
+### T11 — Binary File Operations (file data type)
+
+The `file` adapter handles non-markdown content via base64 encoding. No live tests exist yet.
+Test vault needs binary fixtures: a small PNG and a small PDF.
+
+| # | Test | Tool | Key | Expected |
+|---|------|------|-----|----------|
+| T11.1 | Read PNG from allowed/ | kado-read `file` | Key1 | SUCCESS, content is valid base64, decodes to PNG header (89 50 4E 47) |
+| T11.2 | Read PDF from allowed/ | kado-read `file` | Key1 | SUCCESS, content decodes to PDF header (%PDF) |
+| T11.3 | Create binary file in allowed/ | kado-write `file` | Key1 | SUCCESS, base64 input → binary on disk matches |
+| T11.4 | Update binary file in allowed/ | kado-write `file` | Key1 | SUCCESS with expectedModified, content replaced |
+| T11.5 | Read binary from nope/ | kado-read `file` | Key1 | FORBIDDEN |
+| T11.6 | Read binary from allowed/ | kado-read `file` | Key2 | FORBIDDEN (no paths) |
+| T11.7 | Key3 can read binary from allowed/ | kado-read `file` | Key3 | SUCCESS (file.read=true) |
+| T11.8 | Key3 cannot write binary to allowed/ | kado-write `file` | Key3 | FORBIDDEN (file.create=false) |
+| T11.9 | Large file handling | kado-read `file` | Key1 | File > 100KB reads correctly, base64 roundtrip intact |
+
+**Test fixtures needed:**
+- `allowed/test-image.png` — small 1x1 pixel PNG (~100 bytes)
+- `allowed/test-document.pdf` — minimal valid PDF (~200 bytes)
+- `allowed/test-large.bin` — ~150KB random binary for size test
+
+**Verification:** Decode returned base64 and compare against known file hash (SHA-256).
+
+### T12 — Rate Limit Behavior
+
+| # | Test | Expected |
+|---|------|----------|
+| T12.1 | Normal response includes RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset headers | All three present, numeric values |
+| T12.2 | Burst of 250 requests triggers 429 | At least some responses are 429 |
+| T12.3 | 429 response includes Retry-After header | Numeric value > 0 |
+| T12.4 | After Retry-After period, requests succeed again | Wait for reset, then verify 200 |
+
+**Note:** MCP SDK does not handle 429 automatically. Clients must implement their own retry with Retry-After. Reference implementation in `test/live/mcp-live.test.ts` (`probeRetryAfter()` + `callTool()` retry loop).
+
+### T13 — Known Issues
+
+| # | Issue | Test | Status |
+|---|-------|------|--------|
+| T13.1 | vault.modify() truncates disk write to previous file size | read→update with content larger than original | `it.fails` — pending Obsidian forum investigation |
+| T13.2 | listTags scope filtering | Tags returned as `#tagname` paths, filtered out by glob patterns | Workaround: check `total > 0` fallback |
+
 ---
 
 ## Implementation Notes
 
-### Existing Live Tests
+### Live Test Structure
 
-`test/live/mcp-live.test.ts` uses the **old data model** (`globalAreas`, `areas`, `areaId`). Must be migrated to the new model before these tests can run.
-
-### Two-Key Testing
-
-The `.mcp.json` should have two server entries pointing to the same URL but with different Bearer tokens:
-
-```json
-{
-  "mcpServers": {
-    "kado-key1": {
-      "type": "url",
-      "url": "http://127.0.0.1:23026/mcp",
-      "headers": { "Authorization": "Bearer kado_9e1d88c0-4838-47b3-968d-855c77cf86bd" }
-    },
-    "kado-key2": {
-      "type": "url",
-      "url": "http://127.0.0.1:23026/mcp",
-      "headers": { "Authorization": "Bearer kado_e8ffd8c0-c6b6-4402-bacc-abd04bdba330" }
-    }
-  }
-}
-```
-
-The test runner reads both keys and creates two MCP clients.
+- `test/live/mcp-live.test.ts` — main security tests (T1–T7, T10–T12), runs automatically
+- `test/live/mcp-config-change.test.ts` — config change tests (T8, T9), semi-automated with polling
+- `test/fixtures/live-test-config.json` — canonical config, loaded before every run
+- `.mcp.json` — 3 server entries (`kado-key1`, `kado-key2`, `kado-key3`) with real API keys
 
 ### Config Change Tests (T8, T9)
 
-These tests modify `data.json`, require a plugin reload, and restore the original config afterward. Options:
-1. **Manual**: document as a manual test checklist
-2. **Automated**: test writes config, waits for reload, runs assertions, restores backup
-   - Risk: Obsidian may overwrite data.json on its own schedule
-   - Mitigation: backup + restore in beforeAll/afterAll
+Semi-automated: test writes modified config to `data.json`, logs instructions for plugin reload, polls with canary request until config takes effect, runs assertions, restores fixture config.
+
+Run separately: `npm run test:live -- --testPathPattern config-change`
 
 ### Cleanup
 
@@ -234,12 +254,18 @@ Write tests (T1.4, T1.5, T2.2, T2.7, T3.4, T10.x) create temp files. These must 
 
 Use filesystem `unlinkSync` in afterAll (no kado-delete tool exists).
 
-### Priority
+### Implementation Status
 
-1. **T1–T3** (core access control) — implement first, these are the foundation
-2. **T4–T5** (auth + path security) — mostly exist in current live tests, migrate
-3. **T6** (audit) — verify ISO timestamps work end-to-end
-4. **T7** (search scope) — important for data leakage prevention
-5. **T8** (config changes) — verifies runtime behavior after security changes
-6. **T9** (mixed listMode) — covers the enforcement gap from validation
-7. **T10** (write contract) — mostly exists, migrate
+| Category | Tests | Status |
+|----------|-------|--------|
+| T1–T3 | Core access control (3 keys) | ✅ Implemented |
+| T4 | Auth edge cases | ✅ Implemented |
+| T5 | Path security | ✅ Implemented |
+| T6 | Audit log | ✅ Implemented |
+| T7 | Search scope isolation | ✅ Implemented |
+| T8 | Config changes | ✅ Implemented (semi-auto) |
+| T9 | Mixed listMode | ✅ Implemented (semi-auto) |
+| T10 | Write contract | ✅ Implemented (T10.3 known issue) |
+| T11 | Binary files | ❌ Not yet — needs fixtures |
+| T12 | Rate limiting | ✅ Implemented |
+| T13 | Known issues | ✅ Documented |
