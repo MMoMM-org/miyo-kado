@@ -865,11 +865,10 @@ describe('Kado MCP Live Tests', () => {
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe(SCRATCH_CONTENT);
 		});
 
-		// KNOWN ISSUE: Obsidian truncates disk write to previous file size when new
-		// content is larger. In-memory cache (vault.read) is correct, but readFileSync
-		// on disk shows truncated content. Pending Obsidian forum investigation.
-		// Step 3 (MCP readback) passes; Step 4 (filesystem check) fails.
-		it.fails('read→update: full optimistic concurrency flow', async (ctx) => {
+		// Obsidian timing: adapter.write() → file watcher briefly overwrites with stale
+		// cache → then corrects itself within ~1-2s. MCP readback is always correct.
+		// Filesystem check needs a short delay to avoid reading during the transient state.
+		it('read→update: full optimistic concurrency flow', async (ctx) => {
 			requireReady(ctx);
 
 			// Step 1: Read to get current modified timestamp
@@ -901,7 +900,9 @@ describe('Kado MCP Live Tests', () => {
 			const verified = parseResult<{content: string}>(verifyResult);
 			expect(verified.content).toBe(updated);
 
-			// Step 4: Verify on filesystem as additional check
+			// Step 4: Verify on filesystem — delay needed because Obsidian's file watcher
+			// briefly overwrites with stale cache before correcting itself (~1-2s)
+			await new Promise(r => setTimeout(r, 2000));
 			expect(readFileSync(SCRATCH_FS_PATH, 'utf-8')).toBe(updated);
 
 			// Step 5: Verify the response includes the new timestamp

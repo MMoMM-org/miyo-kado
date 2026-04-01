@@ -9,8 +9,9 @@
 **Kado mitigation**: Server sends `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` on every response + `Retry-After` on 429. Clients must read these headers themselves. Reference implementation in `test/live/mcp-live.test.ts` (`probeRetryAfter()` + `callTool()` retry loop).
 **Future**: Consider raising/making rate limit configurable, or contributing 429 handling upstream to `@modelcontextprotocol/sdk`.
 
-## Obsidian vault.modify()/process() truncates files when new content is larger — Status: open
-**Problem**: `vault.modify()` and `vault.process()` truncate the disk file to the PREVIOUS file size when the new content is larger. Verified by hex dump: a 49-byte file updated with 52 bytes of content → disk shows exactly 49 bytes (old size), losing the final 3 bytes. The in-memory cache (`vault.read()`) has the correct full content, but `readFileSync` on disk is truncated. Root cause appears to be Obsidian using stale `file.stat.size` for `ftruncate` during the internal disk flush.
-**Workaround**: Write via `vault.adapter.write()` (correct byte count, direct to disk), then `vault.read()` to refresh Obsidian's in-memory cache from the correctly-written file. Do NOT use `vault.modify()`/`vault.process()` for the actual disk write.
-**Sources**: Obsidian Forum debounce thread, Templater #1629 race condition.
-**Related**: obsidian-mcp-tools (jacksteamdev) uses external MCP server → bypasses Obsidian's write pipeline entirely.
+## Obsidian transient disk truncation after adapter.write() — Status: understood
+**Problem**: After `vault.adapter.write()`, Obsidian's file watcher detects the change and briefly overwrites the file with stale in-memory cache content (truncated to previous file size). Within ~1-2 seconds, it corrects itself by re-reading from disk. This is a **transient** state, not permanent data loss.
+**Diagnosis**: Create "Hello" (5B) → update to "Dies ist ein komischer Test" (27B) → immediate `readFileSync` shows "Dies " (5B, old size) → after 2s delay shows full 27B content. MCP readback (`vault.read()`) is always correct immediately.
+**Workaround**: For filesystem verification in tests, add ~2s delay after writes that increase file size. MCP API consumers are unaffected (they use `vault.read()` which returns correct content instantly).
+**Kado approach**: Use `vault.adapter.write()` for disk writes (note-adapter updateNote), `vault.create()` for creates. The transient truncation resolves itself.
+**Related**: obsidian-mcp-tools (jacksteamdev) uses external MCP server → bypasses this entirely.
