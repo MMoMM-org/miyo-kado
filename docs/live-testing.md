@@ -29,7 +29,7 @@ Test Runner (vitest, node env)
 │  Test Vault: test/MiYo-Kado  │  ← fixture data in the repo
 │  ├── allowed/                │  ← full CRUD for test key
 │  ├── maybe-allowed/          │  ← partial permissions
-│  └── nope/                   │  ← denied area (no key access)
+│  └── nope/                   │  ← not in security paths (denied)
 └──────────────────────────────┘
 ```
 
@@ -164,7 +164,7 @@ If the connection is refused or times out → skip all.
  ↓ Preflight > Kado plugin: server is enabled in data.json  [skipped]
  ↓ Preflight > Kado plugin: API key has path assignments     [skipped]
  ↓ Preflight > MCP server is reachable                       [skipped]
- ↓ kado-read > reads a note from allowed area                [skipped]
+ ↓ kado-read > reads a note from allowed path                [skipped]
  ...
 ```
 
@@ -236,7 +236,7 @@ configuration before making MCP calls:
 
 ```typescript
 const data = JSON.parse(readFileSync(KADO_DATA_JSON, 'utf-8'));
-// Check: server enabled? key has areas? pathPatterns correct?
+// Check: server enabled? key has paths? security paths correct?
 ```
 
 This catches misconfiguration early and produces clear skip messages
@@ -303,30 +303,36 @@ The tests verify this contract including the stale-timestamp rejection:
 
 ```
 test/MiYo-Kado/
-├── allowed/                        ← API key has full CRUD
+├── allowed/                        ← Global: full CRUD. Key1: most CRUD (note.delete=false)
 │   ├── Project Alpha.md            ← frontmatter, inline tags, dataview fields, links
 │   ├── Meeting Notes 2026-03-28.md ← participants array, checkboxes, inline tags
 │   ├── API Design Draft.md         ← tables, code blocks
-│   └── Daily Note 2026-03-31.md    ← mood/energy/focus fields
-├── maybe-allowed/                  ← API key has read-only (note), read+update (frontmatter)
+│   ├── Daily Note 2026-03-31.md    ← mood/energy/focus fields
+│   ├── Tagging Examples.md         ← diverse inline tags, mixed dataview formats
+│   ├── sub/Nested Note.md          ← subdirectory for glob depth testing
+│   ├── test-image.png              ← binary fixture (1x1 PNG, 69 bytes)
+│   ├── test-document.pdf           ← binary fixture (minimal PDF, 298 bytes)
+│   └── test-large.bin              ← binary fixture (150KB random data)
+├── maybe-allowed/                  ← Global: CRUD except FM create/delete. Key1: restricted
 │   ├── Budget 2026.md              ← both bracket [key:: val] and list-item - key:: val fields
-│   └── Vendor Evaluation.md        ← nested frontmatter (vendors array)
-├── nope/                           ← no API key access → all operations FORBIDDEN
+│   ├── Vendor Evaluation.md        ← nested frontmatter (vendors array)
+│   └── Quarterly Review.md         ← nested metrics, tables
+├── nope/                           ← Not in global security → FORBIDDEN for all keys
 │   ├── Credentials.md              ← fake secrets for permission testing
 │   └── Incident Report.md          ← severity/timeline fields
 └── .obsidian/
     └── plugins/miyo-kado/
-        ├── main.js                 ← symlink to repo build output (main.js at repo root)
+        ├── main.js                 ← copied by npm run build (not symlink)
         └── data.json               ← plugin config (server, security, keys, audit)
 ```
 
-### Why Three Areas?
+### Why Three Directories?
 
-The three directories map to Kado's permission model:
+The three directories map to Kado's permission model (single security scope with per-path permissions):
 
-- **allowed/**: the test API key has this area assigned with full CRUD → tests read, write, search
-- **maybe-allowed/**: assigned with restricted permissions → tests partial access
-- **nope/**: not assigned to the test key at all → tests that FORBIDDEN is returned
+- **allowed/**: in global security with full CRUD. Key1 has most permissions (note.delete=false). Key3 has read-only.
+- **maybe-allowed/**: in global security with restricted FM permissions. Key1 has limited access (note read-only, FM read+update).
+- **nope/**: not in global security paths at all → denied for all keys. Tests default-deny.
 
 ### Test Data Design
 
@@ -343,85 +349,44 @@ Each test file includes multiple data types to exercise all Kado operations:
 
 ## PRD Feature Coverage
 
-Coverage map of live tests against PRD Must-Have features (F-1 through F-21).
-Validated 2026-03-31 against `docs/XDD/specs/001-kado/prd.md`.
+Coverage map of live tests against PRD Must-Have features.
+Updated 2026-04-01 after security test implementation.
 
 ### Covered
 
 | Feature | Tests |
 |---------|-------|
-| F-3 API-key auth | `Authentication > rejects invalid key`, `rejects empty auth` |
+| F-1 Default-Deny | Key2 (no paths) denied everywhere (T3.1–T3.6), `nope/` denied for all keys, root `Welcome.md` denied (T2.5) |
+| F-2 Global scope | `allowed/` and `maybe-allowed/` succeed, `nope/` and root denied. Glob depth: `allowed/sub/` works (T7.4) |
+| F-3 API-key auth | Invalid key rejected, empty auth rejected (Authentication tests) |
+| F-4 Per-key scoping | Key1 vs Key2 vs Key3 have different path access. Key3 read-only cannot write (T-Key3.4–3.5) |
+| F-5 Independent CRUD | Key1 note.create=false on maybe-allowed/ → denied (T2.1). Key1 note.update=false → denied (T2.2). Frontmatter update allowed (T1.8). |
+| F-7 Fail-fast auth | Denied requests return FORBIDDEN. Write denials verified file not created on disk (T2.6, T3.4). |
+| F-8 Audit logging | Audit log entries verified for allowed/denied reads, writes, searches. ISO 8601 timestamps. Gate names in denials. |
+| F-14 Per-key path selection | Key3 cannot read `maybe-allowed/` (not in key's paths, T-Key3.6). Key2 cannot read `allowed/` (no paths at all, T3.1). |
 | F-17 Path/dir listing | `kado-search > lists directory contents`, `respects pagination limit` |
-| F-18 Content search + chunking | `kado-search > searches by content substring`, `respects pagination limit` |
+| F-18 Content search | `kado-search > searches by content substring`, scope-filtered (T7.1, T7.2) |
 | F-19 Frontmatter/tag search | `kado-search > finds notes by tag`, `searches by frontmatter field`, `lists all tags` |
-
-### Partially Covered
-
-| Feature | What's tested | Gap |
-|---------|--------------|-----|
-| F-1 Default-Deny | `nope/` is denied | `nope/` is both globally unconfigured AND key-unassigned — can't distinguish which layer blocked. Need a path in a global area but not assigned to the test key. |
-| F-2 Global scope | `allowed/` reads succeed, `nope/` denied | No test for a path that simply isn't in any global area definition (e.g. `unlisted/test.md`). |
-| F-4 Per-key scoping | Reads from `maybe-allowed/` succeed | No test attempts a write to `maybe-allowed/` that the key-level restriction should block. The restricted side is never triggered. |
-| F-7 Fail-fast auth | Denied requests return FORBIDDEN | No side-effect verification (confirm target file wasn't touched). |
-| F-14 Per-key area selection | `nope/` denied (not assigned) | Same conflation as F-1 — can't tell global-deny from key-deny. |
-
-### Not Covered (Testable via MCP)
-
-| Feature | Why missing | What to add |
-|---------|------------|-------------|
-| F-5 Independent CRUD by data type | No test probes cross-data-type boundaries | Attempt note-write to `maybe-allowed/` (key has `note.create: false`) → expect FORBIDDEN. Attempt frontmatter-write (key has `frontmatter.update: true`) → expect success. |
-| F-6 Distinct Note/Frontmatter model | No test isolates note-vs-frontmatter permission | Same as F-5 — use `maybe-allowed/` key config which has different note vs. frontmatter permissions. |
-| F-8 Audit logging | No test reads the audit log | Read `audit.log` after allowed + denied operations. Verify entries exist, verify no note content in log. |
-| F-21 Search→Write separation | No test uses search results to attempt unauthorized write | After `byName` search, attempt `kado-write` with a returned path using a read-only key → expect FORBIDDEN. |
+| Binary files | PNG/PDF read with header verification, base64 roundtrip, create/update, permission enforcement (T11.1–T11.9) |
+| Rate limiting | RateLimit headers on every response, 429 with Retry-After on burst (Rate limiting tests) |
 
 ### Not Covered (Requires UI Testing)
 
 These features are Obsidian Settings UI screens and cannot be exercised through
-the MCP HTTP interface. They require manual QA or a separate test harness
-(Playwright/Electron against Obsidian):
+the MCP HTTP interface. They require manual QA or a separate test harness:
 
 - F-9 Global configuration screen
 - F-10 Configurable server exposure mode
-- F-11 Manage global allowed areas
+- F-11 Global security scope management
 - F-12 API key management interface
 - F-13 Per-key configuration screen
 - F-15 CRUD permission editing per data type
-- F-16 Understandable effective-permissions view
+- F-16 Effective-permissions view (integrated into constrained matrix)
 
 ### Not Covered (Non-Functional / Implementation)
 
 - F-20 Use Obsidian APIs before custom scans — implementation directive, not testable
   through black-box MCP calls. Would require white-box profiling.
-
-## SDD Spec Drift
-
-Deviations between the live tests/documentation and the Solution Design Document
-(`docs/XDD/specs/001-kado/solution.md`). Validated 2026-03-31.
-
-### `byContent` and `byFrontmatter` not in SDD SearchOperation enum
-
-The SDD's `kadoSearchSchema` defines `operation: z.enum(['byTag', 'byName', 'listDir', 'listTags'])`.
-The implementation and live tests also use `byContent` and `byFrontmatter`, which were
-added post-SDD. The `SearchOperation` type in `src/types/canonical.ts` already includes
-both, but `solution.md` has not been updated.
-
-**Action**: Update the SDD's search schema enum, or add an amendment noting the addition.
-
-### ConcurrencyGuard edge case: update on non-existent file
-
-The live tests cover stale-timestamp rejection and sequential updates, but do not test
-a write with `expectedModified` set on a file that doesn't exist. The SDD implies this
-should return `NOT_FOUND` (adapter level) or `CONFLICT` (guard level), but the exact
-behavior is unpinned.
-
-**Action**: Add a test case for this edge case to pin the contract.
-
-### Audit log path convention
-
-The SDD default example shows `".obsidian/plugins/kado/audit.log"`. The test vault
-uses `"plugins/miyo-kado/audit.log"` (relative to `vault.configDir`). This is a
-configuration value difference, not a structural mismatch — the plugin was renamed
-from `kado` to `miyo-kado`.
 
 ## Known Issues
 
