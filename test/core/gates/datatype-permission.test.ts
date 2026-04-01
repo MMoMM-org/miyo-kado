@@ -2,8 +2,8 @@
  * Behavioral tests for DataTypePermissionGate.
  *
  * Gate 3 in the permission chain — checks if the API key has the required
- * CRUD permission for the specific data type, inferred from the request type.
- * Area matching uses glob patterns from the key's area config.
+ * CRUD permission for the specific data type by intersecting the global
+ * security scope and the key's own scope (both with listMode awareness).
  *
  * All cases are exercised through the public `evaluate()` method.
  */
@@ -16,9 +16,9 @@ import type {
 	CoreSearchRequest,
 	CoreWriteRequest,
 	DataTypePermissions,
-	GlobalArea,
 	KadoConfig,
-	KeyAreaConfig,
+	PathPermission,
+	SecurityConfig,
 } from '../../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -43,60 +43,48 @@ function makeAllTruePermissions(): DataTypePermissions {
 	};
 }
 
-function makeGlobalArea(
-	id: string,
-	pathPatterns: string[],
-	permissions?: DataTypePermissions,
-): GlobalArea {
+function makePathPermission(path: string, permissions?: DataTypePermissions): PathPermission {
+	return {path, permissions: permissions ?? makeAllTruePermissions()};
+}
+
+function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig {
 	return {
-		id,
-		label: `Area ${id}`,
-		pathPatterns,
-		permissions: permissions ?? makeAllTruePermissions(),
 		listMode: 'whitelist',
+		paths: [],
 		tags: [],
+		...overrides,
 	};
 }
 
-function makeKeyAreaConfig(areaId: string, permissions?: DataTypePermissions): KeyAreaConfig {
-	return {
-		areaId,
-		permissions: permissions ?? makeAllTruePermissions(),
-		tags: [],
-	};
-}
-
-function makeApiKey(
-	id: string,
-	areas: KeyAreaConfig[],
-	overrides?: Partial<ApiKeyConfig>,
-): ApiKeyConfig {
+function makeApiKey(id: string, overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 	return {
 		id,
 		label: 'Test Key',
 		enabled: true,
 		createdAt: 1700000000000,
-		areas,
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
 		...overrides,
 	};
 }
 
-function makeConfig(globalAreas: GlobalArea[], apiKeys: ApiKeyConfig[]): KadoConfig {
+function makeConfig(security: SecurityConfig, apiKeys: ApiKeyConfig[]): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
-		globalAreas,
+		security,
 		apiKeys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
 }
 
-function makeReadRequest(path: string, operation: CoreReadRequest['operation']): CoreReadRequest {
+function makeReadRequest(path: string, operation: CoreReadRequest['operation'] = 'note'): CoreReadRequest {
 	return {apiKeyId: 'kado_test-key', operation, path};
 }
 
 function makeWriteRequest(
 	path: string,
-	operation: CoreWriteRequest['operation'],
+	operation: CoreWriteRequest['operation'] = 'note',
 	expectedModified?: number,
 ): CoreWriteRequest {
 	return {
@@ -108,24 +96,19 @@ function makeWriteRequest(
 	};
 }
 
-function makeSearchRequest(path?: string): CoreSearchRequest {
-	return {
-		apiKeyId: 'kado_test-key',
-		operation: 'byTag',
-		...(path !== undefined ? {path} : {}),
-	};
+function makeSearchRequest(): CoreSearchRequest {
+	return {apiKeyId: 'kado_test-key', operation: 'byTag'};
 }
 
-// ---------------------------------------------------------------------------
-// Shared test config helpers
-// ---------------------------------------------------------------------------
-
-/** Returns a config with one area covering 'projects/**', key has full permissions. */
-function makeStandardConfig(keyPermissions?: DataTypePermissions): KadoConfig {
-	const globalArea = makeGlobalArea('area-1', ['projects/**']);
-	const keyArea = makeKeyAreaConfig('area-1', keyPermissions);
-	const apiKey = makeApiKey('kado_test-key', [keyArea]);
-	return makeConfig([globalArea], [apiKey]);
+/** Returns a config where both global and key scope whitelist 'projects/**' with full permissions. */
+function makeStandardWhitelistConfig(keyPermissions?: DataTypePermissions): KadoConfig {
+	const security = makeSecurityConfig({
+		paths: [makePathPermission('projects/**')],
+	});
+	const key = makeApiKey('kado_test-key', {
+		paths: [makePathPermission('projects/**', keyPermissions)],
+	});
+	return makeConfig(security, [key]);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,28 +122,26 @@ describe('dataTypePermissionGate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Read requests
+// Read requests — whitelist
 // ---------------------------------------------------------------------------
 
 describe('dataTypePermissionGate.evaluate() — read requests', () => {
-	it('allows a read request for note when key has note.read=true', () => {
-		const config = makeStandardConfig();
+	it('allows a read request for note when both scopes grant note.read', () => {
 		const result = dataTypePermissionGate.evaluate(
 			makeReadRequest('projects/note.md', 'note'),
-			config,
+			makeStandardWhitelistConfig(),
 		);
 		expect(result.allowed).toBe(true);
 	});
 
-	it('denies a read request for note when key has note.read=false', () => {
-		const permissions: DataTypePermissions = {
+	it('denies a read request for note when key scope has note.read=false', () => {
+		const keyPerms: DataTypePermissions = {
 			...makeAllTruePermissions(),
 			note: {create: true, read: false, update: true, delete: false},
 		};
-		const config = makeStandardConfig(permissions);
 		const result = dataTypePermissionGate.evaluate(
 			makeReadRequest('projects/note.md', 'note'),
-			config,
+			makeStandardWhitelistConfig(keyPerms),
 		);
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -169,56 +150,70 @@ describe('dataTypePermissionGate.evaluate() — read requests', () => {
 		}
 	});
 
-	it('denies a read request for file when key has file.read=false', () => {
-		const permissions: DataTypePermissions = {
+	it('denies when global scope has note.read=false regardless of key permissions', () => {
+		const globalPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+		};
+		const security = makeSecurityConfig({
+			paths: [makePathPermission('projects/**', globalPerms)],
+		});
+		const key = makeApiKey('kado_test-key', {
+			paths: [makePathPermission('projects/**')], // all true
+		});
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'note'),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
+
+	it('allows a read request for dataview-inline-field when scope grants it', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'dataview-inline-field'),
+			makeStandardWhitelistConfig(),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies a read request for file when key scope has file.read=false', () => {
+		const keyPerms: DataTypePermissions = {
 			...makeAllTruePermissions(),
 			file: {create: true, read: false, update: true, delete: false},
 		};
-		const config = makeStandardConfig(permissions);
 		const result = dataTypePermissionGate.evaluate(
 			makeReadRequest('projects/image.png', 'file'),
-			config,
+			makeStandardWhitelistConfig(keyPerms),
 		);
 		expect(result.allowed).toBe(false);
-		if (!result.allowed) {
-			expect(result.error.code).toBe('FORBIDDEN');
-			expect(result.error.gate).toBe('datatype-permission');
-		}
-	});
-
-	it('allows a read request for dataview-inline-field when key has dataviewInlineField.read=true', () => {
-		const config = makeStandardConfig();
-		const result = dataTypePermissionGate.evaluate(
-			makeReadRequest('projects/note.md', 'dataview-inline-field'),
-			config,
-		);
-		expect(result.allowed).toBe(true);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Write requests (create vs update)
+// Write requests — create vs update
 // ---------------------------------------------------------------------------
 
 describe('dataTypePermissionGate.evaluate() — write requests', () => {
-	it('allows a create request for frontmatter when key has frontmatter.create=true', () => {
-		const config = makeStandardConfig();
+	it('allows a create request when both scopes grant frontmatter.create', () => {
 		const result = dataTypePermissionGate.evaluate(
 			makeWriteRequest('projects/note.md', 'frontmatter'),
-			config,
+			makeStandardWhitelistConfig(),
 		);
 		expect(result.allowed).toBe(true);
 	});
 
-	it('denies an update request for frontmatter when key has frontmatter.update=false', () => {
-		const permissions: DataTypePermissions = {
+	it('denies an update request when key scope has frontmatter.update=false', () => {
+		const keyPerms: DataTypePermissions = {
 			...makeAllTruePermissions(),
 			frontmatter: {create: true, read: true, update: false, delete: false},
 		};
-		const config = makeStandardConfig(permissions);
 		const result = dataTypePermissionGate.evaluate(
 			makeWriteRequest('projects/note.md', 'frontmatter', 1700000000000),
-			config,
+			makeStandardWhitelistConfig(keyPerms),
 		);
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -228,27 +223,32 @@ describe('dataTypePermissionGate.evaluate() — write requests', () => {
 	});
 
 	it('uses create action when expectedModified is absent', () => {
-		const permissions: DataTypePermissions = {
+		const keyPerms: DataTypePermissions = {
 			...makeAllFalsePermissions(),
 			note: {create: true, read: false, update: false, delete: false},
 		};
-		const config = makeStandardConfig(permissions);
+		const globalPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+		};
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**', globalPerms)]});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('projects/**', keyPerms)]});
 		const result = dataTypePermissionGate.evaluate(
 			makeWriteRequest('projects/note.md', 'note'),
-			config,
+			makeConfig(security, [key]),
 		);
 		expect(result.allowed).toBe(true);
 	});
 
 	it('uses update action when expectedModified is present', () => {
-		const permissions: DataTypePermissions = {
+		const keyPerms: DataTypePermissions = {
 			...makeAllFalsePermissions(),
 			note: {create: true, read: false, update: false, delete: false},
 		};
-		const config = makeStandardConfig(permissions);
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('projects/**', keyPerms)]});
 		const result = dataTypePermissionGate.evaluate(
 			makeWriteRequest('projects/note.md', 'note', 1700000000000),
-			config,
+			makeConfig(security, [key]),
 		);
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -263,24 +263,93 @@ describe('dataTypePermissionGate.evaluate() — write requests', () => {
 // ---------------------------------------------------------------------------
 
 describe('dataTypePermissionGate.evaluate() — search requests', () => {
-	it('allows a search request when key has note.read=true', () => {
-		const config = makeStandardConfig();
-		const result = dataTypePermissionGate.evaluate(makeSearchRequest(), config);
+	it('allows a search request when both scopes grant note.read (whitelist with paths)', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeSearchRequest(),
+			makeStandardWhitelistConfig(),
+		);
 		expect(result.allowed).toBe(true);
 	});
 
-	it('denies a search request when key has note.read=false', () => {
-		const permissions: DataTypePermissions = {
+	it('denies a search request when key whitelist has no paths granting note.read', () => {
+		const keyPerms: DataTypePermissions = {
 			...makeAllTruePermissions(),
 			note: {create: true, read: false, update: true, delete: false},
 		};
-		// Search uses first matching key area; use a config with all areas matching
-		const globalArea = makeGlobalArea('area-1', ['projects/**']);
-		const keyArea = makeKeyAreaConfig('area-1', permissions);
-		const apiKey = makeApiKey('kado_test-key', [keyArea]);
-		const config = makeConfig([globalArea], [apiKey]);
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('projects/**', keyPerms)]});
+		const result = dataTypePermissionGate.evaluate(
+			makeSearchRequest(),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
 
-		const result = dataTypePermissionGate.evaluate(makeSearchRequest(), config);
+	it('allows a search request when both scopes are blacklists (full access)', () => {
+		const security = makeSecurityConfig({listMode: 'blacklist', paths: []});
+		const key = makeApiKey('kado_test-key', {listMode: 'blacklist', paths: []});
+		const result = dataTypePermissionGate.evaluate(
+			makeSearchRequest(),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies a search request when global whitelist has no paths (empty whitelist = no access)', () => {
+		const security = makeSecurityConfig({listMode: 'whitelist', paths: []});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('projects/**')]});
+		const result = dataTypePermissionGate.evaluate(
+			makeSearchRequest(),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Scope exclusion edge cases
+// ---------------------------------------------------------------------------
+
+describe('dataTypePermissionGate.evaluate() — scope exclusion', () => {
+	it('denies when whitelist key scope has no paths matching the request path', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('archive/**')]});
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'note'),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
+
+	it('denies when global whitelist scope has no paths matching the request path', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('archive/**')]});
+		const key = makeApiKey('kado_test-key', {paths: [makePathPermission('projects/**')]});
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'note'),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
+
+	it('denies when api key is not found', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const key = makeApiKey('kado_other-key', {paths: [makePathPermission('projects/**')]});
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'note'),
+			makeConfig(security, [key]),
+		);
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
 			expect(result.error.code).toBe('FORBIDDEN');
@@ -290,37 +359,40 @@ describe('dataTypePermissionGate.evaluate() — search requests', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Area permission edge cases
+// Blacklist interaction with permissions
 // ---------------------------------------------------------------------------
 
-describe('dataTypePermissionGate.evaluate() — area permission edge cases', () => {
-	it('denies when key has area but all permissions are false', () => {
-		const config = makeStandardConfig(makeAllFalsePermissions());
+describe('dataTypePermissionGate.evaluate() — blacklist permission inversion', () => {
+	it('blocks read on a blacklisted path when entry permission has note.read=true (inverted to false)', () => {
+		// Global blacklists 'private/**' with note.read=true → inverted = note.read=false
+		const blockPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: false, read: true, update: false, delete: false},
+		};
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**', blockPerms)],
+		});
+		// Key has full blacklist (no paths = full access from key side)
+		const key = makeApiKey('kado_test-key', {listMode: 'blacklist', paths: []});
 		const result = dataTypePermissionGate.evaluate(
-			makeReadRequest('projects/note.md', 'note'),
-			config,
+			makeReadRequest('private/note.md', 'note'),
+			makeConfig(security, [key]),
 		);
+		// global inverted: note.read = false → effective note.read = false
 		expect(result.allowed).toBe(false);
-		if (!result.allowed) {
-			expect(result.error.code).toBe('FORBIDDEN');
-			expect(result.error.gate).toBe('datatype-permission');
-		}
 	});
 
-	it('denies when no global area matches the request path', () => {
-		const globalArea = makeGlobalArea('area-1', ['archive/**']);
-		const keyArea = makeKeyAreaConfig('area-1');
-		const apiKey = makeApiKey('kado_test-key', [keyArea]);
-		const config = makeConfig([globalArea], [apiKey]);
-
+	it('allows read on a non-blacklisted path when blacklist has other paths', () => {
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const key = makeApiKey('kado_test-key', {listMode: 'blacklist', paths: []});
 		const result = dataTypePermissionGate.evaluate(
 			makeReadRequest('projects/note.md', 'note'),
-			config,
+			makeConfig(security, [key]),
 		);
-		expect(result.allowed).toBe(false);
-		if (!result.allowed) {
-			expect(result.error.code).toBe('FORBIDDEN');
-			expect(result.error.gate).toBe('datatype-permission');
-		}
+		expect(result.allowed).toBe(true);
 	});
 });

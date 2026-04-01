@@ -19,6 +19,8 @@ import type {
 	CoreError,
 	PermissionGate,
 	KadoConfig,
+	ApiKeyConfig,
+	SecurityConfig,
 } from '../../src/types/canonical';
 import {createDefaultConfig} from '../../src/types/canonical';
 import type {ConfigManager} from '../../src/core/config-manager';
@@ -99,6 +101,37 @@ function makeCoreError(overrides?: Partial<CoreError>): CoreError {
 	return {
 		code: 'FORBIDDEN',
 		message: 'Access denied',
+		...overrides,
+	};
+}
+
+function makeReadPermissions() {
+	return {
+		note: {create: false, read: true, update: false, delete: false},
+		frontmatter: {create: false, read: true, update: false, delete: false},
+		file: {create: false, read: true, update: false, delete: false},
+		dataviewInlineField: {create: false, read: true, update: false, delete: false},
+	};
+}
+
+function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig {
+	return {
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
+		...overrides,
+	};
+}
+
+function makeApiKey(id: string, overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
+	return {
+		id,
+		label: 'Test Key',
+		enabled: true,
+		createdAt: 1000,
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
 		...overrides,
 	};
 }
@@ -361,9 +394,10 @@ describe('kado-search handler', () => {
 	it('routes the search request and returns mapped search result', async () => {
 		const searchResult = makeSearchResult();
 		const router = vi.fn(async () => searchResult);
+		const security = makeSecurityConfig({paths: [{path: 'notes/**', permissions: makeReadPermissions()}]});
 		const config: Partial<KadoConfig> = {
-			globalAreas: [{id: 'notes', label: 'Notes', pathPatterns: ['notes/**'], permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
-			apiKeys: [{id: 'kado_test-key', label: 'k', enabled: true, createdAt: 1, areas: [{areaId: 'notes', permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}]}],
+			security,
+			apiKeys: [makeApiKey('kado_test-key', {paths: [{path: 'notes/**', permissions: makeReadPermissions()}]})],
 		};
 		const handler = getSearchHandler(makeDeps({router, configManager: makeConfigManager(config)}));
 
@@ -406,19 +440,17 @@ describe('kado-search handler', () => {
 		expect(result.content[0].text).toContain('VALIDATION_ERROR');
 	});
 
-	it('filters search results to only include paths within the key permitted areas', async () => {
+	it('filters search results to only include paths within the key permitted scope', async () => {
+		const security = makeSecurityConfig({
+			listMode: 'whitelist',
+			paths: [{path: 'projects/**', permissions: makeReadPermissions()}],
+		});
 		const config: Partial<KadoConfig> = {
-			globalAreas: [
-				{id: 'projects', label: 'Projects', pathPatterns: ['projects/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? makeDeps().configManager.getConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
-			],
+			security,
 			apiKeys: [
-				{
-					id: 'kado_test-key',
-					label: 'Test',
-					enabled: true,
-					createdAt: 1000,
-					areas: [{areaId: 'projects', permissions: {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
-				},
+				makeApiKey('kado_test-key', {
+					paths: [{path: 'projects/**', permissions: makeReadPermissions()}],
+				}),
 			],
 		};
 		const searchResult = makeSearchResult({
@@ -429,10 +461,7 @@ describe('kado-search handler', () => {
 			],
 		});
 		const router = vi.fn(async () => searchResult);
-		const deps = makeDeps({
-			router,
-			configManager: makeConfigManager(config),
-		});
+		const deps = makeDeps({router, configManager: makeConfigManager(config)});
 		const handler = getSearchHandler(deps);
 
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
@@ -446,11 +475,11 @@ describe('kado-search handler', () => {
 });
 
 // ---------------------------------------------------------------------------
-// filterResultsByScope — C3 scope filtering
+// filterResultsByScope — scope filtering
 // ---------------------------------------------------------------------------
 
 describe('filterResultsByScope()', () => {
-	function makeConfig(overrides?: Partial<KadoConfig>): KadoConfig {
+	function makeFullConfig(overrides?: Partial<KadoConfig>): KadoConfig {
 		return {...createDefaultConfig(), ...overrides};
 	}
 
@@ -458,10 +487,10 @@ describe('filterResultsByScope()', () => {
 		return paths.map((p) => ({path: p, name: p.split('/').pop()!, created: 1000, modified: 2000, size: 10}));
 	}
 
-	it('returns only items matching the key permitted area patterns', () => {
-		const config = makeConfig({
-			globalAreas: [{id: 'docs', label: 'Docs', pathPatterns: ['docs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}],
-			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: [{areaId: 'docs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}}]}],
+	it('returns only items matching both global and key whitelist patterns', () => {
+		const config = makeFullConfig({
+			security: makeSecurityConfig({paths: [{path: 'docs/**', permissions: makeReadPermissions()}]}),
+			apiKeys: [makeApiKey('key-1', {paths: [{path: 'docs/**', permissions: makeReadPermissions()}]})],
 		});
 
 		const items = makeItems('docs/readme.md', 'secret/passwd.md', 'docs/guide.md');
@@ -471,9 +500,10 @@ describe('filterResultsByScope()', () => {
 		expect(filtered.map((i) => i.path)).toEqual(['docs/readme.md', 'docs/guide.md']);
 	});
 
-	it('returns empty array when the key has no areas', () => {
-		const config = makeConfig({
-			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: []}],
+	it('returns empty array when the key has no whitelist paths (empty whitelist = no access)', () => {
+		const config = makeFullConfig({
+			security: makeSecurityConfig({paths: [{path: 'docs/**', permissions: makeReadPermissions()}]}),
+			apiKeys: [makeApiKey('key-1', {listMode: 'whitelist', paths: []})],
 		});
 		const items = makeItems('docs/readme.md');
 		const filtered = filterResultsByScope(items, 'key-1', config);
@@ -482,23 +512,25 @@ describe('filterResultsByScope()', () => {
 	});
 
 	it('returns empty array when the key is unknown', () => {
-		const config = makeConfig();
+		const config = makeFullConfig();
 		const items = makeItems('docs/readme.md');
 		const filtered = filterResultsByScope(items, 'unknown-key', config);
 
 		expect(filtered).toHaveLength(0);
 	});
 
-	it('supports multiple areas on a single key', () => {
-		const config = makeConfig({
-			globalAreas: [
-				{id: 'docs', label: 'Docs', pathPatterns: ['docs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
-				{id: 'logs', label: 'Logs', pathPatterns: ['logs/**'], permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
+	it('returns items matching either of multiple key whitelist path patterns', () => {
+		const config = makeFullConfig({
+			security: makeSecurityConfig({listMode: 'blacklist', paths: []}),
+			apiKeys: [
+				makeApiKey('key-1', {
+					listMode: 'whitelist',
+					paths: [
+						{path: 'docs/**', permissions: makeReadPermissions()},
+						{path: 'logs/**', permissions: makeReadPermissions()},
+					],
+				}),
 			],
-			apiKeys: [{id: 'key-1', label: 'k', enabled: true, createdAt: 1, areas: [
-				{areaId: 'docs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
-				{areaId: 'logs', permissions: createDefaultConfig().globalAreas[0]?.permissions ?? {note: {create: false, read: true, update: false, delete: false}, frontmatter: {create: false, read: true, update: false, delete: false}, file: {create: false, read: true, update: false, delete: false}, dataviewInlineField: {create: false, read: true, update: false, delete: false}}},
-			]}],
 		});
 
 		const items = makeItems('docs/a.md', 'logs/b.log', 'secret/c.md');
@@ -506,5 +538,39 @@ describe('filterResultsByScope()', () => {
 
 		expect(filtered).toHaveLength(2);
 		expect(filtered.map((i) => i.path)).toEqual(['docs/a.md', 'logs/b.log']);
+	});
+
+	it('excludes items matching a global blacklist pattern', () => {
+		const config = makeFullConfig({
+			security: makeSecurityConfig({
+				listMode: 'blacklist',
+				paths: [{path: 'private/**', permissions: makeReadPermissions()}],
+			}),
+			apiKeys: [makeApiKey('key-1', {listMode: 'blacklist', paths: []})],
+		});
+
+		const items = makeItems('projects/a.md', 'private/secret.md', 'projects/b.md');
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(2);
+		expect(filtered.map((i) => i.path)).toEqual(['projects/a.md', 'projects/b.md']);
+	});
+
+	it('excludes items matching a key blacklist pattern', () => {
+		const config = makeFullConfig({
+			security: makeSecurityConfig({listMode: 'blacklist', paths: []}),
+			apiKeys: [
+				makeApiKey('key-1', {
+					listMode: 'blacklist',
+					paths: [{path: 'restricted/**', permissions: makeReadPermissions()}],
+				}),
+			],
+		});
+
+		const items = makeItems('projects/a.md', 'restricted/secret.md');
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].path).toBe('projects/a.md');
 	});
 });

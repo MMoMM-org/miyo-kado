@@ -26,12 +26,16 @@ export class KadoSettingsTab extends PluginSettingTab {
 		containerEl.classList.add('kado-settings');
 
 		// Version header
+		const manifest = this.plugin.manifest as typeof this.plugin.manifest & {authorUrl?: string};
+		const rawAuthor = manifest.author ?? '';
+		const authorName = (rawAuthor.split('<')[0] ?? rawAuthor).trim();
 		const header = containerEl.createDiv({cls: 'kado-version-header'});
-		header.createSpan({text: `Kado v${this.plugin.manifest.version} — `});
-		header.createEl('a', {
-			text: 'Documentation',
-			href: 'https://github.com/MiYo-org/kado',
-		});
+		header.createSpan({text: `${manifest.name} `, cls: 'kado-plugin-name'});
+		header.createSpan({text: `v${manifest.version}`});
+		header.createSpan({text: ' · ', cls: 'kado-header-sep'});
+		header.createEl('a', {text: authorName, href: manifest.authorUrl ?? 'https://www.mmomm.org'});
+		header.createSpan({text: ' · ', cls: 'kado-header-sep'});
+		header.createEl('a', {text: 'Documentation', href: 'https://github.com/MMoMM-org/miyo-kado'});
 
 		// Tab bar
 		const config = this.plugin.configManager.getConfig();

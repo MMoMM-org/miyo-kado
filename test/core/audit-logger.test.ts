@@ -40,7 +40,7 @@ function makeDeps(overrides?: {size?: number}) {
 
 function makeEntry(overrides?: Partial<AuditEntry>): AuditEntry {
 	return {
-		timestamp: 1700000000000,
+		timestamp: '2023-11-14T22:13:20.000+00:00',
 		apiKeyId: 'kado_test-key',
 		operation: 'read',
 		dataType: 'note',
@@ -231,8 +231,8 @@ describe('createAuditEntry() factory', () => {
 			decision: 'allowed',
 		});
 
-		expect(typeof entry.timestamp).toBe('number');
-		expect(entry.timestamp).toBeGreaterThan(0);
+		expect(typeof entry.timestamp).toBe('string');
+		expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/);
 		expect(entry.apiKeyId).toBe('kado_abc');
 		expect(entry.operation).toBe('write');
 		expect(entry.decision).toBe('allowed');

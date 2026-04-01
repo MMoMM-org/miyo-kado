@@ -101,9 +101,11 @@ describe('createDefaultConfig', () => {
 		expect(config.server.port).toBe(23026);
 	});
 
-	it('returns empty globalAreas and apiKeys arrays', () => {
+	it('returns a security config with empty paths and tags, and empty apiKeys array', () => {
 		const config = createDefaultConfig();
-		expect(config.globalAreas).toEqual([]);
+		expect(config.security.listMode).toBe('whitelist');
+		expect(config.security.paths).toEqual([]);
+		expect(config.security.tags).toEqual([]);
 		expect(config.apiKeys).toEqual([]);
 	});
 
@@ -119,7 +121,7 @@ describe('createDefaultConfig', () => {
 	it('produces independent objects on each call', () => {
 		const a = createDefaultConfig();
 		const b = createDefaultConfig();
-		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, areas: []});
+		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, listMode: 'whitelist', paths: [], tags: []});
 		expect(b.apiKeys).toHaveLength(0);
 	});
 });

@@ -8,7 +8,7 @@ import {App} from 'obsidian';
 import KadoPlugin from '../src/main';
 import {KadoSettingsTab} from '../src/settings/SettingsTab';
 import {ConfigManager} from '../src/core/config-manager';
-import {createDefaultConfig, createDefaultPermissions} from '../src/types/canonical';
+import {createDefaultConfig} from '../src/types/canonical';
 import type {KadoConfig} from '../src/types/canonical';
 
 /** Factory: creates a fully wired KadoSettingsTab with controllable config. */
@@ -30,7 +30,7 @@ const getMockTab = (configOverrides?: Partial<KadoConfig>): {
 	plugin.saveSettings = vi.fn(async () => {});
 
 	// Mock manifest for version display
-	(plugin as unknown as {manifest: {version: string}}).manifest = {version: '1.0.0-test'};
+	(plugin as unknown as {manifest: {name: string; version: string}}).manifest = {name: 'Kado', version: '1.0.0-test'};
 
 	// Mock mcpServer
 	plugin.mcpServer = {
@@ -128,19 +128,6 @@ describe('KadoSettingsTab', () => {
 			const beforeCount = configManager.getConfig().apiKeys.length;
 			configManager.generateApiKey('New Key');
 			expect(configManager.getConfig().apiKeys.length).toBe(beforeCount + 1);
-		});
-
-		it('adds a new global area via configManager', () => {
-			const {configManager} = getMockTab();
-			configManager.addGlobalArea({
-				id: crypto.randomUUID(),
-				label: 'Test',
-				pathPatterns: [],
-				permissions: createDefaultPermissions(),
-				listMode: 'whitelist',
-				tags: [],
-			});
-			expect(configManager.getConfig().globalAreas.length).toBe(1);
 		});
 
 		it('revokes a key via configManager', () => {

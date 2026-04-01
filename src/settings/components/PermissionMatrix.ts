@@ -7,7 +7,7 @@
  * - Read-only mode: all dots non-interactive (for effective permissions)
  */
 
-import type {DataTypePermissions} from '../../types/canonical';
+import type {DataTypePermissions, ListMode} from '../../types/canonical';
 
 const RESOURCES = ['note', 'frontmatter', 'dataviewInlineField', 'file'] as const;
 type ResourceKey = typeof RESOURCES[number];
@@ -28,8 +28,25 @@ export interface PermissionMatrixOptions {
 	maxPermissions?: DataTypePermissions;
 	/** When true, all dots are non-interactive. */
 	readOnly?: boolean;
+	/**
+	 * Controls dot display meaning:
+	 * - 'whitelist' (default): true → checkmark, false → empty
+	 * - 'blacklist': true → empty (not blocked), false → red X (blocked)
+	 */
+	listMode?: ListMode;
 	/** Called when any permission changes. */
 	onChange: () => void;
+}
+
+function buildDotClass(isOn: boolean, isAllowed: boolean, isBlacklist: boolean): string {
+	if (!isAllowed) {
+		const stateClass = isBlacklist ? (isOn ? '' : ' is-blocked') : (isOn ? ' is-active' : '');
+		return `kado-dot is-disabled${stateClass}`;
+	}
+	if (isBlacklist) {
+		return isOn ? 'kado-dot' : 'kado-dot is-blocked';
+	}
+	return isOn ? 'kado-dot is-active' : 'kado-dot';
 }
 
 export function renderPermissionMatrix(
@@ -58,9 +75,14 @@ export function renderPermissionMatrix(
 			const cell = row.createDiv({cls: 'kado-perm-cell'});
 			const isOn = flags[op];
 			const isAllowed = !maxFlags || maxFlags[op];
+			const isBlacklist = options.listMode === 'blacklist';
+
+			// In blacklist mode: true → empty (not blocked), false → is-blocked (X)
+			// In whitelist mode: true → is-active (checkmark), false → empty
+			const dotClass = buildDotClass(isOn, isAllowed, isBlacklist);
 
 			const dot = cell.createDiv({
-				cls: `kado-dot${isOn ? ' is-active' : ''}${!isAllowed ? ' is-disabled' : ''}`,
+				cls: dotClass,
 				title: `${op} — ${RESOURCE_LABELS[resource]}`,
 			});
 			dot.setAttribute('role', 'checkbox');
@@ -70,7 +92,7 @@ export function renderPermissionMatrix(
 			if (!options.readOnly && isAllowed) {
 				const toggle = (): void => {
 					flags[op] = !flags[op];
-					dot.toggleClass('is-active', flags[op]);
+					dot.className = buildDotClass(flags[op], true, isBlacklist);
 					dot.setAttribute('aria-checked', String(flags[op]));
 					options.onChange();
 				};

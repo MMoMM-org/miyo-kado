@@ -3,31 +3,27 @@
  *
  * Tests cover: default config shape, merging stored data with defaults,
  * null/undefined load inputs, save callback invocation, API key generation
- * (kado_ prefix + UUID format), key revocation, global area add/remove,
- * key lookup by ID, and round-trip save→load fidelity.
+ * (kado_ prefix + UUID format), key revocation, key lookup by ID, and
+ * round-trip save→load fidelity.
  */
 
 import {describe, it, expect, vi} from 'vitest';
 import {ConfigManager} from '../../src/core/config-manager';
-import type {KadoConfig, GlobalArea, ApiKeyConfig} from '../../src/types/canonical';
+import type {KadoConfig, ApiKeyConfig, PathPermission} from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
 // Factories
 // ---------------------------------------------------------------------------
 
-function makeArea(overrides?: Partial<GlobalArea>): GlobalArea {
+function makePathPermission(overrides?: Partial<PathPermission>): PathPermission {
 	return {
-		id: 'area-1',
-		label: 'Projects',
-		pathPatterns: ['projects/**'],
+		path: 'projects/**',
 		permissions: {
 			note: {create: true, read: true, update: false, delete: false},
 			frontmatter: {create: false, read: true, update: false, delete: false},
 			file: {create: false, read: false, update: false, delete: false},
 			dataviewInlineField: {create: false, read: false, update: false, delete: false},
 		},
-		listMode: 'whitelist',
-		tags: [],
 		...overrides,
 	};
 }
@@ -47,10 +43,11 @@ function makeConfigManager(stored?: unknown): {
 // ---------------------------------------------------------------------------
 
 describe('ConfigManager default config', () => {
-	it('returns a valid KadoConfig with empty areas and keys before load', () => {
+	it('returns a valid KadoConfig with empty security paths and no api keys before load', () => {
 		const {manager} = makeConfigManager();
 		const config = manager.getConfig();
-		expect(config.globalAreas).toEqual([]);
+		expect(config.security.paths).toEqual([]);
+		expect(config.security.tags).toEqual([]);
 		expect(config.apiKeys).toEqual([]);
 	});
 
@@ -78,7 +75,7 @@ describe('ConfigManager.load()', () => {
 		expect(config.server.host).toBe('0.0.0.0');
 		expect(config.server.port).toBe(9999);
 		// Fields not in stored data still get defaults
-		expect(config.globalAreas).toEqual([]);
+		expect(config.security.paths).toEqual([]);
 		expect(config.audit.enabled).toBe(true);
 	});
 
@@ -87,7 +84,7 @@ describe('ConfigManager.load()', () => {
 		await manager.load();
 		const config = manager.getConfig();
 		expect(config.server.enabled).toBe(false);
-		expect(config.globalAreas).toEqual([]);
+		expect(config.security.paths).toEqual([]);
 		expect(config.apiKeys).toEqual([]);
 	});
 
@@ -98,7 +95,7 @@ describe('ConfigManager.load()', () => {
 		await manager.load();
 		const config = manager.getConfig();
 		expect(config.server.enabled).toBe(false);
-		expect(config.globalAreas).toEqual([]);
+		expect(config.security.paths).toEqual([]);
 	});
 
 	it('preserves stored apiKeys array through merge', async () => {
@@ -107,9 +104,11 @@ describe('ConfigManager.load()', () => {
 			label: 'Test Key',
 			enabled: true,
 			createdAt: 1700000000000,
-			areas: [],
+			listMode: 'whitelist',
+			paths: [],
+			tags: [],
 		};
-		const {manager} = makeConfigManager({apiKeys: [storedKey], globalAreas: []});
+		const {manager} = makeConfigManager({apiKeys: [storedKey], security: {listMode: 'whitelist', paths: [], tags: []}});
 		await manager.load();
 		const config = manager.getConfig();
 		expect(config.apiKeys).toHaveLength(1);
@@ -148,10 +147,10 @@ describe('ConfigManager.save()', () => {
 
 	it('passes the updated config after mutation', async () => {
 		const {manager, saveSpy} = makeConfigManager();
-		manager.addGlobalArea(makeArea());
+		manager.generateApiKey('Mutated Key');
 		await manager.save();
 		expect(saveSpy).toHaveBeenCalledWith(
-			expect.objectContaining({globalAreas: expect.arrayContaining([expect.objectContaining({id: 'area-1'})])}),
+			expect.objectContaining({apiKeys: expect.arrayContaining([expect.objectContaining({label: 'Mutated Key'})])}),
 		);
 	});
 });
@@ -188,10 +187,12 @@ describe('ConfigManager.generateApiKey()', () => {
 		expect(key.enabled).toBe(true);
 	});
 
-	it('creates the key with empty areas array', () => {
+	it('creates the key with whitelist listMode, empty paths and tags', () => {
 		const {manager} = makeConfigManager();
 		const key = manager.generateApiKey('Client');
-		expect(key.areas).toEqual([]);
+		expect(key.listMode).toBe('whitelist');
+		expect(key.paths).toEqual([]);
+		expect(key.tags).toEqual([]);
 	});
 
 	it('adds the generated key to the config', () => {
@@ -236,50 +237,6 @@ describe('ConfigManager.revokeKey()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// addGlobalArea() / removeGlobalArea()
-// ---------------------------------------------------------------------------
-
-describe('ConfigManager.addGlobalArea()', () => {
-	it('appends the area to globalAreas', () => {
-		const {manager} = makeConfigManager();
-		const area = makeArea();
-		manager.addGlobalArea(area);
-		expect(manager.getConfig().globalAreas).toContainEqual(area);
-	});
-
-	it('allows multiple areas', () => {
-		const {manager} = makeConfigManager();
-		manager.addGlobalArea(makeArea({id: 'area-1', label: 'Projects'}));
-		manager.addGlobalArea(makeArea({id: 'area-2', label: 'Journal'}));
-		expect(manager.getConfig().globalAreas).toHaveLength(2);
-	});
-});
-
-describe('ConfigManager.removeGlobalArea()', () => {
-	it('removes the area with the matching ID', () => {
-		const {manager} = makeConfigManager();
-		const area = makeArea({id: 'area-to-remove'});
-		manager.addGlobalArea(area);
-		manager.removeGlobalArea('area-to-remove');
-		expect(manager.getConfig().globalAreas).not.toContainEqual(area);
-	});
-
-	it('leaves other areas intact', () => {
-		const {manager} = makeConfigManager();
-		manager.addGlobalArea(makeArea({id: 'keep-me'}));
-		manager.addGlobalArea(makeArea({id: 'remove-me'}));
-		manager.removeGlobalArea('remove-me');
-		expect(manager.getConfig().globalAreas).toHaveLength(1);
-		expect(manager.getConfig().globalAreas[0]?.id).toBe('keep-me');
-	});
-
-	it('does not throw for an unknown ID', () => {
-		const {manager} = makeConfigManager();
-		expect(() => manager.removeGlobalArea('ghost')).not.toThrow();
-	});
-});
-
-// ---------------------------------------------------------------------------
 // getKeyById()
 // ---------------------------------------------------------------------------
 
@@ -311,7 +268,8 @@ describe('ConfigManager round-trip save → load', () => {
 
 		// First manager: build state and save
 		const manager1 = new ConfigManager(async () => null, saveFn);
-		manager1.addGlobalArea(makeArea({id: 'rt-area'}));
+		const pathPerm = makePathPermission({path: 'rt-path/**'});
+		manager1.getConfig().security.paths.push(pathPerm);
 		manager1.generateApiKey('Round-trip key');
 		await manager1.save();
 
@@ -320,8 +278,8 @@ describe('ConfigManager round-trip save → load', () => {
 		await manager2.load();
 		const config2 = manager2.getConfig();
 
-		expect(config2.globalAreas).toHaveLength(1);
-		expect(config2.globalAreas[0]?.id).toBe('rt-area');
+		expect(config2.security.paths).toHaveLength(1);
+		expect(config2.security.paths[0]?.path).toBe('rt-path/**');
 		expect(config2.apiKeys).toHaveLength(1);
 		expect(config2.apiKeys[0]?.label).toBe('Round-trip key');
 	});

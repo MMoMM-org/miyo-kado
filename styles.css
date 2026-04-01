@@ -2,17 +2,26 @@
 
 /* Tab bar */
 .kado-settings {
-	padding: 0;
+	padding: 0 16px;
 }
 
 .kado-version-header {
-	padding: 8px 0 12px;
-	font-size: var(--font-smallest);
+	padding: 12px 0 14px 16px;
+	font-size: var(--font-small);
 	color: var(--text-muted);
 }
 
 .kado-version-header a {
 	color: var(--text-accent);
+}
+
+.kado-plugin-name {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.kado-header-sep {
+	color: var(--text-faint);
 }
 
 .kado-tab-bar {
@@ -123,6 +132,17 @@
 
 .kado-dot.is-active::after {
 	content: '\2713';
+	color: var(--text-on-accent);
+	font-size: 12px;
+}
+
+.kado-dot.is-blocked {
+	background: var(--text-error);
+	border-color: var(--text-error);
+}
+
+.kado-dot.is-blocked::after {
+	content: '\2715';
 	color: var(--text-on-accent);
 	font-size: 12px;
 }

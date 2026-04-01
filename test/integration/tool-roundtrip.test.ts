@@ -29,48 +29,49 @@ import type {KadoConfig, CoreError} from '../../src/types/canonical';
 
 /**
  * Builds a realistic config:
- *   - Global area "projects" covering projects/**
+ *   - Global security scope covering projects/**
  *     Notes: CRUD, FM: CRU, Files: R, DV: RU
- *   - API key "test-key" assigned to "projects" area
+ *   - API key "test-key" with its own path permissions
  *     Notes: CRU (no delete), FM: RU, Files: R, DV: R
  *   - Server enabled
  */
 function makeTestConfig(): KadoConfig {
 	return {
 		server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
-		globalAreas: [
-			{
-				id: 'projects',
-				label: 'Projects',
-				pathPatterns: ['projects/**'],
-				permissions: {
-					note: {create: true, read: true, update: true, delete: true},
-					frontmatter: {create: true, read: true, update: true, delete: false},
-					file: {create: false, read: true, update: false, delete: false},
-					dataviewInlineField: {create: false, read: true, update: true, delete: false},
+		security: {
+			listMode: 'whitelist',
+			paths: [
+				{
+					path: 'projects/**',
+					permissions: {
+						note: {create: true, read: true, update: true, delete: true},
+						frontmatter: {create: true, read: true, update: true, delete: false},
+						file: {create: false, read: true, update: false, delete: false},
+						dataviewInlineField: {create: false, read: true, update: true, delete: false},
+					},
 				},
-				listMode: 'whitelist' as const,
-				tags: [],
-			},
-		],
+			],
+			tags: [],
+		},
 		apiKeys: [
 			{
 				id: 'test-key',
 				label: 'Test Key',
 				enabled: true,
 				createdAt: 1000,
-				areas: [
+				listMode: 'whitelist',
+				paths: [
 					{
-						areaId: 'projects',
+						path: 'projects/**',
 						permissions: {
 							note: {create: true, read: true, update: true, delete: false},
 							frontmatter: {create: false, read: true, update: true, delete: false},
 							file: {create: false, read: true, update: false, delete: false},
 							dataviewInlineField: {create: false, read: true, update: false, delete: false},
 						},
-						tags: [],
 					},
 				],
+				tags: [],
 			},
 		],
 		audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
@@ -540,22 +541,21 @@ describe('End-to-end tool call pipeline', () => {
 			// Instead we validate by checking the gate directly via a modified config
 			// that enables a key with explicit delete=false, and verify the gate denies.
 
-			// Build a config where key explicitly lacks delete on notes
+			// Build a config where key explicitly lacks all permissions on notes
 			const deleteConfig: KadoConfig = {
 				...config,
 				apiKeys: [
 					{
 						...config.apiKeys[0]!,
-						areas: [
+						paths: [
 							{
-								areaId: 'projects',
+								path: 'projects/**',
 								permissions: {
 									note: {create: false, read: false, update: false, delete: false},
 									frontmatter: {create: false, read: false, update: false, delete: false},
 									file: {create: false, read: false, update: false, delete: false},
 									dataviewInlineField: {create: false, read: false, update: false, delete: false},
 								},
-								tags: [],
 							},
 						],
 					},

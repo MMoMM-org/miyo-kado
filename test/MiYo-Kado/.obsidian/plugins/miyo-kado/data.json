@@ -5,88 +5,82 @@
     "port": 23026,
     "connectionType": "local"
   },
-  "globalAreas": [
-    {
-      "id": "test-allowed",
-      "label": "Allowed",
-      "pathPatterns": [
-        "allowed/**"
-      ],
-      "listMode": "whitelist",
-      "tags": [],
-      "permissions": {
-        "note": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "frontmatter": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "file": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "dataviewInlineField": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
+  "security": {
+    "listMode": "whitelist",
+    "paths": [
+      {
+        "path": "allowed/**",
+        "permissions": {
+          "note": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "frontmatter": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "file": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "dataviewInlineField": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          }
+        }
+      },
+      {
+        "path": "maybe-allowed/**",
+        "permissions": {
+          "note": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "frontmatter": {
+            "create": false,
+            "read": true,
+            "update": true,
+            "delete": false
+          },
+          "file": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "dataviewInlineField": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          }
         }
       }
-    },
-    {
-      "id": "test-maybe",
-      "label": "Maybe Allowed",
-      "pathPatterns": [
-        "maybe-allowed/**"
-      ],
-      "listMode": "whitelist",
-      "tags": [],
-      "permissions": {
-        "note": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "frontmatter": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "file": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        },
-        "dataviewInlineField": {
-          "create": true,
-          "read": true,
-          "update": true,
-          "delete": true
-        }
-      }
-    }
-  ],
+    ],
+    "tags": [
+      "inlinetag/yes"
+    ]
+  },
   "apiKeys": [
     {
       "id": "kado_9e1d88c0-4838-47b3-968d-855c77cf86bd",
       "label": "Live Test",
       "enabled": true,
       "createdAt": 1774995094488,
-      "areas": [
+      "listMode": "whitelist",
+      "paths": [
         {
-          "areaId": "test-allowed",
-          "tags": [],
+          "path": "allowed/**",
           "permissions": {
             "note": {
               "create": true,
@@ -115,8 +109,7 @@
           }
         },
         {
-          "areaId": "test-maybe",
-          "tags": [],
+          "path": "maybe-allowed/**",
           "permissions": {
             "note": {
               "create": false,
@@ -144,6 +137,9 @@
             }
           }
         }
+      ],
+      "tags": [
+        "inlinetag/yes"
       ]
     }
   ],

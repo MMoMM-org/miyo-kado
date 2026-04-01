@@ -1,9 +1,9 @@
 /**
  * KeyScopeGate — Gate 2 in the Kado permission chain.
  *
- * Verifies that the request path falls within at least one area assigned to
- * the API key. The key's areas reference global areas by areaId; the path must
- * match a pathPattern in the resolved global area.
+ * Verifies that the request path falls within the API key's own security scope
+ * using the single-scope model (listMode + paths). Whitelists require a path
+ * match; blacklists deny only listed paths.
  *
  * Search requests without a path are allowed — scope filtering for search is
  * handled elsewhere.
@@ -13,7 +13,7 @@
 
 import {isCoreSearchRequest} from '../../types/canonical';
 import type {CoreRequest, GateResult, KadoConfig, PermissionGate} from '../../types/canonical';
-import {pathMatchesPatterns} from '../glob-match';
+import {resolveScope} from './scope-resolver';
 
 function forbidden(message: string): GateResult {
 	return {
@@ -31,19 +31,17 @@ export const keyScopeGate: PermissionGate = {
 		}
 
 		const key = config.apiKeys.find((k) => k.id === request.apiKeyId);
-		if (!key || key.areas.length === 0) {
-			return forbidden('API key has no areas assigned.');
+		if (!key) {
+			return forbidden('API key not found.');
 		}
 
 		const path = (request as {path?: string}).path ?? '';
 
-		for (const keyArea of key.areas) {
-			const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
-			if (globalArea && pathMatchesPatterns(path, globalArea.pathPatterns)) {
-				return {allowed: true};
-			}
+		const effective = resolveScope({listMode: key.listMode, paths: key.paths}, path);
+		if (effective === null) {
+			return forbidden('Request path is outside the key\'s permitted scope.');
 		}
 
-		return forbidden('Request path is outside the key\'s permitted areas.');
+		return {allowed: true};
 	},
 };

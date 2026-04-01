@@ -88,26 +88,26 @@ function missingAuthError(): CallToolResult {
 	return mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'});
 }
 
-/** Filters search result items to only include paths within the key's permitted areas. */
+/** Filters search result items to only include paths within the key's permitted scope. */
 export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
 	const key = config.apiKeys.find((k) => k.id === keyId);
-	if (!key || key.areas.length === 0) return [];
+	if (!key) return [];
 
-	const patterns = collectKeyPatterns(key.areas, config);
-	if (patterns.length === 0) return [];
-
-	return items.filter((item) => patterns.some((p) => matchGlob(p, item.path)));
+	return items.filter((item) => {
+		const inGlobal = isPathInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
+		const inKey = isPathInScope(item.path, key.listMode, key.paths.map((p) => p.path));
+		return inGlobal && inKey;
+	});
 }
 
-function collectKeyPatterns(areas: {areaId: string}[], config: KadoConfig): string[] {
-	const patterns: string[] = [];
-	for (const keyArea of areas) {
-		const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
-		if (globalArea) {
-			patterns.push(...globalArea.pathPatterns);
-		}
-	}
-	return patterns;
+/**
+ * Returns true when path is permitted by a whitelist/blacklist scope.
+ * Whitelist: path must match at least one listed pattern.
+ * Blacklist: path must NOT match any listed pattern.
+ */
+function isPathInScope(path: string, listMode: string, patterns: string[]): boolean {
+	const matched = patterns.some((p) => matchGlob(p, path));
+	return listMode === 'whitelist' ? matched : !matched;
 }
 
 function extractDataType(request: CoreRequest): DataType {

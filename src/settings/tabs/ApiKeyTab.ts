@@ -1,10 +1,13 @@
 /**
- * ApiKeyTab — per-key management: rename, copy, regenerate, area assignments, delete.
+ * ApiKeyTab — per-key management: rename, copy, regenerate, permissions, delete.
+ *
+ * Each key has an independent listMode and direct paths/tags constrained by the
+ * global security scope. Replaces the old area-assignment model.
  */
 
 import {Modal, Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
-import type {ApiKeyConfig, GlobalArea} from '../../types/canonical';
+import type {ApiKeyConfig, DataTypePermissions, KadoConfig, ListMode, PathPermission} from '../../types/canonical';
 import {createDefaultPermissions} from '../../types/canonical';
 import {renderPermissionMatrix} from '../components/PermissionMatrix';
 import {renderTagEntry} from '../components/TagEntry';
@@ -23,7 +26,17 @@ export function renderApiKeyTab(
 		return;
 	}
 
-	// ── Key Management ──
+	renderKeyManagement(containerEl, key, plugin, onRedisplay);
+	renderKeyPermissions(containerEl, key, plugin, onRedisplay);
+	renderDangerZone(containerEl, key, config, plugin, onSwitchTab);
+}
+
+function renderKeyManagement(
+	containerEl: HTMLElement,
+	key: ApiKeyConfig,
+	plugin: KadoPlugin,
+	onRedisplay: () => void,
+): void {
 	new Setting(containerEl).setName('Key management').setHeading();
 
 	// Rename
@@ -76,33 +89,162 @@ export function renderApiKeyTab(
 					new Notice('Key regenerated — copy the new value');
 				}).open();
 			}));
+}
 
-	// ── Area Assignments ──
-	new Setting(containerEl).setName('Area assignments').setHeading();
+function renderKeyPermissions(
+	containerEl: HTMLElement,
+	key: ApiKeyConfig,
+	plugin: KadoPlugin,
+	onRedisplay: () => void,
+): void {
+	const config = plugin.configManager.getConfig();
+	const globalSecurity = config.security;
 
-	if (config.globalAreas.length === 0) {
-		containerEl.createEl('p', {
-			text: 'No global areas defined. Create areas in the global security tab first.',
-			cls: 'setting-item-description',
+	new Setting(containerEl).setName('Permissions').setHeading();
+
+	// Access Mode toggle (independent per key)
+	const isWhitelist = key.listMode === 'whitelist';
+	const modeDesc = isWhitelist
+		? 'Only listed paths and tags are accessible for this key'
+		: 'Everything except listed paths and tags is accessible for this key';
+
+	new Setting(containerEl)
+		.setName('Access mode')
+		.setDesc(modeDesc)
+		.addToggle(toggle => toggle
+			.setValue(isWhitelist)
+			.onChange((value: boolean) => {
+				key.listMode = value ? 'whitelist' : 'blacklist';
+				void plugin.saveSettings();
+				onRedisplay();
+			}));
+
+	// ── Paths Section ──
+	containerEl.createDiv({cls: 'kado-section-label', text: 'Paths'});
+
+	const pathsContainer = containerEl.createDiv();
+
+	for (let i = 0; i < key.paths.length; i++) {
+		const keyPath = key.paths[i];
+		if (!keyPath) continue;
+		const globalPath = globalSecurity.paths.find(p => p.path === keyPath.path);
+		renderKeyPathEntry(pathsContainer, keyPath, globalPath?.permissions, key.listMode, plugin, () => {
+			key.paths.splice(i, 1);
+			void plugin.saveSettings();
+			onRedisplay();
 		});
 	}
 
-	for (const area of config.globalAreas) {
-		renderAreaAssignment(containerEl, key, area, plugin, onRedisplay);
+	// Add path — only from global paths not yet assigned to this key
+	const addPathBtn = containerEl.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
+	addPathBtn.addEventListener('click', () => {
+		renderGlobalPathPicker(containerEl, globalSecurity.paths, key, plugin, onRedisplay);
+	});
+
+	// ── Tags Section ──
+	containerEl.createDiv({cls: 'kado-section-label', text: 'Tags'});
+
+	const tagsContainer = containerEl.createDiv();
+
+	for (let i = 0; i < key.tags.length; i++) {
+		renderTagEntry(tagsContainer, key.tags[i] ?? '', {
+			app: plugin.app,
+			availableTags: globalSecurity.tags,
+			onChange: (newTag) => {
+				key.tags[i] = newTag;
+				void plugin.saveSettings();
+			},
+			onRemove: () => {
+				key.tags.splice(i, 1);
+				void plugin.saveSettings();
+				onRedisplay();
+			},
+		});
 	}
 
-	// ── Effective Permissions ──
-	if (key.areas.length > 0) {
-		new Setting(containerEl).setName('Effective permissions').setHeading();
-
-		for (const keyArea of key.areas) {
-			const globalArea = config.globalAreas.find(a => a.id === keyArea.areaId);
-			if (!globalArea) continue;
-			renderEffectivePermissions(containerEl, key, globalArea);
+	const addTagBtn = containerEl.createEl('button', {cls: 'kado-add-btn', text: '+ add tag'});
+	addTagBtn.addEventListener('click', () => {
+		if (globalSecurity.tags.length === 0) {
+			new Notice('No tags defined in global security. Add tags there first.');
+			return;
 		}
+		key.tags.push('');
+		void plugin.saveSettings();
+		onRedisplay();
+	});
+}
+
+function renderKeyPathEntry(
+	containerEl: HTMLElement,
+	keyPath: PathPermission,
+	maxPermissions: DataTypePermissions | undefined,
+	listMode: ListMode,
+	plugin: KadoPlugin,
+	onRemove: () => void,
+): void {
+	const row = containerEl.createDiv({cls: 'kado-path-entry'});
+
+	const removeBtn = row.createEl('button', {cls: 'kado-remove-btn', text: '\u2212', title: 'Remove path'});
+	removeBtn.addEventListener('click', onRemove);
+
+	// Read-only path label (user picks from global, doesn't type)
+	row.createEl('span', {
+		cls: 'kado-path-input',
+		text: keyPath.path || '(empty path)',
+	});
+
+	// Constrained permission matrix
+	const matrixContainer = row.createDiv({cls: 'kado-path-matrix'});
+	renderPermissionMatrix(matrixContainer, keyPath.permissions, {
+		maxPermissions,
+		listMode,
+		onChange: () => void plugin.saveSettings(),
+	});
+}
+
+function renderGlobalPathPicker(
+	containerEl: HTMLElement,
+	globalPaths: PathPermission[],
+	key: ApiKeyConfig,
+	plugin: KadoPlugin,
+	onRedisplay: () => void,
+): void {
+	const assignedPaths = new Set(key.paths.map(p => p.path));
+	const available = globalPaths.filter(p => !assignedPaths.has(p.path));
+
+	if (available.length === 0) {
+		new Notice('All global paths are already assigned to this key.');
+		return;
 	}
 
-	// ── Danger Zone ──
+	// Inline picker rendered below the button
+	const picker = containerEl.createDiv({cls: 'kado-picker-list'});
+	for (const globalPath of available) {
+		const item = picker.createDiv({cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
+		item.addEventListener('click', () => {
+			key.paths.push({path: globalPath.path, permissions: createDefaultPermissions()});
+			void plugin.saveSettings();
+			onRedisplay();
+		});
+	}
+
+	// Close picker on outside click
+	const closeHandler = (e: MouseEvent): void => {
+		if (!picker.contains(e.target as Node)) {
+			picker.remove();
+			document.removeEventListener('click', closeHandler);
+		}
+	};
+	setTimeout(() => { document.addEventListener('click', closeHandler); }, 0);
+}
+
+function renderDangerZone(
+	containerEl: HTMLElement,
+	key: ApiKeyConfig,
+	config: KadoConfig,
+	plugin: KadoPlugin,
+	onSwitchTab: (tab: string) => void,
+): void {
 	const dangerZone = containerEl.createDiv({cls: 'kado-danger-zone'});
 	new Setting(dangerZone)
 		.setName('Delete API key')
@@ -124,121 +266,8 @@ export function renderApiKeyTab(
 			}));
 }
 
-function renderAreaAssignment(
-	containerEl: HTMLElement,
-	key: ApiKeyConfig,
-	area: GlobalArea,
-	plugin: KadoPlugin,
-	onRedisplay: () => void,
-): void {
-	const keyArea = key.areas.find(a => a.areaId === area.id);
-	const assigned = keyArea !== undefined;
-
-	const setting = new Setting(containerEl)
-		.setName(area.label || area.id);
-
-	// Show inherited list mode as label
-	setting.descEl.createSpan({
-		cls: 'kado-inherited-label',
-		text: area.listMode === 'whitelist' ? 'Whitelist' : 'Blacklist',
-	});
-
-	setting.addToggle(toggle => toggle
-		.setValue(assigned)
-		.onChange(async (value) => {
-			if (value) {
-				key.areas.push({
-					areaId: area.id,
-					permissions: createDefaultPermissions(),
-					tags: [...area.tags],
-				});
-			} else {
-				key.areas = key.areas.filter(a => a.areaId !== area.id);
-			}
-			await plugin.saveSettings();
-			onRedisplay();
-		}));
-
-	if (keyArea) {
-		// Constrained permission matrix
-		const matrixContainer = containerEl.createDiv({cls: 'kado-area-assignment-detail'});
-		renderPermissionMatrix(matrixContainer, keyArea.permissions, {
-			maxPermissions: area.permissions,
-			onChange: () => void plugin.saveSettings(),
-		});
-
-		// Tags (filtered to global area's tags)
-		if (area.tags.length > 0) {
-			matrixContainer.createDiv({cls: 'kado-section-label', text: 'Tags'});
-
-			for (let i = 0; i < keyArea.tags.length; i++) {
-				renderTagEntry(matrixContainer, keyArea.tags[i] ?? '', {
-					app: plugin.app,
-					availableTags: area.tags,
-					onChange: (newTag) => {
-						keyArea.tags[i] = newTag;
-						void plugin.saveSettings();
-					},
-					onRemove: () => {
-						keyArea.tags.splice(i, 1);
-						void plugin.saveSettings();
-						onRedisplay();
-					},
-				});
-			}
-
-			// Only allow adding tags that exist in the global area
-			const addTagBtn = matrixContainer.createEl('button', {cls: 'kado-add-btn', text: '+ add tag'});
-			addTagBtn.addEventListener('click', () => {
-				keyArea.tags.push('');
-				void plugin.saveSettings();
-				onRedisplay();
-			});
-		}
-
-		// Blacklist warning for key when area is blacklist with zero rules
-		if (area.listMode === 'blacklist' && area.pathPatterns.length === 0 && area.tags.length === 0) {
-			containerEl.createDiv({
-				cls: 'kado-listmode-warning',
-				text: '\u26a0 This area is in blacklist mode with no rules — grants full access',
-			});
-		}
-	}
-}
-
-function renderEffectivePermissions(
-	containerEl: HTMLElement,
-	key: ApiKeyConfig,
-	globalArea: GlobalArea,
-): void {
-	const keyArea = key.areas.find(a => a.areaId === globalArea.id);
-	if (!keyArea) return;
-
-	const wrapper = containerEl.createDiv({cls: 'kado-effective-perms'});
-	const label = `${globalArea.label || globalArea.id} (${globalArea.listMode})`;
-	const paths = globalArea.pathPatterns.join(', ') || '(no paths)';
-
-	const info = wrapper.createDiv({cls: 'setting-item-description'});
-	info.createEl('strong', {text: label});
-	info.createEl('br');
-	info.createSpan({text: `Paths: ${paths}`});
-
-	// Read-only intersection matrix
-	const matrixContainer = wrapper.createDiv({cls: 'kado-effective-matrix'});
-	// Compute intersection: only show permissions that both key and area allow
-	const intersected = createDefaultPermissions();
-	const resources = ['note', 'frontmatter', 'dataviewInlineField', 'file'] as const;
-	const ops = ['create', 'read', 'update', 'delete'] as const;
-	for (const r of resources) {
-		for (const o of ops) {
-			intersected[r][o] = keyArea.permissions[r][o] && globalArea.permissions[r][o];
-		}
-	}
-	renderPermissionMatrix(matrixContainer, intersected, {readOnly: true, onChange: () => {}});
-}
-
 /** Simple confirmation modal with default = Cancel. */
-class ConfirmModal extends Modal {
+export class ConfirmModal extends Modal {
 	private readonly title: string;
 	private readonly message: string;
 	private readonly onConfirm: () => Promise<void>;

@@ -132,10 +132,21 @@ export interface DataTypePermissions {
 	dataviewInlineField: CrudFlags;
 }
 
-export interface KeyAreaConfig {
-	areaId: string;
+export type ListMode = 'whitelist' | 'blacklist';
+
+/** A single path rule with its own permission set. */
+export interface PathPermission {
+	path: string;
 	permissions: DataTypePermissions;
-	/** Subset of parent GlobalArea.tags this key can use. */
+}
+
+/** Global security scope — single flat scope replacing the old multi-area model. */
+export interface SecurityConfig {
+	/** Whether listed items are allowed (whitelist) or blocked (blacklist). Default: 'whitelist'. */
+	listMode: ListMode;
+	/** Paths with per-path permissions. */
+	paths: PathPermission[];
+	/** Tags for read-only filtering, stored without '#'. */
 	tags: string[];
 }
 
@@ -144,19 +155,11 @@ export interface ApiKeyConfig {
 	label: string;
 	enabled: boolean;
 	createdAt: number;
-	areas: KeyAreaConfig[];
-}
-
-export type ListMode = 'whitelist' | 'blacklist';
-
-export interface GlobalArea {
-	id: string;
-	label: string;
-	pathPatterns: string[];
-	permissions: DataTypePermissions;
-	/** Whether listed items are allowed (whitelist) or blocked (blacklist). Default: 'whitelist'. */
+	/** Independent whitelist/blacklist toggle for this key. */
 	listMode: ListMode;
-	/** Tags for this area, stored without '#'. */
+	/** Paths with per-path permissions, constrained by global security. */
+	paths: PathPermission[];
+	/** Subset of global security tags this key can use. */
 	tags: string[];
 }
 
@@ -183,7 +186,7 @@ export interface AuditConfig {
 
 export interface KadoConfig {
 	server: ServerConfig;
-	globalAreas: GlobalArea[];
+	security: SecurityConfig;
 	apiKeys: ApiKeyConfig[];
 	audit: AuditConfig;
 }
@@ -205,6 +208,14 @@ export function createDefaultPermissions(): DataTypePermissions {
 	};
 }
 
+export function createDefaultSecurityConfig(): SecurityConfig {
+	return {
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
+	};
+}
+
 export function createDefaultConfig(): KadoConfig {
 	return {
 		server: {
@@ -213,7 +224,7 @@ export function createDefaultConfig(): KadoConfig {
 			port: 23026,
 			connectionType: 'local',
 		},
-		globalAreas: [],
+		security: createDefaultSecurityConfig(),
 		apiKeys: [],
 		audit: {
 			enabled: true,

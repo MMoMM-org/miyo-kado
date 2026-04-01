@@ -10,9 +10,9 @@
 
 import {
 	type ApiKeyConfig,
-	type GlobalArea,
 	type KadoConfig,
 	createDefaultConfig,
+	createDefaultSecurityConfig,
 } from '../types/canonical';
 import {kadoLog} from './logger';
 
@@ -44,20 +44,19 @@ export class ConfigManager {
 			delete (mergedAudit as Record<string, unknown>)['logFilePath'];
 		}
 
-		// Ensure globalAreas have new fields (listMode, tags)
-		const areas = (partial.globalAreas ?? defaults.globalAreas).map(area => ({
-			...area,
-			listMode: area.listMode ?? 'whitelist' as const,
-			tags: area.tags ?? [],
-		}));
+		// Merge security scope — handle migration from old globalAreas to security
+		const storedSecurity = (partial as Record<string, unknown>).security as Partial<typeof defaults.security> | undefined;
+		const mergedSecurity = {
+			...createDefaultSecurityConfig(),
+			...(storedSecurity ?? {}),
+		};
 
-		// Ensure apiKeys' areas have tags field
+		// Ensure apiKeys have new flat fields (listMode, paths, tags)
 		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
 			...key,
-			areas: (key.areas ?? []).map(ka => ({
-				...ka,
-				tags: ka.tags ?? [],
-			})),
+			listMode: key.listMode ?? 'whitelist' as const,
+			paths: key.paths ?? [],
+			tags: key.tags ?? [],
 		}));
 
 		this.config = {
@@ -65,7 +64,7 @@ export class ConfigManager {
 			...partial,
 			server: {...defaults.server, ...(partial.server ?? {})},
 			audit: mergedAudit as typeof defaults.audit,
-			globalAreas: areas,
+			security: mergedSecurity,
 			apiKeys: keys,
 		};
 	}
@@ -91,7 +90,9 @@ export class ConfigManager {
 			label,
 			enabled: true,
 			createdAt: Date.now(),
-			areas: [],
+			listMode: 'whitelist',
+			paths: [],
+			tags: [],
 		};
 		this.config.apiKeys.push(key);
 		return key;
@@ -103,18 +104,6 @@ export class ConfigManager {
 		if (key !== undefined) {
 			key.enabled = false;
 		}
-	}
-
-	/** Append a global area to the config. */
-	addGlobalArea(area: GlobalArea): void {
-		this.config.globalAreas.push(area);
-	}
-
-	/** Remove the global area with the given ID. No-op for unknown IDs. */
-	removeGlobalArea(id: string): void {
-		this.config.globalAreas = this.config.globalAreas.filter(
-			(a) => a.id !== id,
-		);
 	}
 
 	/** Return the key with the given ID, or undefined if not found. */

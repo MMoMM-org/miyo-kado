@@ -1,10 +1,10 @@
 /**
  * GlobalScopeGate — Gate 1 in the Kado permission chain.
  *
- * Checks whether the request path falls within any globally defined area by
- * matching against each area's pathPatterns using glob syntax.  Default-deny:
- * if no global areas are configured, or none of their patterns match the
- * request path, the request is denied with FORBIDDEN.
+ * Checks whether the request path falls within the global security scope using
+ * the single-scope model (listMode + paths). Default-deny for whitelists: if
+ * no paths are configured, or none match, the request is denied with FORBIDDEN.
+ * Blacklists grant full access when the path is not listed.
  *
  * Search requests without a path field are allowed — scope filtering for
  * search results happens in a later gate.
@@ -14,7 +14,7 @@
 
 import type {PermissionGate, CoreRequest, KadoConfig, GateResult} from '../../types/canonical';
 import {isCoreSearchRequest} from '../../types/canonical';
-import {pathMatchesPatterns} from '../glob-match';
+import {resolveScope} from './scope-resolver';
 
 function forbidden(message: string): GateResult {
 	return {
@@ -27,7 +27,6 @@ export const globalScopeGate: PermissionGate = {
 	name: 'global-scope',
 
 	evaluate(request: CoreRequest, config: KadoConfig): GateResult {
-		// Search requests without a path bypass this gate
 		if (isCoreSearchRequest(request) && request.path === undefined) {
 			return {allowed: true};
 		}
@@ -38,12 +37,11 @@ export const globalScopeGate: PermissionGate = {
 			return {allowed: true};
 		}
 
-		for (const area of config.globalAreas) {
-			if (pathMatchesPatterns(path, area.pathPatterns)) {
-				return {allowed: true};
-			}
+		const effective = resolveScope(config.security, path);
+		if (effective === null) {
+			return forbidden('Path is not within the configured global security scope');
 		}
 
-		return forbidden('Path is not within any configured global area');
+		return {allowed: true};
 	},
 };

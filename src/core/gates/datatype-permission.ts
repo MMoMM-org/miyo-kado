@@ -8,8 +8,8 @@
  *   - CoreWriteRequest (with expectedModified) → update
  *   - CoreSearchRequest → read (search requires note read access)
  *
- * The matching area is resolved by finding the key's KeyAreaConfig whose
- * referenced global area covers the request path via glob patterns.
+ * Effective permissions are the intersection (AND) of the global security scope
+ * and the key's own scope, each resolved with their respective listMode.
  *
  * No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
@@ -25,10 +25,9 @@ import type {
 	DataTypePermissions,
 	GateResult,
 	KadoConfig,
-	KeyAreaConfig,
 	PermissionGate,
 } from '../../types/canonical';
-import {pathMatchesPatterns} from '../glob-match';
+import {resolveScope, createAllPermissions, intersectPermissions} from './scope-resolver';
 
 /** Returns a FORBIDDEN GateResult labelled with this gate. */
 function forbidden(message: string): GateResult {
@@ -50,9 +49,7 @@ function inferCrudAction(request: CoreRequest): CrudOperation {
  * Maps a DataType value to the corresponding key in DataTypePermissions.
  * The only non-trivial mapping is 'dataview-inline-field' → 'dataviewInlineField'.
  */
-function dataTypeToPermissionsKey(
-	dataType: DataType,
-): keyof DataTypePermissions {
+function dataTypeToPermissionsKey(dataType: DataType): keyof DataTypePermissions {
 	if (dataType === 'dataview-inline-field') {
 		return 'dataviewInlineField';
 	}
@@ -60,21 +57,25 @@ function dataTypeToPermissionsKey(
 }
 
 /**
- * Finds the first KeyAreaConfig whose referenced global area covers the path.
- * Returns undefined if no area matches.
+ * Resolves the effective permissions for a path by intersecting the global
+ * security scope and the key's own scope. Returns null if either scope
+ * excludes the path entirely.
  */
-function findMatchingKeyArea(
+function resolveEffectivePermissions(
 	path: string,
-	keyAreas: KeyAreaConfig[],
 	config: KadoConfig,
-): KeyAreaConfig | undefined {
-	for (const keyArea of keyAreas) {
-		const globalArea = config.globalAreas.find((a) => a.id === keyArea.areaId);
-		if (globalArea && pathMatchesPatterns(path, globalArea.pathPatterns)) {
-			return keyArea;
-		}
-	}
-	return undefined;
+	keyId: string,
+): DataTypePermissions | null {
+	const key = config.apiKeys.find((k) => k.id === keyId);
+	if (!key) return null;
+
+	const globalPerms = resolveScope(config.security, path);
+	if (globalPerms === null) return null;
+
+	const keyPerms = resolveScope({listMode: key.listMode, paths: key.paths}, path);
+	if (keyPerms === null) return null;
+
+	return intersectPermissions(globalPerms, keyPerms);
 }
 
 export const dataTypePermissionGate: PermissionGate = {
@@ -89,27 +90,63 @@ export const dataTypePermissionGate: PermissionGate = {
 		const action = inferCrudAction(request);
 
 		if (isCoreSearchRequest(request)) {
-			return evaluateSearchPermission(key.areas, action, config);
+			return evaluateSearchPermission(request.apiKeyId, action, config);
 		}
 
 		const path = (request as {path: string}).path;
 		const dataType = (request as {operation: DataType}).operation;
-		return evaluatePathPermission(path, dataType, action, key.areas, config);
+		return evaluatePathPermission(path, dataType, action, request.apiKeyId, config);
 	},
 };
 
-/** Evaluates read permission for search requests using note.read from any key area. */
+/** Evaluates read permission for search requests using note.read from the effective scope. */
 function evaluateSearchPermission(
-	keyAreas: KeyAreaConfig[],
+	keyId: string,
 	action: CrudOperation,
-	_config: KadoConfig,
+	config: KadoConfig,
 ): GateResult {
-	for (const keyArea of keyAreas) {
-		if (keyArea.permissions.note[action]) {
-			return {allowed: true};
-		}
+	const key = config.apiKeys.find((k) => k.id === keyId);
+	if (!key) return forbidden('API key not found.');
+
+	// For search (no specific path), check against any whitelisted path or
+	// use full permissions for blacklist scopes with no paths listed.
+	// Derive search-level note read permission by checking all path combinations.
+	// A key with whitelist scope needs at least one path granting note.read.
+	// A key with blacklist scope has note.read unless all paths block it.
+	const globalPerms = resolveSearchPermissions(config.security);
+	const keyPerms = resolveSearchPermissions({listMode: key.listMode, paths: key.paths});
+	const effective = intersectPermissions(globalPerms, keyPerms);
+	if (effective.note[action]) {
+		return {allowed: true};
 	}
 	return forbidden('Search requires read access to notes.');
+}
+
+/**
+ * Resolves effective permissions for search (no specific path).
+ * Whitelist with paths: union of all path permissions (any path granting access is enough).
+ * Whitelist with no paths: no access.
+ * Blacklist: full access unless all paths block it (conservatively grants full access).
+ */
+function resolveSearchPermissions(scope: {listMode: string; paths: {path: string; permissions: DataTypePermissions}[]}): DataTypePermissions {
+	if (scope.listMode === 'blacklist') {
+		return createAllPermissions();
+	}
+	// Whitelist: union across all path permissions
+	const base: DataTypePermissions = {
+		note: {create: false, read: false, update: false, delete: false},
+		frontmatter: {create: false, read: false, update: false, delete: false},
+		file: {create: false, read: false, update: false, delete: false},
+		dataviewInlineField: {create: false, read: false, update: false, delete: false},
+	};
+	for (const entry of scope.paths) {
+		const p = entry.permissions;
+		base.note.read = base.note.read || p.note.read;
+		base.note.create = base.note.create || p.note.create;
+		base.note.update = base.note.update || p.note.update;
+		base.note.delete = base.note.delete || p.note.delete;
+	}
+	return base;
 }
 
 /** Evaluates CRUD permission for path-based read/write requests. */
@@ -117,21 +154,17 @@ function evaluatePathPermission(
 	path: string,
 	dataType: DataType,
 	action: CrudOperation,
-	keyAreas: KeyAreaConfig[],
+	keyId: string,
 	config: KadoConfig,
 ): GateResult {
-	const matchedArea = findMatchingKeyArea(path, keyAreas, config);
-	if (!matchedArea) {
-		return forbidden(`Request path is not within any permitted area for this key.`);
+	const effective = resolveEffectivePermissions(path, config, keyId);
+	if (effective === null) {
+		return forbidden('Request path is not within any permitted scope.');
 	}
 
 	const permKey = dataTypeToPermissionsKey(dataType);
-	const allowed = matchedArea.permissions[permKey][action];
-
-	if (!allowed) {
-		return forbidden(
-			`Key does not have '${action}' permission for data type '${dataType}'.`,
-		);
+	if (!effective[permKey][action]) {
+		return forbidden(`Key does not have '${action}' permission for data type '${dataType}'.`);
 	}
 
 	return {allowed: true};

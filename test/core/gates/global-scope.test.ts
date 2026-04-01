@@ -1,9 +1,11 @@
 /**
  * Behavioral tests for GlobalScopeGate.
  *
- * Gate 1 in the permission chain — checks if the request path falls within
- * any globally defined area using glob pattern matching. Default-deny: if no
- * global areas exist or none match, the request is denied.
+ * Gate 1 in the permission chain — checks if the request path falls within the
+ * global security scope using the single-scope model (listMode + paths). Default-
+ * deny for whitelists: if no paths match, the request is denied. Blacklists
+ * grant scope access to all paths (including listed ones — the data type gate
+ * handles the actual permission inversion).
  *
  * All cases are exercised through the public `evaluate()` method.
  */
@@ -13,8 +15,9 @@ import {globalScopeGate} from '../../../src/core/gates/global-scope';
 import type {
 	CoreReadRequest,
 	CoreSearchRequest,
-	GlobalArea,
 	KadoConfig,
+	PathPermission,
+	SecurityConfig,
 } from '../../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -37,27 +40,31 @@ function makeSearchRequest(path?: string): CoreSearchRequest {
 	};
 }
 
-function makeGlobalArea(pathPatterns: string[], overrides?: Partial<GlobalArea>): GlobalArea {
+function makePathPermission(path: string): PathPermission {
 	return {
-		id: 'area-1',
-		label: 'Test Area',
-		pathPatterns,
+		path,
 		permissions: {
 			note: {create: true, read: true, update: true, delete: false},
 			frontmatter: {create: true, read: true, update: true, delete: false},
 			file: {create: false, read: true, update: false, delete: false},
 			dataviewInlineField: {create: false, read: true, update: false, delete: false},
 		},
+	};
+}
+
+function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig {
+	return {
 		listMode: 'whitelist',
+		paths: [],
 		tags: [],
 		...overrides,
 	};
 }
 
-function makeConfig(globalAreas: GlobalArea[]): KadoConfig {
+function makeConfig(security: SecurityConfig): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
-		globalAreas,
+		security,
 		apiKeys: [],
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
@@ -74,60 +81,57 @@ describe('globalScopeGate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// evaluate() — allowed cases
+// Whitelist mode — allowed
 // ---------------------------------------------------------------------------
 
-describe('globalScopeGate.evaluate() — allowed', () => {
-	it('allows when path matches a global area pattern', () => {
-		const config = makeConfig([makeGlobalArea(['projects/**'])]);
-		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), config);
+describe('globalScopeGate.evaluate() — whitelist allowed', () => {
+	it('allows when path matches a listed pattern', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 
 	it('allows when path matches nested segments under **', () => {
-		const config = makeConfig([makeGlobalArea(['projects/**'])]);
-		const result = globalScopeGate.evaluate(
-			makeReadRequest('projects/sub/deep/note.md'),
-			config,
-		);
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/sub/deep/note.md'), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 
-	it('allows when path matches the second global area when the first does not match', () => {
-		const areaA = makeGlobalArea(['archive/**'], {id: 'area-a', label: 'Archive'});
-		const areaB = makeGlobalArea(['projects/**'], {id: 'area-b', label: 'Projects'});
-		const config = makeConfig([areaA, areaB]);
-		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), config);
+	it('allows when path matches the second listed pattern when the first does not', () => {
+		const security = makeSecurityConfig({
+			paths: [makePathPermission('archive/**'), makePathPermission('projects/**')],
+		});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 
 	it('allows an exact path match', () => {
-		const config = makeConfig([makeGlobalArea(['inbox/todo.md'])]);
-		const result = globalScopeGate.evaluate(makeReadRequest('inbox/todo.md'), config);
+		const security = makeSecurityConfig({paths: [makePathPermission('inbox/todo.md')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('inbox/todo.md'), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 
 	it('allows a root-level file matched by *.md', () => {
-		const config = makeConfig([makeGlobalArea(['*.md'])]);
-		const result = globalScopeGate.evaluate(makeReadRequest('note.md'), config);
+		const security = makeSecurityConfig({paths: [makePathPermission('*.md')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('note.md'), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 
 	it('allows a search request without a path field', () => {
-		const config = makeConfig([]);
-		const result = globalScopeGate.evaluate(makeSearchRequest(), config);
+		const security = makeSecurityConfig({paths: []});
+		const result = globalScopeGate.evaluate(makeSearchRequest(), makeConfig(security));
 		expect(result.allowed).toBe(true);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// evaluate() — denied cases
+// Whitelist mode — denied
 // ---------------------------------------------------------------------------
 
-describe('globalScopeGate.evaluate() — denied', () => {
-	it('denies when path falls outside all global areas', () => {
-		const config = makeConfig([makeGlobalArea(['projects/**'])]);
-		const result = globalScopeGate.evaluate(makeReadRequest('personal/diary.md'), config);
+describe('globalScopeGate.evaluate() — whitelist denied', () => {
+	it('denies when path falls outside all listed patterns', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('projects/**')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('personal/diary.md'), makeConfig(security));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -137,9 +141,9 @@ describe('globalScopeGate.evaluate() — denied', () => {
 		}
 	});
 
-	it('denies when globalAreas is empty', () => {
-		const config = makeConfig([]);
-		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), config);
+	it('denies when paths list is empty', () => {
+		const security = makeSecurityConfig({paths: []});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), makeConfig(security));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -149,13 +153,54 @@ describe('globalScopeGate.evaluate() — denied', () => {
 	});
 
 	it('denies when * pattern does not match across path separators', () => {
-		const config = makeConfig([makeGlobalArea(['*.md'])]);
-		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), config);
+		const security = makeSecurityConfig({paths: [makePathPermission('*.md')]});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), makeConfig(security));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
 			expect(result.error.code).toBe('FORBIDDEN');
 			expect(result.error.gate).toBe('global-scope');
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Blacklist mode
+// ---------------------------------------------------------------------------
+
+describe('globalScopeGate.evaluate() — blacklist', () => {
+	it('allows when path does not match any blacklisted pattern', () => {
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = globalScopeGate.evaluate(makeReadRequest('projects/note.md'), makeConfig(security));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows when blacklist paths list is empty (full vault access)', () => {
+		const security = makeSecurityConfig({listMode: 'blacklist', paths: []});
+		const result = globalScopeGate.evaluate(makeReadRequest('anything/note.md'), makeConfig(security));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows a path matching a blacklist entry (permissions inversion handled by datatype gate)', () => {
+		// The global-scope gate grants scope inclusion for blacklisted paths; the
+		// DataTypePermissionGate is responsible for inverting and enforcing the permissions.
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = globalScopeGate.evaluate(makeReadRequest('private/note.md'), makeConfig(security));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows a search request without a path in blacklist mode', () => {
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = globalScopeGate.evaluate(makeSearchRequest(), makeConfig(security));
+		expect(result.allowed).toBe(true);
 	});
 });

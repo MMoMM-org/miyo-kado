@@ -15,7 +15,8 @@ import type {AuditConfig} from '../types/canonical';
 // ============================================================
 
 export interface AuditEntry {
-	timestamp: number;
+	/** ISO 8601 timestamp with local timezone offset, e.g. "2026-03-31T14:29:06.365+02:00". */
+	timestamp: string;
 	apiKeyId: string;
 	operation: string;
 	dataType?: string;
@@ -107,9 +108,22 @@ export class AuditLogger {
 
 type CreateAuditEntryParams = Omit<AuditEntry, 'timestamp'>;
 
+/** Formats current time as ISO 8601 with local timezone offset. */
+function localIsoTimestamp(): string {
+	const now = new Date();
+	const offset = -now.getTimezoneOffset();
+	const sign = offset >= 0 ? '+' : '-';
+	const absOffset = Math.abs(offset);
+	const hours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+	const minutes = String(absOffset % 60).padStart(2, '0');
+	// Build ISO string with milliseconds and local offset
+	const pad = (n: number, len = 2): string => String(n).padStart(len, '0');
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}${sign}${hours}:${minutes}`;
+}
+
 export function createAuditEntry(params: CreateAuditEntryParams): AuditEntry {
 	return {
-		timestamp: Date.now(),
+		timestamp: localIsoTimestamp(),
 		...params,
 	};
 }

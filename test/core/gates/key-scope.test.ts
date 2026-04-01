@@ -1,43 +1,42 @@
 /**
  * Behavioral tests for KeyScopeGate.
  *
- * Gate 2 in the permission chain — verifies the request path falls within at
- * least one area assigned to the API key. The key's areas reference global
- * areas by areaId; a path must match a pathPattern in the resolved global area.
- * Search requests without a path are passed through (scope filtering handled
- * elsewhere).
+ * Gate 2 in the permission chain — verifies the request path falls within the
+ * API key's own security scope using the single-scope model (listMode + paths).
+ * Whitelists require a path match; blacklists allow unless the path is listed
+ * (with permission inversion handled downstream by the datatype gate).
+ *
+ * Search requests without a path are passed through (scope filtering for
+ * search results is handled elsewhere).
+ *
+ * All cases are exercised through the public `evaluate()` method.
  */
 
 import {describe, it, expect} from 'vitest';
 import {keyScopeGate} from '../../../src/core/gates/key-scope';
 import type {
 	ApiKeyConfig,
-	GlobalArea,
 	KadoConfig,
 	CoreReadRequest,
 	CoreSearchRequest,
-	KeyAreaConfig,
+	PathPermission,
 } from '../../../src/types/canonical';
-import {createDefaultPermissions} from '../../../src/types/canonical';
+import {createDefaultSecurityConfig} from '../../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
 // Factories
 // ---------------------------------------------------------------------------
 
-function makeGlobalArea(overrides?: Partial<GlobalArea>): GlobalArea {
+function makePathPermission(path: string): PathPermission {
 	return {
-		id: 'area-work',
-		label: 'Work',
-		pathPatterns: ['work/**'],
-		permissions: createDefaultPermissions(),
-		listMode: 'whitelist',
-		tags: [],
-		...overrides,
+		path,
+		permissions: {
+			note: {create: true, read: true, update: true, delete: false},
+			frontmatter: {create: true, read: true, update: true, delete: false},
+			file: {create: false, read: true, update: false, delete: false},
+			dataviewInlineField: {create: false, read: true, update: false, delete: false},
+		},
 	};
-}
-
-function makeKeyArea(areaId: string): KeyAreaConfig {
-	return {areaId, permissions: createDefaultPermissions(), tags: []};
 }
 
 function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
@@ -46,18 +45,17 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		label: 'Test Key',
 		enabled: true,
 		createdAt: 1700000000000,
-		areas: [],
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
 		...overrides,
 	};
 }
 
-function makeConfig(
-	keys: ApiKeyConfig[],
-	globalAreas: GlobalArea[] = [],
-): KadoConfig {
+function makeConfig(keys: ApiKeyConfig[]): KadoConfig {
 	return {
-		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const},
-		globalAreas,
+		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+		security: createDefaultSecurityConfig(),
 		apiKeys: keys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 	};
@@ -86,54 +84,45 @@ describe('keyScopeGate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Allowed cases
+// Whitelist mode — allowed
 // ---------------------------------------------------------------------------
 
-describe('keyScopeGate.evaluate() — allowed', () => {
-	it('allows when key has an area assigned whose global area covers the path', () => {
-		const globalArea = makeGlobalArea({id: 'area-work', pathPatterns: ['work/**']});
-		const key = makeApiKey({areas: [makeKeyArea('area-work')]});
-		const config = makeConfig([key], [globalArea]);
-
-		const result = keyScopeGate.evaluate(makeReadRequest('work/project/note.md'), config);
-
+describe('keyScopeGate.evaluate() — whitelist allowed', () => {
+	it('allows when path matches a listed pattern on the key', () => {
+		const key = makeApiKey({paths: [makePathPermission('work/**')]});
+		const result = keyScopeGate.evaluate(makeReadRequest('work/project/note.md'), makeConfig([key]));
 		expect(result.allowed).toBe(true);
 	});
 
-	it('allows when key has multiple areas and path matches the second', () => {
-		const areaWork = makeGlobalArea({id: 'area-work', pathPatterns: ['work/**']});
-		const areaPersonal = makeGlobalArea({id: 'area-personal', pathPatterns: ['personal/**']});
+	it('allows when path matches the second listed pattern when the first does not match', () => {
 		const key = makeApiKey({
-			areas: [makeKeyArea('area-work'), makeKeyArea('area-personal')],
+			paths: [makePathPermission('work/**'), makePathPermission('personal/**')],
 		});
-		const config = makeConfig([key], [areaWork, areaPersonal]);
-
-		const result = keyScopeGate.evaluate(makeReadRequest('personal/diary.md'), config);
-
+		const result = keyScopeGate.evaluate(makeReadRequest('personal/diary.md'), makeConfig([key]));
 		expect(result.allowed).toBe(true);
 	});
 
 	it('allows a search request without a path', () => {
-		const key = makeApiKey({areas: []});
-		const config = makeConfig([key], []);
+		const key = makeApiKey({paths: []});
+		const result = keyScopeGate.evaluate(makeSearchRequest(), makeConfig([key]));
+		expect(result.allowed).toBe(true);
+	});
 
-		const result = keyScopeGate.evaluate(makeSearchRequest(), config);
-
+	it('allows nested path matched by ** pattern', () => {
+		const key = makeApiKey({paths: [makePathPermission('vault/**')]});
+		const result = keyScopeGate.evaluate(makeReadRequest('vault/a/b/c.md'), makeConfig([key]));
 		expect(result.allowed).toBe(true);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Forbidden cases
+// Whitelist mode — denied
 // ---------------------------------------------------------------------------
 
-describe('keyScopeGate.evaluate() — forbidden', () => {
-	it('denies when key has no areas assigned', () => {
-		const globalArea = makeGlobalArea({id: 'area-work', pathPatterns: ['work/**']});
-		const key = makeApiKey({areas: []});
-		const config = makeConfig([key], [globalArea]);
-
-		const result = keyScopeGate.evaluate(makeReadRequest('work/note.md'), config);
+describe('keyScopeGate.evaluate() — whitelist denied', () => {
+	it('denies when key has no paths assigned', () => {
+		const key = makeApiKey({paths: []});
+		const result = keyScopeGate.evaluate(makeReadRequest('work/note.md'), makeConfig([key]));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -143,12 +132,9 @@ describe('keyScopeGate.evaluate() — forbidden', () => {
 		}
 	});
 
-	it('denies when key has areas but none cover the request path', () => {
-		const globalArea = makeGlobalArea({id: 'area-work', pathPatterns: ['work/**']});
-		const key = makeApiKey({areas: [makeKeyArea('area-work')]});
-		const config = makeConfig([key], [globalArea]);
-
-		const result = keyScopeGate.evaluate(makeReadRequest('personal/diary.md'), config);
+	it('denies when key has paths but none cover the request path', () => {
+		const key = makeApiKey({paths: [makePathPermission('work/**')]});
+		const result = keyScopeGate.evaluate(makeReadRequest('personal/diary.md'), makeConfig([key]));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
@@ -157,16 +143,53 @@ describe('keyScopeGate.evaluate() — forbidden', () => {
 		}
 	});
 
-	it("denies when key's areaId references a global area that doesn't exist", () => {
-		const key = makeApiKey({areas: [makeKeyArea('area-nonexistent')]});
-		const config = makeConfig([key], []);
-
-		const result = keyScopeGate.evaluate(makeReadRequest('work/note.md'), config);
+	it('denies when the key id is not found in config', () => {
+		const key = makeApiKey({id: 'kado_other-key', paths: [makePathPermission('work/**')]});
+		const result = keyScopeGate.evaluate(makeReadRequest('work/note.md', 'kado_missing-key'), makeConfig([key]));
 
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {
 			expect(result.error.code).toBe('FORBIDDEN');
 			expect(result.error.gate).toBe('key-scope');
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Blacklist mode
+// ---------------------------------------------------------------------------
+
+describe('keyScopeGate.evaluate() — blacklist', () => {
+	it('allows when path does not match any blacklisted pattern', () => {
+		const key = makeApiKey({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = keyScopeGate.evaluate(makeReadRequest('work/note.md'), makeConfig([key]));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows when blacklist paths is empty (full access)', () => {
+		const key = makeApiKey({listMode: 'blacklist', paths: []});
+		const result = keyScopeGate.evaluate(makeReadRequest('anything/note.md'), makeConfig([key]));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows a path matching a blacklist entry (datatype gate handles permission inversion)', () => {
+		const key = makeApiKey({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = keyScopeGate.evaluate(makeReadRequest('private/note.md'), makeConfig([key]));
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows search requests without a path in blacklist mode', () => {
+		const key = makeApiKey({
+			listMode: 'blacklist',
+			paths: [makePathPermission('private/**')],
+		});
+		const result = keyScopeGate.evaluate(makeSearchRequest(), makeConfig([key]));
+		expect(result.allowed).toBe(true);
 	});
 });
