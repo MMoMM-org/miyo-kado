@@ -49,13 +49,13 @@ async function createNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	// vault.process() is Obsidian's atomic read-modify-write primitive.
-	// Do NOT double-write with adapter.write() — causes a race condition where
-	// Obsidian's internal flush (using string.length for truncation) overwrites
-	// the adapter's correct UTF-8 write, truncating multi-byte characters.
-	await app.vault.process(file, () => request.content as string);
-	const updated = app.vault.getFileByPath(request.path);
-	const stat = updated?.stat ?? file.stat;
+	// Obsidian bug: vault.modify()/process()/read() after adapter.write() can
+	// truncate the file back to the previous size. Any vault cache interaction
+	// triggers an internal flush with stale stat.size. Workaround: write ONLY
+	// via adapter, get stat from adapter, and let Obsidian discover the change
+	// through its file watcher (which correctly re-reads the full file).
+	await app.vault.adapter.write(file.path, request.content as string);
+	const stat = (await app.vault.adapter.stat(file.path)) ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};
 }
 
