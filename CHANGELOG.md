@@ -1,3 +1,10 @@
+## [0.1.1](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.0...v0.1.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **release:** align manifest.json version with semantic-release tag ([75c9451](https://github.com/MMoMM-org/miyo-kado/commit/75c94512ab33e783c07972c30b4746701e82c991))
+
 # [0.1.0](https://github.com/MMoMM-org/miyo-kado/compare/v0.0.0...v0.1.0) (2026-04-08)
 
 
