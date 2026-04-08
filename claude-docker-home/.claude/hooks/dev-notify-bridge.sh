@@ -4,8 +4,11 @@
 # See: https://github.com/Uwancha/dev-notify-bridge
 
 INPUT=$(cat)
-TITLE=$(echo "$INPUT" | jq -r '.title // "Claude Code"')
+BASE_TITLE=$(echo "$INPUT" | jq -r '.title // "Claude Code"')
 MESSAGE=$(echo "$INPUT" | jq -r '.message // ""')
+
+# Prefix with repo name so notifications identify which container they came from
+TITLE="${REPO_NAME:+[$REPO_NAME] }${BASE_TITLE}"
 
 # dev-notify-bridge listens on host port (default 9999, configurable via env)
 PORT="${DEV_NOTIFY_PORT:-9999}"

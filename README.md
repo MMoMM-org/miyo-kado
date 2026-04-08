@@ -1,90 +1,118 @@
-# Obsidian Sample Plugin
+<p align="center">
+  <img src="assets/MiYo-Kado.png" alt="MiYo Kado logo" width="160" />
+</p>
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+# Kado -- Obsidian MCP Gateway
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through three tools: `kado-read`, `kado-write`, and `kado-search`.
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+## Features
 
-## First time developing plugins?
+- **Default-deny security** -- nothing is accessible until explicitly whitelisted
+- **Two-tier access control** -- global security scope defines what is eligible; per-key scope defines what is permitted
+- **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
+- **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
+- **Six search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags
+- **Optimistic concurrency** -- timestamp-based conflict detection on writes
+- **Rate limiting** -- 200 requests/minute per IP
+- **Audit logging** -- NDJSON log with rotation (metadata only, no content)
 
-Quick starting guide for new plugin devs:
+## Quick Start
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
-
-## Releasing new releases
-
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
-
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
-
-## Adding your plugin to the community plugin list
-
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
-
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+1. Install the plugin (see [Installation](docs/configuration.md#installation))
+2. Open **Settings > MiYo Kado**
+3. Add paths to the global security whitelist
+4. Create an API key and assign it paths/permissions
+5. Enable the server
+6. Connect your MCP client using the key
 
 ```json
 {
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
-
-If you have multiple URLs, you can also do:
-
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
+  "mcpServers": {
+    "kado": {
+      "type": "http",
+      "url": "http://127.0.0.1:23026/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY_ID"
+      }
     }
+  }
 }
 ```
 
-## API Documentation
+## Documentation
 
-See https://docs.obsidian.md
+| Document | Audience | Content |
+|----------|----------|---------|
+| [Configuration Guide](docs/configuration.md) | Vault owners | Installation, settings UI, security setup, API key management |
+| [API Reference](docs/api-reference.md) | MCP client developers | Tool schemas, parameters, examples, error codes, auth |
+| [Development Guide](docs/development.md) | Contributors | Build, test, lint, architecture, live testing |
+
+## Security Model
+
+Every request passes through five gates in order. The first denial stops the chain.
+
+| # | Gate | Purpose |
+|---|------|---------|
+| 0 | authenticate | Bearer token must match an enabled API key |
+| 1 | global-scope | Path must be inside the global whitelist (or outside the blacklist) |
+| 2 | key-scope | Path must be inside the key's own scope |
+| 3 | datatype-permission | Key must have the required CRUD flag for the data type |
+| 4 | path-access | Final path-traversal and validation check |
+
+Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can use **tags** for search operations.
+
+## Architecture
+
+```
+MCP Client -> [MCP API Handler] -> [Kado Core] -> [Obsidian Interface] -> Vault
+```
+
+- **MCP API Handler** -- Express + Streamable HTTP transport, auth, rate limiting
+- **Kado Core** -- Permission gates, routing, concurrency guard. No MCP or Obsidian imports.
+- **Obsidian Interface** -- Vault adapters for notes, frontmatter, files, inline fields, search
+
+## Part of MiYo
+
+Kado is part of the MiYo ecosystem...
+
+more to come soon(TM)
+
+## Future Roadmap
+
+### Permission Rework for Tags
+
+At the moment you can search by Tags. Therefore the only option you have as a permission is R = Read. You either allow or deny.
+In the furture this will change to:
+
+- Read (R) => Search (S)
+- Deny (D) = Deny access to data types which have the tag
+
+The Deny Permission will probably not change the behaviour with the white-/blacklist toggle, but I will need to take a look at the scenarios first.
+
+### Granular Whitelist / Blacklist Toggle
+
+At the moment you can toggle the behaviour of the permissions between whitelist (default) and blacklist. This is for all datatypes AND the tags.
+In the future I might allow a more granular white-/blacklisting.
+
+### Choosing Subpathes for Key Permissions
+
+At the moment you can only choose pathes which are eligible from the Global Security Tab, e.g. /Atlas. This means you can't easily change permissions for /Atlas/People
+Workaround for the time being is to also make /Atlas/People eligble from the Global Security Tab.
+
+## Contributing
+
+Contributions are welcome. The short version:
+
+1. **Open an issue first** for anything non-trivial (bugs, features, refactors) so we can align on scope before you invest time.
+2. **Fork & branch** from `master`. Use a descriptive branch name (e.g. `fix/search-tag-case`, `feat/granular-scopes`).
+3. **Keep changes focused** -- one feature or one fix per PR. See [Development Guide](docs/development.md) for build, test, and lint commands.
+4. **Tests & lint must pass** -- run `npm run build`, `npm test`, and `npm run lint` before pushing.
+5. **Conventional commits** -- e.g. `feat:`, `fix:`, `docs:`, `refactor:`. Release notes are generated from commit history.
+6. **Open a PR** against `master` and reference the issue. Small, reviewable diffs get merged fastest.
+
+For security issues, please **do not** open a public issue -- email marcus@mmomm.org instead.
+
+## License
+
+[MIT](LICENSE)

@@ -52,7 +52,7 @@ render() {
   local line1="" line2=""
 
   # ── Line 1: identity ────────────────────────────────────────────────────────
-  line1+="${CYAN}[${MODEL}]${RESET}"
+  line1+="🐳 ${CYAN}[${MODEL}]${RESET}"
 
   local dir_name="${CURRENT_DIR##*/}"
   [[ -n "$dir_name" ]] && line1+=" | 📁 ${dir_name}"

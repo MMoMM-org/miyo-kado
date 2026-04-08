@@ -1,29 +1,48 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "obsidian-kado",
+	"version": "0.0.38",
+	"description": "Security-first MCP gateway for Obsidian vaults",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:live": "vitest run --config vitest.live.config.ts",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
 	"keywords": [],
-	"license": "0-BSD",
+	"license": "MIT",
 	"devDependencies": {
-		"@types/node": "^16.11.6",
+		"@eslint/js": "9.30.1",
+		"@semantic-release/changelog": "^6.0.3",
+		"@semantic-release/exec": "^7.0.3",
+		"@semantic-release/git": "^10.0.1",
+		"@semantic-release/github": "^11.0.1",
+		"@types/cors": "^2.8.19",
+		"@types/express": "^5.0.6",
+		"@types/node": "^22.0.0",
 		"esbuild": "0.25.5",
 		"eslint-plugin-obsidianmd": "0.1.9",
 		"globals": "14.0.0",
+		"jiti": "2.6.1",
+		"jsdom": "^26.1.0",
+		"semantic-release": "^24.2.3",
 		"tslib": "2.4.0",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "8.35.1",
-		"@eslint/js": "9.30.1",
-		"jiti": "2.6.1"
+		"vitest": "^3.2.1"
 	},
 	"dependencies": {
-		"obsidian": "latest"
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"cors": "^2.8.6",
+		"express": "^5.2.1",
+		"zod": "^4.3.6"
+	},
+	"peerDependencies": {
+		"obsidian": ">=1.5.7"
 	}
 }

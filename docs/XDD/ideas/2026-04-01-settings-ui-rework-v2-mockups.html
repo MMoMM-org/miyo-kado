@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kado Settings Mockups — changesv1</title>
+<style>
+  /* ── Theme tokens ── */
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-border: #e0e0e0;
+    --bg-hover: #f0f0f0;
+    --text-normal: #1a1a1a;
+    --text-muted: #666;
+    --text-faint: #999;
+    --text-accent: #6c5ce7;
+    --text-error: #d63031;
+    --text-on-accent: #fff;
+    --accent: #6c5ce7;
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1e1e1e;
+      --bg-secondary: #262626;
+      --bg-border: #3a3a3a;
+      --bg-hover: #333;
+      --text-normal: #dcddde;
+      --text-muted: #888;
+      --text-faint: #666;
+      --text-accent: #7f6df2;
+      --text-error: #e5484d;
+      --text-on-accent: #fff;
+      --accent: #7f6df2;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-normal);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 24px 40px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  h1.page-title {
+    color: var(--text-accent);
+    font-size: 22px;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .page-subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--bg-border);
+    padding-bottom: 16px;
+  }
+
+  /* Section separators */
+  .mockup-section {
+    margin-bottom: 48px;
+  }
+  .mockup-section h2 {
+    color: var(--text-accent);
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .mockup-section .change-ref {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .mockup-section .note {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--text-accent);
+    border-radius: 2px;
+  }
+
+  /* ── Fake Obsidian Settings Container ── */
+  .obs-settings {
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-border);
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+  }
+  .obs-settings::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    background: var(--bg-secondary);
+    padding: 0 8px;
+    font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Version Header ── */
+  .kado-version-header-new {
+    padding: 0 0 14px 16px;
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .kado-version-header-new .plugin-name {
+    font-weight: 600;
+    color: var(--text-normal);
+  }
+  .kado-version-header-new a {
+    color: var(--text-accent);
+    text-decoration: none;
+  }
+  .kado-version-header-new a:hover {
+    text-decoration: underline;
+  }
+  .kado-version-header-new .sep {
+    color: var(--text-faint);
+    margin: 0 6px;
+  }
+
+  /* ── Tab Bar ── */
+  .kado-tab-bar {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--bg-border);
+    margin-bottom: 16px;
+    gap: 4px;
+  }
+  .kado-tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    font-size: 13px;
+    color: var(--text-muted);
+    transition: 0.15s;
+  }
+  .kado-tab:hover { color: var(--text-normal); }
+  .kado-tab.is-active {
+    border-bottom-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Setting Item (Obsidian-style) ── */
+  .setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--bg-border);
+  }
+  .setting-item:last-child { border-bottom: none; }
+  .setting-info { flex: 1; }
+  .setting-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+  }
+  .setting-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .setting-control { flex-shrink: 0; margin-left: 12px; display: flex; gap: 6px; align-items: center; }
+  .setting-heading {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-normal);
+    padding: 16px 0 4px;
+    border-bottom: none;
+  }
+
+  /* ── Toggle Switch ── */
+  .toggle {
+    width: 42px; height: 24px;
+    border-radius: 12px;
+    background: var(--bg-border);
+    position: relative;
+    cursor: pointer;
+    transition: 0.2s;
+    display: inline-block;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    top: 3px; left: 3px;
+    transition: 0.2s;
+  }
+  .toggle.is-on { background: var(--accent); }
+  .toggle.is-on::after {
+    background: white;
+    left: 21px;
+  }
+
+  /* ── Listmode Toggle (Blacklist ↔ Whitelist) ── */
+  .listmode-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0 4px;
+  }
+  .listmode-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .listmode-label.is-active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .listmode-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 0 0 8px;
+  }
+  .listmode-warning {
+    font-size: 12px;
+    color: var(--text-error);
+    padding: 0 0 8px;
+  }
+
+  /* ── Section Label ── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 14px 0 6px;
+    border-bottom: 1px solid var(--bg-border);
+    margin-bottom: 4px;
+  }
+
+  /* ── Path/Tag Entry Rows ── */
+  .entry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--bg-border);
+  }
+  .remove-btn {
+    background: none; border: none;
+    color: var(--text-error); cursor: pointer;
+    font-size: 16px; padding: 2px 6px; border-radius: 4px;
+  }
+  .remove-btn:hover { background: color-mix(in srgb, var(--text-error) 10%, transparent); }
+  .path-input, .tag-input {
+    flex: 1; min-width: 120px;
+    font-family: var(--font-mono); font-size: 13px;
+    background: var(--bg-primary); border: 1px solid var(--bg-border);
+    border-radius: 4px; padding: 4px 8px;
+    color: var(--text-normal);
+  }
+  .browse-btn {
+    background: none;
+    border: 1px solid var(--bg-border);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .browse-btn:hover { background: var(--bg-hover); }
+  .add-btn {
+    background: none;
+    border: 1px dashed var(--bg-border);
+    cursor: pointer;
+    padding: 4px 12px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Permission Matrix ── */
+  .perm-matrix {
+    display: grid;
+    grid-template-columns: auto repeat(4, 28px);
+    gap: 4px;
+    align-items: center;
+  }
+  .perm-matrix.inline {
+    display: inline-grid;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .perm-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding-right: 8px;
+  }
+  .perm-col-label {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .perm-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dot {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--bg-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .dot:hover { border-color: var(--accent); }
+  .dot.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .dot.active::after { content: '✓'; }
+  .dot.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .dot.disabled:hover { border-color: var(--bg-border); }
+  /* Blacklist active = red X */
+  .dot.active-block {
+    background: var(--text-error);
+    border-color: var(--text-error);
+    color: var(--text-on-accent);
+  }
+  .dot.active-block::after { content: '✕'; }
+  /* Greyed-out user setting (was set but now globally unavailable) */
+  .dot.greyed-set {
+    opacity: 0.3;
+    cursor: not-allowed;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .dot.greyed-set::after { content: '✓'; font-size: 10px; }
+
+  /* ── Tag read badge ── */
+  .tag-read-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    font-weight: 600;
+  }
+
+  /* ── Comparison Layout ── */
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .comparison .obs-settings { font-size: 13px; }
+  .comparison-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .comparison-label.before { color: var(--text-error); }
+  .comparison-label.after { color: #2d9f5e; }
+
+  /* ── Key display ── */
+  .key-display {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-all;
+  }
+
+  /* ── Flip Animation Demo ── */
+  .flip-demo {
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 12px;
+  }
+  .flip-step {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--bg-border);
+  }
+  .flip-step:last-child { border-bottom: none; }
+  .flip-step .step-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .flip-step .step-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .mini-perm {
+    display: inline-flex;
+    gap: 3px;
+    margin: 2px 0;
+  }
+  .mini-dot {
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    border: 1px solid var(--bg-border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+  }
+  .mini-dot.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .mini-dot.active::after { content: '✓'; }
+  .mini-dot.block { background: var(--text-error); border-color: var(--text-error); color: white; }
+  .mini-dot.block::after { content: '✕'; }
+  .mini-dot.off { /* empty */ }
+  .mini-dot.disabled { opacity: 0.3; }
+  .mini-label {
+    font-size: 10px;
+    color: var(--text-faint);
+    width: 16px;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  /* ── Danger Zone ── */
+  .danger-zone {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--bg-border);
+  }
+
+  .btn {
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--bg-border);
+    background: none;
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.cta { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn.warning { background: rgba(229,72,77,0.15); color: var(--text-error); border-color: var(--text-error); }
+
+  /* Arrow between labels */
+  .arrow { color: var(--text-faint); margin: 0 2px; }
+
+  /* ── Audit Timestamp Sample ── */
+  .audit-sample {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-primary);
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid var(--bg-border);
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+  }
+  .ts-highlight { color: #2d9f5e; font-weight: 600; }
+  .ts-old { color: var(--text-error); text-decoration: line-through; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Kado Settings — UI Rework Mockups</h1>
+<p class="page-subtitle">Based on changesv1.md — Visual reference for spec 002 changes</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 1: Audit Log Timestamps -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>1. Audit Log — Human-Readable Timestamps</h2>
+  <div class="change-ref">changesv1.md #1</div>
+  <div class="note">Timestamps use local OS timezone (e.g. Intl.DateTimeFormat or toLocaleString). Stored as ISO 8601 string instead of raw epoch milliseconds.</div>
+
+  <div class="comparison">
+    <div>
+      <div class="comparison-label before">Before (epoch ms)</div>
+      <div class="audit-sample">{"<span class="ts-old">timestamp</span>":<span class="ts-old">1774902546365</span>,"apiKeyId":"kado_9e1d…","operation":"read","dataType":"note","path":"Projects/doc.md","decision":"allowed"}
+{"<span class="ts-old">timestamp</span>":<span class="ts-old">1774902547100</span>,"apiKeyId":"kado_9e1d…","operation":"update","dataType":"frontmatter","path":"Projects/doc.md","decision":"denied","gate":"permission"}</div>
+    </div>
+    <div>
+      <div class="comparison-label after">After (local ISO with timezone)</div>
+      <div class="audit-sample">{"<span class="ts-highlight">timestamp</span>":"<span class="ts-highlight">2026-03-31T14:29:06.365+02:00</span>","apiKeyId":"kado_9e1d…","operation":"read","dataType":"note","path":"Projects/doc.md","decision":"allowed"}
+{"<span class="ts-highlight">timestamp</span>":"<span class="ts-highlight">2026-03-31T14:29:07.100+02:00</span>","apiKeyId":"kado_9e1d…","operation":"update","dataType":"frontmatter","path":"Projects/doc.md","decision":"denied","gate":"permission"}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 2: Version Header -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>2. Version Header</h2>
+  <div class="change-ref">changesv1.md #2 — padding, manifest-based name, author link, font size, correct URL</div>
+
+  <div class="comparison">
+    <div>
+      <div class="comparison-label before">Before</div>
+      <div class="obs-settings" data-label="settings panel">
+        <div style="padding: 8px 0 12px; font-size: 11px; color: var(--text-muted);">
+          Kado v1.0.0 — <a href="#" style="color: var(--accent); text-decoration: none;">Documentation</a>
+        </div>
+        <div class="kado-tab-bar">
+          <div class="kado-tab is-active">General</div>
+          <div class="kado-tab">Global Security</div>
+          <div class="kado-tab">API Key · Live Test</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="comparison-label after">After</div>
+      <div class="obs-settings" data-label="settings panel">
+        <div style="height: 12px;"></div><!-- extra line down -->
+        <div class="kado-version-header-new">
+          <span class="plugin-name">MiYo Kado</span> v1.0.0
+          <span class="sep">·</span>
+          <a href="#">Marcus Breiden</a>
+          <span class="sep">·</span>
+          <a href="https://github.com/MMoMM-org/miyo-kado">Documentation</a>
+        </div>
+        <div class="kado-tab-bar">
+          <div class="kado-tab is-active">General</div>
+          <div class="kado-tab">Global Security</div>
+          <div class="kado-tab">API Key · Live Test</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    Plugin name ("MiYo Kado") and version from manifest.json (like Dynbedded pattern).<br>
+    Author name links to authorUrl from manifest. Docs link → https://github.com/MMoMM-org/miyo-kado<br>
+    Font size increased by one step. Left padding aligns with other settings content.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 3: Global Security — Single Area -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>3. Global Security — Single Area (no multi-area)</h2>
+  <div class="change-ref">changesv1.md #3 — one area, whitelist/blacklist toggle, paths, tags</div>
+
+  <div class="comparison">
+    <div>
+      <div class="comparison-label before">Before — Multiple Areas</div>
+      <div class="obs-settings" data-label="global security tab">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+          Kado starts in default-deny mode…
+        </p>
+        <div style="margin-bottom: 8px;">
+          <button class="btn cta">+ add area</button>
+        </div>
+        <!-- Area card 1 -->
+        <div style="border: 1px solid var(--bg-border); border-radius: 8px; padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <input class="path-input" value="Allowed" style="flex: none; width: 120px; font-weight: 600;">
+            <button class="btn warning" style="font-size: 12px;">Remove area</button>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted);">Whitelist · Blacklist</div>
+          <div class="section-label">Paths</div>
+          <div style="font-size: 12px; color: var(--text-faint);">allowed/**</div>
+          <div class="section-label">Tags</div>
+          <div style="font-size: 12px; color: var(--text-faint);">(none)</div>
+        </div>
+        <!-- Area card 2 -->
+        <div style="border: 1px solid var(--bg-border); border-radius: 8px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <input class="path-input" value="Maybe Allowed" style="flex: none; width: 140px; font-weight: 600;">
+            <button class="btn warning" style="font-size: 12px;">Remove area</button>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted);">Whitelist · Blacklist</div>
+          <div class="section-label">Paths</div>
+          <div style="font-size: 12px; color: var(--text-faint);">maybe-allowed/**</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="comparison-label after">After — Single Area</div>
+      <div class="obs-settings" data-label="global security tab">
+
+        <!-- Listmode toggle -->
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">Access Mode</div>
+            <div class="setting-desc">Controls how path and tag rules are interpreted</div>
+          </div>
+          <div class="setting-control">
+            <span class="listmode-label">Blacklist</span>
+            <span class="arrow">⇒</span>
+            <div class="toggle is-on" title="Whitelist is ON"></div>
+            <span class="arrow">⇒</span>
+            <span class="listmode-label is-active">Whitelist</span>
+          </div>
+        </div>
+        <div class="listmode-desc">Only listed paths and tags are accessible. Everything else is blocked.</div>
+
+        <!-- Paths Section -->
+        <div class="section-label">Paths</div>
+
+        <div class="entry-row">
+          <button class="remove-btn">−</button>
+          <input class="path-input" value="allowed/**">
+          <button class="browse-btn">📁</button>
+          <div class="perm-matrix inline" style="margin-top: -2px;">
+            <div></div>
+            <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+            <div class="perm-label">Note</div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-label">FM</div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-label">DV</div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-label">File</div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+          </div>
+        </div>
+
+        <div class="entry-row">
+          <button class="remove-btn">−</button>
+          <input class="path-input" value="maybe-allowed/**">
+          <button class="browse-btn">📁</button>
+          <div class="perm-matrix inline" style="margin-top: -2px;">
+            <div></div>
+            <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+            <div class="perm-label">Note</div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-label">FM</div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-label">DV</div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-label">File</div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot active"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+            <div class="perm-cell"><div class="dot"></div></div>
+          </div>
+        </div>
+
+        <button class="add-btn">+ add path</button>
+
+        <!-- Tags Section -->
+        <div class="section-label">Tags</div>
+
+        <div class="entry-row" style="align-items: center;">
+          <button class="remove-btn">−</button>
+          <input class="tag-input" value="#project/alpha">
+          <button class="browse-btn">🏷️</button>
+          <span class="tag-read-badge">R</span>
+        </div>
+
+        <div class="entry-row" style="align-items: center;">
+          <button class="remove-btn">−</button>
+          <input class="tag-input" value="#status/*">
+          <button class="browse-btn">🏷️</button>
+          <span class="tag-read-badge">R</span>
+        </div>
+
+        <button class="add-btn">+ add tag</button>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Key changes:</strong><br>
+    • No more "areas" concept — one flat scope with paths + tags + permissions<br>
+    • Whitelist/Blacklist toggle is at the top: "Blacklist ⇒ [toggle] ⇒ Whitelist" — whitelist ON by default<br>
+    • Each path has its own permission matrix (per-path permissions, not per-area)<br>
+    • No area label, no area cards, no "+ add area" / "Remove area" buttons<br>
+    • Tags are still read-only filters (R badge)
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 4: API Key Tab — Constrained Assignment -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>4. API Key Tab — Path/Tag Assignment</h2>
+  <div class="change-ref">changesv1.md #4 — pick paths/tags from global, constrained permissions, greyed out unavailable</div>
+
+  <div class="obs-settings" data-label="api key · live test">
+
+    <!-- Key Management (unchanged) -->
+    <div class="setting-heading">Key management</div>
+    <div class="setting-item">
+      <div class="setting-info"><div class="setting-name">Key name</div></div>
+      <div class="setting-control">
+        <input class="path-input" value="Live Test" style="width: 140px;">
+        <button class="btn">Rename</button>
+      </div>
+    </div>
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-name">API key</div>
+        <div class="key-display">kado_9e1d88c0-4838-47b3-968d-855c77cf86bd</div>
+      </div>
+      <div class="setting-control">
+        <button class="btn">Copy</button>
+      </div>
+    </div>
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-name">Regenerate key</div>
+        <div class="setting-desc">Replaces the secret. Old key immediately invalidated.</div>
+      </div>
+      <div class="setting-control"><button class="btn warning">Regenerate</button></div>
+    </div>
+
+    <!-- Access Mode (independent per key) -->
+    <div class="setting-heading">Permissions</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-name">Access Mode</div>
+        <div class="setting-desc">Controls how this key's path and tag rules are interpreted</div>
+      </div>
+      <div class="setting-control">
+        <span class="listmode-label">Blacklist</span>
+        <span class="arrow">⇒</span>
+        <div class="toggle is-on" title="Whitelist is ON"></div>
+        <span class="arrow">⇒</span>
+        <span class="listmode-label is-active">Whitelist</span>
+      </div>
+    </div>
+
+    <!-- Paths Section — pick from global, show constrained matrix -->
+    <div class="section-label">Paths</div>
+    <div class="note" style="margin: 4px 0 8px; border-left-color: var(--text-faint);">
+      Only paths defined in Global Security are available. Permissions greyed out = not granted globally.
+    </div>
+
+    <!-- Path 1: allowed/** — user has selected some perms, some greyed -->
+    <div class="entry-row">
+      <button class="remove-btn">−</button>
+      <input class="path-input" value="allowed/**" style="opacity: 0.7;" readonly>
+      <div class="perm-matrix inline" style="margin-top: -2px;">
+        <div></div>
+        <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+        <!-- Note: global has CRUD all on, key selects C,R -->
+        <div class="perm-label">Note</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <!-- FM: global has C,R,U on, D off → D greyed -->
+        <div class="perm-label">FM</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot disabled" title="Not available — disabled in Global Security"></div></div>
+        <!-- DV: global has C,R on, U,D off → U,D greyed -->
+        <div class="perm-label">DV</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled" title="Not available"></div></div>
+        <div class="perm-cell"><div class="dot disabled" title="Not available"></div></div>
+        <!-- File: global has all on, key selects R only -->
+        <div class="perm-label">File</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+      </div>
+    </div>
+
+    <!-- Path 2: maybe-allowed/** — global only has R, so C,U,D all greyed -->
+    <div class="entry-row">
+      <button class="remove-btn">−</button>
+      <input class="path-input" value="maybe-allowed/**" style="opacity: 0.7;" readonly>
+      <div class="perm-matrix inline" style="margin-top: -2px;">
+        <div></div>
+        <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+        <div class="perm-label">Note</div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">FM</div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">DV</div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">File</div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+      </div>
+    </div>
+
+    <button class="add-btn">+ add path</button>
+    <div style="font-size: 11px; color: var(--text-faint); margin-top: 4px;">
+      ↑ Only paths from Global Security are shown in the picker
+    </div>
+
+    <!-- Tags Section -->
+    <div class="section-label">Tags</div>
+
+    <div class="entry-row" style="align-items: center;">
+      <button class="remove-btn">−</button>
+      <input class="tag-input" value="#project/alpha" style="opacity: 0.7;" readonly>
+      <span class="tag-read-badge">R</span>
+    </div>
+
+    <button class="add-btn">+ add tag</button>
+    <div style="font-size: 11px; color: var(--text-faint); margin-top: 4px;">
+      ↑ Only tags from Global Security are shown in the picker
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="danger-zone">
+      <div class="setting-item">
+        <div class="setting-info">
+          <div class="setting-name">Delete API key</div>
+          <div class="setting-desc">This cannot be undone.</div>
+        </div>
+        <div class="setting-control"><button class="btn warning">Delete key</button></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Key design:</strong><br>
+    • Path picker only offers paths from Global Security — user selects which subset this key gets<br>
+    • Each path shows its permission matrix constrained by global: unavailable = greyed out (0.3 opacity)<br>
+    • User can toggle available permissions on/off, but cannot enable what's globally off<br>
+    • <strong>Access mode is independent per key</strong> — NOT inherited from global. Each key chooses whitelist or blacklist.<br>
+    • "+ add path" opens a picker filtered to Global Security paths only<br>
+    • Tags same principle: only tags from Global Security are selectable
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 4b: Whitelist/Blacklist Flip Behavior -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>4b. Whitelist ↔ Blacklist Flip Behavior</h2>
+  <div class="change-ref">changesv1.md #4 special case — configuration flip, visual indicator change</div>
+
+  <div class="flip-demo">
+    <div class="flip-step">
+      <div class="step-label">Step 1 — Starting state: Whitelist mode</div>
+      <div class="step-desc">Path <code>allowed/**</code> · Note permissions: <strong>C R _ X</strong></div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <span style="font-size: 11px; color: var(--text-muted); width: 30px;">C</span>
+        <span style="font-size: 11px; color: var(--text-muted); width: 30px;">R</span>
+        <span style="font-size: 11px; color: var(--text-muted); width: 30px;">U</span>
+        <span style="font-size: 11px; color: var(--text-muted); width: 30px;">D</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="mini-dot active" style="width: 30px;"></div>
+        <div class="mini-dot active" style="width: 30px;"></div>
+        <div class="mini-dot off" style="width: 30px;"></div>
+        <div class="mini-dot disabled" style="width: 30px;"></div>
+      </div>
+      <div class="step-desc" style="margin-top: 6px;">
+        ✓ = allowed &nbsp; empty = not selected &nbsp; greyed = not available<br>
+        → User <strong>can</strong> Create and Read. Cannot Update (not selected). Delete not available globally.
+      </div>
+    </div>
+
+    <div class="flip-step">
+      <div class="step-label">Step 2 — User flips toggle → Blacklist mode</div>
+      <div class="step-desc">The <code>listMode</code> changes. The per-path permission booleans <strong>do NOT change</strong>.<br>
+        The display rendering maps the same config values differently:</div>
+      <div style="margin: 8px 0; font-size: 12px;">
+        <table style="border-collapse: collapse; width: 100%;">
+          <tr style="border-bottom: 1px solid var(--bg-border);">
+            <th style="text-align: left; padding: 4px 8px; color: var(--text-muted); font-size: 11px;">Config value</th>
+            <th style="text-align: left; padding: 4px 8px; color: var(--text-muted); font-size: 11px;">Whitelist display</th>
+            <th style="text-align: left; padding: 4px 8px; color: var(--text-muted); font-size: 11px;">Blacklist display</th>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--bg-border);">
+            <td style="padding: 4px 8px;"><code>true</code></td>
+            <td style="padding: 4px 8px;"><span class="mini-dot active" style="display: inline-flex;"></span> checkmark = "allowed"</td>
+            <td style="padding: 4px 8px;"><span class="mini-dot off" style="display: inline-flex; width: 16px; height: 16px;"></span> empty = "not blocked"</td>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--bg-border);">
+            <td style="padding: 4px 8px;"><code>false</code></td>
+            <td style="padding: 4px 8px;"><span class="mini-dot off" style="display: inline-flex; width: 16px; height: 16px;"></span> empty = "not allowed"</td>
+            <td style="padding: 4px 8px;"><span class="mini-dot block" style="display: inline-flex;"></span> X cross = "blocked"</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 8px;">disabled</td>
+            <td style="padding: 4px 8px;"><span class="mini-dot disabled" style="display: inline-flex; width: 16px; height: 16px;"></span> greyed out</td>
+            <td style="padding: 4px 8px;"><span class="mini-dot disabled" style="display: inline-flex; width: 16px; height: 16px;"></span> greyed out</td>
+          </tr>
+        </table>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+        <span style="font-size: 11px; color: var(--text-muted); width: 50px;">Config:</span>
+        <span style="font-size: 11px; color: var(--text-faint); width: 30px;">C=T</span>
+        <span style="font-size: 11px; color: var(--text-faint); width: 30px;">R=T</span>
+        <span style="font-size: 11px; color: var(--text-faint); width: 30px;">U=F</span>
+        <span style="font-size: 11px; color: var(--text-faint); width: 30px;">D=—</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 11px; color: var(--text-muted); width: 50px;">Display:</span>
+        <div class="mini-dot off" style="width: 30px;" title="true → empty (not blocked)"></div>
+        <div class="mini-dot off" style="width: 30px;" title="true → empty (not blocked)"></div>
+        <div class="mini-dot block" style="width: 30px;" title="false → X (blocked)"></div>
+        <div class="mini-dot disabled" style="width: 30px;" title="disabled → greyed"></div>
+      </div>
+      <div class="step-desc" style="margin-top: 6px;">
+        C=true → empty (not blocked). R=true → empty (not blocked). U=false → ✕ (blocked). D=disabled → greyed.<br>
+        → <strong>Same effective permissions as whitelist!</strong> User can Create and Read, cannot Update, Delete unavailable.
+      </div>
+    </div>
+
+    <div class="flip-step">
+      <div class="step-label">Step 3 — Why this matters</div>
+      <div class="step-desc">
+        If the user accidentally flips the toggle, no permissions are lost or changed.<br>
+        Only the <code>listMode</code> field changes. Permission booleans stay identical.<br>
+        The <strong>display mapping</strong> inverts:<br><br>
+        <strong>Whitelist:</strong> <code>true</code> → ✓ checkmark (purple), <code>false</code> → empty<br>
+        <strong>Blacklist:</strong> <code>true</code> → empty, <code>false</code> → ✕ cross (red)<br><br>
+        The user can then deliberately adjust from the new baseline.
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Implementation note:</strong> On toggle flip, only <code>listMode</code> changes. Permission booleans are untouched.<br>
+    UI rendering maps config → display differently per mode:<br>
+    Whitelist: <code>true</code> → <code>.dot.active</code> (✓) &nbsp;|&nbsp; Blacklist: <code>false</code> → <code>.dot.active-block</code> (✕)
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- CHANGE 5: Edge Case — Stale Global Permissions -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>5. Edge Case — Global Security Changed After API Key Config</h2>
+  <div class="change-ref">changesv1.md #5 — re-read global config on tab switch, show stale permissions as greyed</div>
+
+  <div class="obs-settings" data-label="api key tab — after global security change">
+    <div class="setting-heading">Permissions</div>
+
+    <div class="section-label">Paths</div>
+    <div class="note" style="margin: 4px 0 8px; border-left-color: var(--text-error);">
+      Scenario: User previously granted Note:Update to this key for <code>allowed/**</code>.<br>
+      Then went to Global Security and <strong>removed</strong> Note:Update from that path.<br>
+      When the user comes back to this tab, we re-read global permissions.
+    </div>
+
+    <div class="entry-row">
+      <button class="remove-btn">−</button>
+      <input class="path-input" value="allowed/**" style="opacity: 0.7;" readonly>
+      <div class="perm-matrix inline" style="margin-top: -2px;">
+        <div></div>
+        <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+        <div class="perm-label">Note</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <!-- U: was set by user, but now globally unavailable → greyed out with checkmark still visible -->
+        <div class="perm-cell"><div class="dot greyed-set" title="Previously set, now unavailable globally"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">FM</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">DV</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-label">File</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+        <div class="perm-cell"><div class="dot disabled"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Display rules — Key in Whitelist mode:</strong>
+    <table style="border-collapse: collapse; width: 100%; margin: 6px 0;">
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Global allows?</th>
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Key config</th>
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Display</th>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">Yes</td><td style="padding: 3px 8px;"><code>true</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot active" style="display:inline-flex;"></span> checkmark (clickable)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">Yes</td><td style="padding: 3px 8px;"><code>false</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot off" style="display:inline-flex;width:16px;height:16px;"></span> empty (clickable)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">No</td><td style="padding: 3px 8px;"><code>false</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot disabled" style="display:inline-flex;width:16px;height:16px;"></span> greyed empty (disabled)</td>
+      </tr>
+      <tr>
+        <td style="padding: 3px 8px;">No</td><td style="padding: 3px 8px;"><code>true</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot" style="display:inline-flex;width:16px;height:16px;opacity:0.3;background:var(--accent);border-color:var(--accent);color:white;font-size:9px;align-items:center;justify-content:center;">✓</span> greyed ✓ (was set, now unavailable)</td>
+      </tr>
+    </table>
+
+    <strong>Display rules — Key in Blacklist mode:</strong>
+    <table style="border-collapse: collapse; width: 100%; margin: 6px 0;">
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Global allows?</th>
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Key config</th>
+        <th style="text-align: left; padding: 3px 8px; font-size: 11px; color: var(--text-muted);">Display</th>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">Yes</td><td style="padding: 3px 8px;"><code>true</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot off" style="display:inline-flex;width:16px;height:16px;"></span> empty (clickable) — not blocked</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">Yes</td><td style="padding: 3px 8px;"><code>false</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot block" style="display:inline-flex;"></span> X cross red (clickable) — blocked</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--bg-border);">
+        <td style="padding: 3px 8px;">No</td><td style="padding: 3px 8px;"><code>false</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot" style="display:inline-flex;width:16px;height:16px;opacity:0.3;background:var(--text-error);border-color:var(--text-error);color:white;font-size:9px;align-items:center;justify-content:center;">✕</span> greyed ✕ (was blocking, now unavailable)</td>
+      </tr>
+      <tr>
+        <td style="padding: 3px 8px;">No</td><td style="padding: 3px 8px;"><code>true</code></td>
+        <td style="padding: 3px 8px;"><span class="mini-dot disabled" style="display:inline-flex;width:16px;height:16px;"></span> greyed empty (disabled)</td>
+      </tr>
+    </table>
+
+    Storage: each instance stores only its own config. Cross-reference happens at render time, not save time.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- FULL TAB OVERVIEW -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>Full View — Global Security Tab (New Design)</h2>
+  <div class="change-ref">Complete layout reference</div>
+
+  <div class="obs-settings" data-label="complete settings panel">
+    <!-- Version Header -->
+    <div style="height: 12px;"></div>
+    <div class="kado-version-header-new">
+      <span class="plugin-name">MiYo Kado</span> v1.0.0
+      <span class="sep">·</span>
+      <a href="#">Marcus Breiden</a>
+      <span class="sep">·</span>
+      <a href="#">Documentation</a>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="kado-tab-bar">
+      <div class="kado-tab">General</div>
+      <div class="kado-tab is-active">Global Security</div>
+      <div class="kado-tab">API Key · Live Test</div>
+    </div>
+
+    <!-- Content -->
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-name">Access Mode</div>
+        <div class="setting-desc">Controls how path and tag rules are interpreted</div>
+      </div>
+      <div class="setting-control">
+        <span class="listmode-label">Blacklist</span>
+        <span class="arrow">⇒</span>
+        <div class="toggle is-on"></div>
+        <span class="arrow">⇒</span>
+        <span class="listmode-label is-active">Whitelist</span>
+      </div>
+    </div>
+    <div class="listmode-desc">Only listed paths and tags are accessible. Everything else is blocked.</div>
+
+    <div class="section-label">Paths</div>
+
+    <div class="entry-row">
+      <button class="remove-btn">−</button>
+      <input class="path-input" value="allowed/**">
+      <button class="browse-btn">📁</button>
+      <div class="perm-matrix inline" style="margin-top: -2px;">
+        <div></div>
+        <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+        <div class="perm-label">Note</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-label">FM</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-label">DV</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-label">File</div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+      </div>
+    </div>
+
+    <div class="entry-row">
+      <button class="remove-btn">−</button>
+      <input class="path-input" value="maybe-allowed/**">
+      <button class="browse-btn">📁</button>
+      <div class="perm-matrix inline" style="margin-top: -2px;">
+        <div></div>
+        <div class="perm-col-label">C</div><div class="perm-col-label">R</div><div class="perm-col-label">U</div><div class="perm-col-label">D</div>
+        <div class="perm-label">Note</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-label">FM</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-label">DV</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-label">File</div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot active"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+        <div class="perm-cell"><div class="dot"></div></div>
+      </div>
+    </div>
+
+    <button class="add-btn">+ add path</button>
+
+    <div class="section-label">Tags</div>
+
+    <div class="entry-row" style="align-items: center;">
+      <button class="remove-btn">−</button>
+      <input class="tag-input" value="#project/alpha">
+      <button class="browse-btn">🏷️</button>
+      <span class="tag-read-badge">R</span>
+    </div>
+
+    <div class="entry-row" style="align-items: center;">
+      <button class="remove-btn">−</button>
+      <input class="tag-input" value="#status/*">
+      <button class="browse-btn">🏷️</button>
+      <span class="tag-read-badge">R</span>
+    </div>
+
+    <button class="add-btn">+ add tag</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- DATA MODEL IMPACT -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>Data Model Impact Summary</h2>
+  <div class="change-ref">What changes in the type system</div>
+
+  <div class="audit-sample" style="line-height: 1.8;">
+<span class="ts-old">// OLD: Multiple GlobalAreas, permissions per area</span>
+<span class="ts-old">globalAreas: GlobalArea[]  // each with { id, label, pathPatterns, permissions, listMode, tags }</span>
+
+<span class="ts-highlight">// NEW: Single security scope, permissions per path</span>
+<span class="ts-highlight">security: {</span>
+<span class="ts-highlight">  listMode: 'whitelist' | 'blacklist';</span>
+<span class="ts-highlight">  paths: Array<{ path: string; permissions: DataTypePermissions }>;</span>
+<span class="ts-highlight">  tags: string[];  // read-only filters, stored without '#'</span>
+<span class="ts-highlight">}</span>
+
+<span class="ts-old">// OLD: Key references area by ID</span>
+<span class="ts-old">areas: Array<{ areaId: string; permissions: DataTypePermissions; tags: string[] }></span>
+
+<span class="ts-highlight">// NEW: Key has own paths/tags subset with constrained permissions</span>
+<span class="ts-highlight">// listMode is INDEPENDENT per key (not inherited from global)</span>
+<span class="ts-highlight">listMode: 'whitelist' | 'blacklist';  // key's own toggle</span>
+<span class="ts-highlight">paths: Array<{ path: string; permissions: DataTypePermissions }>;</span>
+<span class="ts-highlight">tags: string[];  // subset of global tags</span>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>No migration needed</strong> — update test vault config after code is done.<br>
+    <strong>Audit log:</strong> timestamp field changes from <code>number</code> (epoch ms) to <code>string</code> (ISO 8601 with timezone).<br>
+    <strong>Enforcement impact:</strong> Global and Key each have independent listMode — 4 combinations possible (see below).
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- ENFORCEMENT: Independent ListMode Combinations -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="mockup-section">
+  <h2>Enforcement Logic — Independent ListMode Combinations</h2>
+  <div class="change-ref">Global and Key each have their own whitelist/blacklist toggle — 4 combinations</div>
+
+  <div class="note">
+    The enforcement engine must handle all 4 combinations. The key principle:<br>
+    <strong>Global defines the ceiling</strong> (what's possible). <strong>Key defines the subset</strong> (what this key gets).<br>
+    Both layers apply their own listMode interpretation independently, then the result is intersected.
+  </div>
+
+  <div class="flip-demo">
+    <!-- Combo 1 -->
+    <div class="flip-step">
+      <div class="step-label">Combo 1: Global=Whitelist, Key=Whitelist (most common)</div>
+      <div class="step-desc">
+        <strong>Global:</strong> "Only <code>allowed/**</code> with Note:CRUD is accessible"<br>
+        <strong>Key:</strong> "Only <code>allowed/**</code> with Note:CR is accessible for this key"<br>
+        <strong>Result:</strong> Key can Create and Read notes in <code>allowed/**</code>. Straightforward intersection.
+      </div>
+    </div>
+
+    <!-- Combo 2 -->
+    <div class="flip-step">
+      <div class="step-label">Combo 2: Global=Whitelist, Key=Blacklist</div>
+      <div class="step-desc">
+        <strong>Global:</strong> "Only <code>allowed/**</code> with Note:CRUD is accessible"<br>
+        <strong>Key:</strong> "Everything EXCEPT <code>allowed/**</code> Note:U is accessible for this key"<br>
+        <strong>Enforcement:</strong><br>
+        1. Global whitelist resolves first → only <code>allowed/**</code> Note:CRUD is in scope<br>
+        2. Key blacklist removes Note:U from that scope<br>
+        <strong>Result:</strong> Key can do Note:CRD in <code>allowed/**</code>. Update is blocked by the key's blacklist.
+      </div>
+    </div>
+
+    <!-- Combo 3 -->
+    <div class="flip-step">
+      <div class="step-label">Combo 3: Global=Blacklist, Key=Whitelist</div>
+      <div class="step-desc">
+        <strong>Global:</strong> "Everything EXCEPT <code>secret/**</code> is accessible"<br>
+        <strong>Key:</strong> "Only <code>allowed/**</code> with Note:CR is accessible for this key"<br>
+        <strong>Enforcement:</strong><br>
+        1. Global blacklist resolves first → everything except <code>secret/**</code> is in scope<br>
+        2. Key whitelist narrows to only <code>allowed/**</code> Note:CR<br>
+        <strong>Result:</strong> Key can Create and Read notes in <code>allowed/**</code> (which is not in global's blacklist, so it's fine).
+      </div>
+    </div>
+
+    <!-- Combo 4 -->
+    <div class="flip-step">
+      <div class="step-label">Combo 4: Global=Blacklist, Key=Blacklist</div>
+      <div class="step-desc">
+        <strong>Global:</strong> "Everything EXCEPT <code>secret/**</code> is accessible"<br>
+        <strong>Key:</strong> "Everything EXCEPT <code>drafts/**</code> Note:D is accessible for this key"<br>
+        <strong>Enforcement:</strong><br>
+        1. Global blacklist removes <code>secret/**</code> entirely<br>
+        2. Key blacklist additionally removes Note:D from <code>drafts/**</code><br>
+        <strong>Result:</strong> Key can access everything except <code>secret/**</code> (global block) and cannot delete notes in <code>drafts/**</code> (key block).
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Enforcement algorithm (pseudocode):</strong>
+  </div>
+  <div class="audit-sample" style="line-height: 1.8;">
+<span class="ts-highlight">function isAllowed(request: { path, dataType, operation, keyId }): boolean {</span>
+
+  <span class="ts-muted">// Step 1: Resolve global scope</span>
+  <span class="ts-highlight">const globalPerms = resolveScope(global.security, request.path);</span>
+  <span class="ts-highlight">if (!globalPerms) return false;  // path not in global scope at all</span>
+
+  <span class="ts-muted">// Step 2: Check global permission for this operation</span>
+  <span class="ts-highlight">if (!globalPerms[request.dataType][request.operation]) return false;</span>
+
+  <span class="ts-muted">// Step 3: Resolve key scope (independent listMode)</span>
+  <span class="ts-highlight">const keyPerms = resolveScope(key, request.path);</span>
+  <span class="ts-highlight">if (!keyPerms) return false;  // path not in key's scope</span>
+
+  <span class="ts-muted">// Step 4: Check key permission (constrained by global)</span>
+  <span class="ts-highlight">return keyPerms[request.dataType][request.operation];</span>
+<span class="ts-highlight">}</span>
+
+<span class="ts-highlight">function resolveScope(scope: { listMode, paths }, requestPath): Perms | null {</span>
+  <span class="ts-highlight">const match = scope.paths.find(p => matchPath(requestPath, p.path));</span>
+
+  <span class="ts-highlight">if (scope.listMode === 'whitelist') {</span>
+    <span class="ts-muted">// Whitelist: only matched paths are allowed</span>
+    <span class="ts-highlight">return match ? match.permissions : null;</span>
+  <span class="ts-highlight">} else {</span>
+    <span class="ts-muted">// Blacklist: matched paths have their perms BLOCKED</span>
+    <span class="ts-highlight">if (!match) return ALL_PERMISSIONS;  // not blacklisted → full access</span>
+    <span class="ts-highlight">return invertPermissions(match.permissions);  // flip: set = blocked</span>
+  <span class="ts-highlight">}</span>
+<span class="ts-highlight">}</span>
+  </div>
+
+  <div class="note" style="margin-top: 12px;">
+    <strong>Key insight:</strong> <code>resolveScope()</code> handles listMode interpretation per layer.<br>
+    The outer function just intersects global result with key result — two independent checks, always AND.<br>
+    Global can never be bypassed by key configuration. Key can only further restrict.
+  </div>
+</div>
+
+</body>
+</html>

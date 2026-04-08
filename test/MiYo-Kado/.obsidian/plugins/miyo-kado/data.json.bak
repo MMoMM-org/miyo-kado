@@ -1,0 +1,171 @@
+{
+  "server": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 23026,
+    "connectionType": "local"
+  },
+  "security": {
+    "listMode": "whitelist",
+    "paths": [
+      {
+        "path": "allowed/**",
+        "permissions": {
+          "note": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "frontmatter": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "file": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "dataviewInlineField": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          }
+        }
+      },
+      {
+        "path": "maybe-allowed/**",
+        "permissions": {
+          "note": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "frontmatter": {
+            "create": false,
+            "read": true,
+            "update": true,
+            "delete": false
+          },
+          "file": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          },
+          "dataviewInlineField": {
+            "create": true,
+            "read": true,
+            "update": true,
+            "delete": true
+          }
+        }
+      }
+    ],
+    "tags": [
+      "inlinetag/yes"
+    ]
+  },
+  "apiKeys": [
+    {
+      "id": "kado_9e1d88c0-4838-47b3-968d-855c77cf86bd",
+      "label": "Key1",
+      "enabled": true,
+      "createdAt": 1774995094488,
+      "listMode": "whitelist",
+      "paths": [
+        {
+          "path": "allowed/**",
+          "permissions": {
+            "note": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": true
+            },
+            "file": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": true
+            },
+            "dataviewInlineField": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": true
+            }
+          }
+        },
+        {
+          "path": "maybe-allowed/**",
+          "permissions": {
+            "note": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": false,
+              "read": true,
+              "update": true,
+              "delete": false
+            },
+            "file": {
+              "create": true,
+              "read": true,
+              "update": true,
+              "delete": true
+            },
+            "dataviewInlineField": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            }
+          }
+        }
+      ],
+      "tags": [
+        "inlinetag/yes"
+      ]
+    },
+    {
+      "id": "kado_e8ffd8c0-c6b6-4402-bacc-abd04bdba330",
+      "label": "Key2",
+      "enabled": true,
+      "createdAt": 1775041945969,
+      "listMode": "whitelist",
+      "paths": [],
+      "tags": []
+    },
+    {
+      "id": "kado_91d353cb-6115-4f4b-b907-8ecc5c697357",
+      "label": "Key3",
+      "enabled": true,
+      "createdAt": 1775045553143,
+      "listMode": "whitelist",
+      "paths": [],
+      "tags": []
+    }
+  ],
+  "audit": {
+    "enabled": true,
+    "logDirectory": "logs",
+    "logFileName": "kado-audit.log",
+    "maxSizeBytes": 10485760,
+    "maxRetainedLogs": 3
+  }
+}

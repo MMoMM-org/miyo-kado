@@ -25,10 +25,18 @@ export default tseslint.config(
 	globalIgnores([
 		"node_modules",
 		"dist",
+		"build",
 		"esbuild.config.mjs",
 		"eslint.config.js",
 		"version-bump.mjs",
 		"versions.json",
+		"vitest.config.ts",
+		"vitest.live.config.ts",
 		"main.js",
+		"test/__mocks__/**",
+		"test/**/*.test.ts",
+		"test/**/helpers.ts",
+		"test/MiYo-Kado/**",
+		"claude-docker-home/**",
 	]),
 );

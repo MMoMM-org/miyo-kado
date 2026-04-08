@@ -1,11 +1,14 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"id": "miyo-kado",
+	"name": "MiYo Kado",
+	"version": "0.0.38",
+	"minAppVersion": "1.5.7",
+	"description": "Security-first MCP gateway for Obsidian vaults",
+	"author": "Marcus Breiden <marcus@mmomm.org>",
+	"authorUrl": "https://www.mmomm.org",
+	"isDesktopOnly": true,
+	"fundingUrl": {
+		"Buy Me a Coffee": "https://ko-fi.com/mmomm",
+		"GitHub Sponsor": "https://github.com/sponsors/MMoMM-org"
+	}
 }

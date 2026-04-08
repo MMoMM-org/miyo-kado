@@ -6,10 +6,10 @@
 ## Files
 - [general.md](general.md) — conventions, style, naming [updated: 2026-03-30]
 - [tools.md](tools.md) — CI, build, local dev [updated: 2026-03-30]
-- [domain.md](domain.md) — business rules, data models [updated: 2026-03-30]
+- [domain.md](domain.md) — business rules, data models [updated: 2026-04-08]
 - [decisions.md](decisions.md) — architecture choices [updated: 2026-03-30]
 - [context.md](context.md) — current focus [updated: 2026-03-30]
-- [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-03-30]
+- [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-04-08]
 
 ## Archive
 <!-- Archived entries live in archive/YYYY-MM/. Not loaded at session start. -->

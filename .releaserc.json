@@ -1,0 +1,25 @@
+{
+	"branches": ["master"],
+	"plugins": [
+		"@semantic-release/commit-analyzer",
+		"@semantic-release/release-notes-generator",
+		"@semantic-release/changelog",
+		["@semantic-release/npm", {
+			"npmPublish": false
+		}],
+		["@semantic-release/exec", {
+			"prepareCmd": "node version-bump.mjs"
+		}],
+		["@semantic-release/git", {
+			"assets": ["package.json", "package-lock.json", "manifest.json", "versions.json", "CHANGELOG.md"],
+			"message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+		}],
+		["@semantic-release/github", {
+			"assets": [
+				{"path": "build/main.js", "label": "main.js"},
+				{"path": "build/manifest.json", "label": "manifest.json"},
+				{"path": "build/styles.css", "label": "styles.css"}
+			]
+		}]
+	]
+}
