@@ -30,6 +30,9 @@ type McpRequest = express.Request & {auth?: AuthInfo};
 export const RATE_LIMIT = 200; // requests per window
 const WINDOW_MS = 60_000; // 1 minute
 
+/** Interval at which the server proactively evicts expired rate-limit entries. */
+export const EVICTION_INTERVAL_MS = 60_000;
+
 interface RateLimitEntry {
 	count: number;
 	resetAt: number;
@@ -42,6 +45,17 @@ const MAX_TRACKED_IPS = 10_000;
 
 function evictStaleEntries(now: number): void {
 	if (requestCounts.size < MAX_TRACKED_IPS) return;
+	for (const [ip, entry] of requestCounts) {
+		if (now > entry.resetAt) requestCounts.delete(ip);
+	}
+}
+
+/**
+ * Removes expired rate-limit entries regardless of map size. Used by the
+ * periodic eviction timer (L8 hardening) so long-running servers with
+ * sporadic traffic do not accumulate stale state.
+ */
+function evictExpiredEntries(now: number): void {
 	for (const [ip, entry] of requestCounts) {
 		if (now > entry.resetAt) requestCounts.delete(ip);
 	}
@@ -94,6 +108,8 @@ export class KadoMcpServer {
 	private activeRequests = 0;
 	/** Pending retry timeout handle — cleared by stop() to prevent orphaned retries. */
 	private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+	/** Periodic rate-limit eviction handle — started by start(), cleared by stop(). */
+	private evictionInterval: ReturnType<typeof setInterval> | null = null;
 	/** In-flight stop() promise — ensures double-stop is idempotent. */
 	private stopping: Promise<void> | null = null;
 	constructor(
@@ -144,6 +160,13 @@ export class KadoMcpServer {
 	async start(config: ServerConfig): Promise<void> {
 		if (this.running || this.httpServer !== null) return;
 		await this.tryListen(config);
+		// Start periodic eviction only after the listener is wired up so a
+		// failed start (EADDRINUSE) does not leave an orphaned interval.
+		if (this.evictionInterval === null) {
+			this.evictionInterval = setInterval(() => {
+				evictExpiredEntries(Date.now());
+			}, EVICTION_INTERVAL_MS);
+		}
 	}
 
 	private async tryListen(config: ServerConfig, retried = false): Promise<void> {
@@ -197,6 +220,12 @@ export class KadoMcpServer {
 		if (this.retryTimeout !== null) {
 			clearTimeout(this.retryTimeout);
 			this.retryTimeout = null;
+		}
+
+		// Cancel periodic rate-limit eviction timer
+		if (this.evictionInterval !== null) {
+			clearInterval(this.evictionInterval);
+			this.evictionInterval = null;
 		}
 
 		const closePromises = Array.from(this.transports.values()).map((t) =>
