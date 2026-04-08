@@ -45,8 +45,10 @@ _outbox/
 # Claude Code
 .claude/
 .claude-docker/
-claude-docker-home/.claude.json
-claude-docker-home/.claude/
-claude-docker-home/.home-initialized
-claude-docker-home/.bash_history
-claude-docker-home/.cache/
+
+# Local Docker-based dev environment (not useful to anyone cloning the repo).
+# The master copies live under ~/Kouzou/scripts and are deployed per-repo
+# locally; they do not belong in the plugin source tree.
+claude-docker/
+claude-docker-home/
+begin-code.sh
