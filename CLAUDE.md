@@ -1,5 +1,7 @@
 # Kado — Obsidian Plugin
 
+@~/Kouzou/standards/general.md
+
 ## Memory & Context
 @docs/ai/memory/memory.md
 

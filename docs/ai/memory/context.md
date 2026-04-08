@@ -26,13 +26,6 @@ All 5 phases implemented and committed:
 - **Build:** Clean (tsc + esbuild)
 - **Lint:** Clean on src/ (only temp/ mockup files have errors)
 
-### Next: GUI Bug Fixes (2026-04-01)
-
-User tested the new settings UI in Obsidian and found issues. Bugs not yet cataloged — need screenshot or description from user. Known areas to investigate:
-
-1. **Area assignment permissions** — when assigning an area to a key, all permissions default to false (correct per default-deny), but user found this confusing or broken
-2. **General UI rendering** — user reported "jede menge fehler in der gui" (many GUI bugs) — specifics TBD
-3. **Audit log visibility** — resolved: log file is `.log` not `.md`, so Obsidian doesn't show it. The "View log" button in settings opens it.
 
 ### Architecture (new settings/)
 ```
@@ -65,24 +58,38 @@ src/settings/
 
 ## Deferred Review Items
 
-### M2 — Wildcard CORS restriction (2026-03-30)
-- Location: src/mcp/server.ts:97
-- Concern: `cors()` allows all origins — restrict to known clients
-- Reason deferred: Requires determining exact client origin list; functional without it
+### R1/H5 — Audit buffered writes (2026-04-01)
+- Location: src/main.ts:81
+- Concern: Audit write reads full log on every entry; should buffer + batch append
+- Reason deferred: Significant write chain architecture refactor; C1 fix already added .catch() recovery
+- Branch: feat/kado-v1-implementation
 
-### M4 — Percent-encoded path traversal (2026-03-30)
-- Location: src/core/gates/path-access.ts:16
-- Concern: PathAccessGate doesn't decode %2e%2e before traversal check
-- Reason deferred: Obsidian vault API unlikely to interpret URL-encoded paths
+### R2/H9 — Kokoro design record for v1 API (2026-04-01) — RESOLVED
+- Location: docs/XDD/specs/001-kado/
+- Concern: Constitution requires MCP tool schemas submitted to MiYo Kokoro before merge
+- Resolution: Contract created at `_outbox/for-kokoro/kado-v1-mcp-api-contract.md` — ready for submission
+- Branch: feat/kado-v1-implementation
 
-### M11 — Pin obsidian dependency version (2026-03-30)
-- Location: package.json:42
-- Concern: `obsidian: latest` breaks reproducible builds
+### R7/M6 — Repeated linear key lookups across gate chain (2026-04-01)
+- Location: src/core/gates/authenticate.ts:27, key-scope.ts:33
+- Concern: config.apiKeys.find() called 5 times per request across gates
+- Reason deferred: Touches multiple gate files; refactor scope beyond review fixes
+- Branch: feat/kado-v1-implementation
 
-### M13 — Zod v4 vs v3 MCP SDK compat (2026-03-30)
-- Location: src/mcp/tools.ts, package.json
-- Concern: Zod v4 enum introspection may not render in MCP tool manifests
+### R13/M18 — Settings sub-components have zero tests (2026-04-01)
+- Location: src/settings/components/*, src/settings/tabs/*
+- Concern: UI components untested; config mutation paths not verified
+- Reason deferred: Large scope — multiple new test files needed
+- Branch: feat/kado-v1-implementation
 
-### H7 — Delete permission unreachable (2026-03-30)
-- Location: src/types/canonical.ts:17
-- Concern: CrudFlags.delete exists but no tool implements it — reserved for future kado-delete
+### R14/L4 — Unbounded glob pattern complexity (2026-04-01)
+- Location: src/core/glob-match.ts:16
+- Concern: No validation on pattern length/depth; ReDoS potential
+- Reason deferred: Low-risk, admin-only config surface
+- Branch: feat/kado-v1-implementation
+
+### R15/L8 — evictStaleEntries only triggers at 10K IPs (2026-04-01)
+- Location: src/mcp/server.ts:42
+- Concern: Stale rate-limit entries never cleaned until 10K threshold
+- Reason deferred: Negligible impact in single-user Obsidian deployment
+- Branch: feat/kado-v1-implementation
