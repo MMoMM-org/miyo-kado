@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-kado",
 	"version": "0.1.4",
-	"description": "Security-first MCP gateway for Obsidian vaults",
+	"description": "Security-first MCP gateway with default-deny permissions and audit logging.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
