@@ -1,3 +1,10 @@
+## [0.1.6](https://github.com/MMoMM-org/miyo-kado/compare/0.1.5...0.1.6) (2026-04-08)
+
+
+### Bug Fixes
+
+* address ObsidianReviewBot feedback on submission ([c33e263](https://github.com/MMoMM-org/miyo-kado/commit/c33e2631ef7f39bd7bc7127a845284427a47a228))
+
 ## [0.1.5](https://github.com/MMoMM-org/miyo-kado/compare/0.1.4...0.1.5) (2026-04-08)
 
 
