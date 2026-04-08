@@ -30,6 +30,8 @@ export interface CoreReadRequest {
 	apiKeyId: string;
 	operation: DataType;
 	path: string;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
 }
 
 /** Request to create or update a vault item. Includes optional concurrency guard. */
@@ -39,6 +41,8 @@ export interface CoreWriteRequest {
 	path: string;
 	content: string | ArrayBuffer | Record<string, unknown>;
 	expectedModified?: number;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
 }
 
 /** Request to search the vault by tag, name, content, frontmatter, or directory listing. */
@@ -53,6 +57,8 @@ export interface CoreSearchRequest {
 	scopePatterns?: string[];
 	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */
 	allowedTags?: string[];
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
 }
 
 /** Union of all core request types flowing through the permission chain. */

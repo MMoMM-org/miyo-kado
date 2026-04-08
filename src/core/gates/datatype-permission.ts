@@ -65,8 +65,9 @@ function resolveEffectivePermissions(
 	path: string,
 	config: KadoConfig,
 	keyId: string,
+	resolvedKey?: KadoConfig['apiKeys'][number],
 ): DataTypePermissions | null {
-	const key = config.apiKeys.find((k) => k.id === keyId);
+	const key = resolvedKey ?? config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return null;
 
 	const globalPerms = resolveScope(config.security, path);
@@ -83,7 +84,9 @@ export const dataTypePermissionGate: PermissionGate = {
 	name: 'datatype-permission',
 
 	evaluate(request: CoreRequest, config: KadoConfig): GateResult {
-		const key = config.apiKeys.find((k) => k.id === request.apiKeyId);
+		// Prefer the resolved key attached by permission-chain entry (M6);
+		// fall back to direct lookup for tests that call the gate directly.
+		const key = request.resolvedKey ?? config.apiKeys.find((k) => k.id === request.apiKeyId);
 		if (!key) {
 			return forbidden('API key not found.');
 		}
@@ -91,12 +94,12 @@ export const dataTypePermissionGate: PermissionGate = {
 		const action = inferCrudAction(request);
 
 		if (isCoreSearchRequest(request)) {
-			return evaluateSearchPermission(request.apiKeyId, action, config);
+			return evaluateSearchPermission(request.apiKeyId, action, config, key);
 		}
 
 		const path = (request as {path: string}).path;
 		const dataType = (request as {operation: DataType}).operation;
-		return evaluatePathPermission(path, dataType, action, request.apiKeyId, config);
+		return evaluatePathPermission(path, dataType, action, request.apiKeyId, config, key);
 	},
 };
 
@@ -105,8 +108,9 @@ function evaluateSearchPermission(
 	keyId: string,
 	action: CrudOperation,
 	config: KadoConfig,
+	resolvedKey?: KadoConfig['apiKeys'][number],
 ): GateResult {
-	const key = config.apiKeys.find((k) => k.id === keyId);
+	const key = resolvedKey ?? config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return forbidden('API key not found.');
 
 	// For search (no specific path), check against any whitelisted path or
@@ -158,8 +162,9 @@ function evaluatePathPermission(
 	action: CrudOperation,
 	keyId: string,
 	config: KadoConfig,
+	resolvedKey?: KadoConfig['apiKeys'][number],
 ): GateResult {
-	const effective = resolveEffectivePermissions(path, config, keyId);
+	const effective = resolveEffectivePermissions(path, config, keyId, resolvedKey);
 	if (effective === null) {
 		return forbidden('Request path is not within any permitted scope.');
 	}

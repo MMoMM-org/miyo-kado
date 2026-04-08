@@ -25,7 +25,9 @@ export const authenticateGate: PermissionGate = {
 			return unauthorized('API key ID is required.');
 		}
 
-		const key = config.apiKeys.find((k) => k.id === request.apiKeyId);
+		// Prefer the resolved key attached by permission-chain entry (M6);
+		// fall back to direct lookup for tests that call the gate directly.
+		const key = request.resolvedKey ?? config.apiKeys.find((k) => k.id === request.apiKeyId);
 
 		if (!key) {
 			return unauthorized('Invalid or missing API key');

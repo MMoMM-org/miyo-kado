@@ -31,7 +31,9 @@ export const keyScopeGate: PermissionGate = {
 			return {allowed: true};
 		}
 
-		const key = config.apiKeys.find((k) => k.id === request.apiKeyId);
+		// Prefer the resolved key attached by permission-chain entry (M6);
+		// fall back to direct lookup for tests that call the gate directly.
+		const key = request.resolvedKey ?? config.apiKeys.find((k) => k.id === request.apiKeyId);
 		if (!key) {
 			return forbidden('API key not found.');
 		}
