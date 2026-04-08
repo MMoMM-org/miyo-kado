@@ -27,7 +27,10 @@ export function renderApiKeyTab(
 	}
 
 	renderKeyManagement(containerEl, key, plugin, onRedisplay);
-	renderKeyPermissions(containerEl, key, plugin, onRedisplay);
+	// containerEl is the tab content root (created fresh on each display() and
+	// emptied on tab switch). Threading it down so the picker can scope its
+	// outside-click listener to this DOM instead of the global document.
+	renderKeyPermissions(containerEl, containerEl, key, plugin, onRedisplay);
 	renderDangerZone(containerEl, key, config, plugin, onSwitchTab);
 }
 
@@ -95,6 +98,7 @@ function renderKeyManagement(
 
 function renderKeyPermissions(
 	containerEl: HTMLElement,
+	tabRoot: HTMLElement,
 	key: ApiKeyConfig,
 	plugin: KadoPlugin,
 	onRedisplay: () => void,
@@ -141,7 +145,7 @@ function renderKeyPermissions(
 	const addPathContainer = containerEl.createDiv();
 	const addPathBtn = addPathContainer.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
 	addPathBtn.addEventListener('click', () => {
-		renderGlobalPathPicker(addPathContainer, globalSecurity.paths, key, plugin, onRedisplay);
+		renderGlobalPathPicker(addPathContainer, tabRoot, globalSecurity.paths, key, plugin, onRedisplay);
 	});
 
 	// ── Tags Section ──
@@ -207,6 +211,7 @@ function renderKeyPathEntry(
 
 function renderGlobalPathPicker(
 	containerEl: HTMLElement,
+	tabRoot: HTMLElement,
 	globalPaths: PathPermission[],
 	key: ApiKeyConfig,
 	plugin: KadoPlugin,
@@ -242,9 +247,14 @@ function renderGlobalPathPicker(
 	const firstItem = picker.querySelector<HTMLElement>('.kado-picker-item');
 	firstItem?.focus();
 
-	// Close picker on outside click or Escape
-	setTimeout(() => {
-		document.addEventListener('click', (e: MouseEvent) => {
+	// Close picker on outside click or Escape.
+	// Listener is scoped to tabRoot (the API key tab content) instead of
+	// the global document so it dies with the DOM when the tab is rebuilt
+	// or the settings panel closes — no manual unregister required.
+	// The setTimeout(0) defers registration to the next tick so the click
+	// that opened the picker doesn't immediately close it.
+	window.setTimeout(() => {
+		tabRoot.addEventListener('click', (e: MouseEvent) => {
 			if (!picker.contains(e.target as Node)) closePicker();
 		}, {signal: closeAbort.signal});
 	}, 0);
