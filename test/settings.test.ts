@@ -117,7 +117,7 @@ describe('KadoSettingsTab', () => {
 			expect(names).toContain('Enable audit logging');
 			expect(names).toContain('Log directory');
 			expect(names).toContain('Log filename');
-			expect(names).toContain('Max log size (MB)');
+			expect(names).toContain('Max log size');
 			expect(names).toContain('Max retained logs');
 		});
 	});

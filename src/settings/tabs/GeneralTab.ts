@@ -145,8 +145,8 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 
 	// Max size
 	new Setting(containerEl)
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- MB is a unit abbreviation
-		.setName('Max log size (MB)')
+		.setName('Max log size')
+		.setDesc('Size in megabytes at which the log rotates.')
 		.addText(text => text
 			.setValue(String(Math.round(audit.maxSizeBytes / (1024 * 1024))))
 			.onChange(async (value) => {

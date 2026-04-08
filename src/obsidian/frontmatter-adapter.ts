@@ -55,13 +55,13 @@ function buildWriteResult(path: string, file: TFile): CoreWriteResult {
  */
 export function createFrontmatterAdapter(app: App): ReadWriteAdapter {
 	return {
-		async read(request: CoreReadRequest): Promise<CoreFileResult> {
+		read(request: CoreReadRequest): Promise<CoreFileResult> {
 			const file = getFile(app, request.path);
 			if (!file) {
-				throw notFoundError(request.path);
+				return Promise.reject(notFoundError(request.path));
 			}
 			const content = readFrontmatter(app, file);
-			return buildFileResult(request.path, content, file);
+			return Promise.resolve(buildFileResult(request.path, content, file));
 		},
 
 		async write(request: CoreWriteRequest): Promise<CoreWriteResult> {
