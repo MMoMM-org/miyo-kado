@@ -74,15 +74,19 @@ export class AuditLogger {
 	 * Queues an entry for the next flush. Returns immediately — actual I/O
 	 * happens on the next flush, either via the 500ms timer or an explicit
 	 * `flush()` call.
+	 *
+	 * The return type is `Promise<void>` for back-compat with callers that
+	 * `await` this method, but the body is synchronous (no await inside).
 	 */
-	async log(entry: AuditEntry): Promise<void> {
+	log(entry: AuditEntry): Promise<void> {
 		if (!this.config.enabled) {
-			return;
+			return Promise.resolve();
 		}
 
 		const line = JSON.stringify(entry) + '\n';
 		this.buffer.push(line);
 		this.scheduleFlush();
+		return Promise.resolve();
 	}
 
 	/**
