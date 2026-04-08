@@ -55,11 +55,11 @@ The test reads the API key from the repo's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "kado": {
-      "type": "url",
+    "Kado": {
+      "type": "http",
       "url": "http://127.0.0.1:23026/mcp",
       "headers": {
-        "Authorization": "Bearer <API_KEY>"
+        "Authorization": "Bearer kado_your-api-key-id-here"
       }
     }
   }
@@ -248,10 +248,65 @@ const data = JSON.parse(readFileSync(KADO_DATA_JSON, 'utf-8'));
 This catches misconfiguration early and produces clear skip messages
 instead of cryptic tool errors.
 
+## Config Snapshot & Restore
+
+Live tests don't assume whatever configuration happens to be in the plugin —
+they enforce an **expected state** before running and restore the original
+state afterwards. This makes the suite deterministic regardless of what the
+developer was doing in the vault beforehand.
+
+### Pattern
+
+```typescript
+// 1. Back up whatever is currently in data.json (if no backup already exists)
+copyFileSync(KADO_DATA_JSON, `${KADO_DATA_JSON}.bak`);
+
+// 2. Write the fixture config — the fixture IS the ground truth for the test run
+writeFileSync(KADO_DATA_JSON, JSON.stringify(fixtureConfig, null, 2));
+
+// 3. Developer reloads the Kado plugin (disable → enable) so Obsidian picks up
+//    the new data.json. The preflight cascade catches misconfiguration.
+
+// 4. Run tests
+
+// 5. afterAll: restore the original config from data.json.bak
+copyFileSync(`${KADO_DATA_JSON}.bak`, KADO_DATA_JSON);
+```
+
+The backup file (`data.json.bak`) lives next to `data.json` and is gitignored.
+It protects against losing your working config if tests are interrupted: the
+backup is only written if no backup exists yet, so a second run won't clobber
+the first snapshot.
+
+### Two Backup/Restore Styles
+
+| Test file | Backup | Restore | Why |
+|-----------|--------|---------|-----|
+| `mcp-live.test.ts` | on first run, if `.bak` missing | **not automatic** — backup left at `data.json.bak` for manual restore | Tests are non-destructive to config; developer may want the fixture state to persist for debugging |
+| `mcp-config-change.test.ts` | in-memory fixture snapshot | `afterAll` always restores | Tests mutate config mid-suite (e.g. toggle permissions, flip whitelist/blacklist) and must leave a clean baseline |
+
+After `mcp-live.test.ts` finishes, the fixture config is still active in
+`data.json`. If you want your original config back:
+
+```bash
+mv test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json.bak \
+   test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json
+```
+
+Then reload the plugin in Obsidian.
+
+### Why Overwrite Instead of Merge?
+
+The fixture config is a **ground truth**, not a patch. Merging a fixture
+over whatever the developer had configured produces an untested hybrid
+state — the same configuration never runs twice. Overwriting guarantees
+every run starts from a known shape: the same paths, the same keys, the
+same permissions.
+
 ## Cleanup
 
 Write tests create temporary files in the vault. Cleanup happens via
-direct filesystem operations (not MCP — there is no delete tool):
+direct filesystem operations (not MCP):
 
 ```typescript
 beforeAll(() => {
@@ -265,9 +320,17 @@ afterAll(() => {
 });
 ```
 
-**Why filesystem cleanup, not MCP?** Kado has no delete tool (`CrudFlags.delete`
-is reserved for future use). Direct `unlinkSync` is the only way to remove
-test artifacts. Obsidian detects the external deletion and updates its index.
+**Why filesystem cleanup, not MCP?** Kado *does* support delete via `kado-write`
+(`CrudFlags.delete`). But using the MCP delete tool for cleanup would couple
+the test harness to the very permission system under test: if the fixture
+config denies delete on a path, or a test run leaves the server in an
+unexpected state, cleanup would fail — and we'd be unable to reset the slate.
+
+Filesystem-level `unlinkSync` bypasses Kado entirely. It works regardless of
+which permissions are currently configured, which keys are enabled, or whether
+the MCP server is even running. The goal is *guaranteed* reset, not
+demonstrating that Kado can clean up after itself (that's what the delete
+tests cover). Obsidian detects the external deletion and updates its index.
 
 **Timing caveat**: Obsidian's vault API caches file state. If a file is deleted
 externally and a create is attempted immediately, Obsidian may still think the
