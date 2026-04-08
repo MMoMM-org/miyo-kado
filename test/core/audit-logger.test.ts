@@ -61,6 +61,7 @@ describe('AuditLogger.log() — writes NDJSON line', () => {
 		const entry = makeEntry();
 
 		await logger.log(entry);
+		await logger.flush();
 
 		expect(deps.write).toHaveBeenCalledOnce();
 		const [line] = deps.write.mock.calls[0] as [string];
@@ -79,6 +80,7 @@ describe('AuditLogger.log() — required fields present', () => {
 		const entry = makeEntry();
 
 		await logger.log(entry);
+		await logger.flush();
 
 		const [line] = deps.write.mock.calls[0] as [string];
 		const parsed = JSON.parse(line) as AuditEntry;
@@ -102,6 +104,7 @@ describe('AuditLogger.log() — denied entry', () => {
 		const entry = makeEntry({decision: 'denied', gate: 'authenticate'});
 
 		await logger.log(entry);
+		await logger.flush();
 
 		const [line] = deps.write.mock.calls[0] as [string];
 		const parsed = JSON.parse(line) as AuditEntry;
@@ -121,6 +124,7 @@ describe('AuditLogger.log() — allowed entry', () => {
 		const entry = makeEntry({decision: 'allowed'});
 
 		await logger.log(entry);
+		await logger.flush();
 
 		const [line] = deps.write.mock.calls[0] as [string];
 		const parsed = JSON.parse(line) as AuditEntry;
@@ -139,6 +143,7 @@ describe('AuditLogger.log() — disabled config', () => {
 		const logger = new AuditLogger(makeConfig({enabled: false}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.write).not.toHaveBeenCalled();
 	});
@@ -148,6 +153,7 @@ describe('AuditLogger.log() — disabled config', () => {
 		const logger = new AuditLogger(makeConfig({enabled: false}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.getSize).not.toHaveBeenCalled();
 	});
@@ -163,6 +169,7 @@ describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => 
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		// Rotation should have been triggered (getLogPath called, exists checked)
 		expect(deps.getLogPath).toHaveBeenCalled();
@@ -185,6 +192,7 @@ describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => 
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024, maxRetainedLogs: 3}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		// Oldest file (base.3) is removed first
 		expect(deps.remove).toHaveBeenCalledWith(`${base}.3`);
@@ -206,6 +214,7 @@ describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => 
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.rename).not.toHaveBeenCalled();
 		expect(deps.remove).not.toHaveBeenCalled();
@@ -217,6 +226,7 @@ describe('AuditLogger.log() — rotation when size exceeds maxSizeBytes', () => 
 		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
 
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.rename).not.toHaveBeenCalled();
 		expect(deps.remove).not.toHaveBeenCalled();
@@ -234,6 +244,7 @@ describe('AuditLogger.updateConfig()', () => {
 
 		logger.updateConfig(makeConfig({enabled: false}));
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.write).not.toHaveBeenCalled();
 	});
@@ -244,8 +255,121 @@ describe('AuditLogger.updateConfig()', () => {
 
 		logger.updateConfig(makeConfig({enabled: true}));
 		await logger.log(makeEntry());
+		await logger.flush();
 
 		expect(deps.write).toHaveBeenCalledOnce();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Buffered flush (H5) — log() buffers, flush() drains
+// ---------------------------------------------------------------------------
+
+describe('AuditLogger — buffered flush (H5)', () => {
+	it('batches rapid log() calls into a single write via flush()', async () => {
+		const deps = makeDeps();
+		const logger = new AuditLogger(makeConfig(), deps);
+
+		for (let i = 0; i < 10; i++) {
+			await logger.log(makeEntry({apiKeyId: `kado_${i}`}));
+		}
+
+		// Before flush: no writes yet (buffered)
+		expect(deps.write).not.toHaveBeenCalled();
+
+		await logger.flush();
+
+		// After flush: exactly one write with all 10 lines joined
+		expect(deps.write).toHaveBeenCalledOnce();
+		const [batched] = deps.write.mock.calls[0] as [string];
+		const lines = batched.split('\n').filter(Boolean);
+		expect(lines).toHaveLength(10);
+	});
+
+	it('flush() is idempotent when buffer is empty', async () => {
+		const deps = makeDeps();
+		const logger = new AuditLogger(makeConfig(), deps);
+
+		await logger.flush();
+		await logger.flush();
+
+		expect(deps.write).not.toHaveBeenCalled();
+	});
+
+	it('flush() on empty buffer does not schedule rotation', async () => {
+		const deps = makeDeps({size: 999_999});
+		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
+
+		await logger.flush();
+
+		expect(deps.rename).not.toHaveBeenCalled();
+		expect(deps.remove).not.toHaveBeenCalled();
+	});
+
+	it('automatically flushes after 500ms timer fires', async () => {
+		vi.useFakeTimers();
+		try {
+			const deps = makeDeps();
+			const logger = new AuditLogger(makeConfig(), deps);
+
+			await logger.log(makeEntry());
+			expect(deps.write).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(500);
+
+			expect(deps.write).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('retries failed entries on the next flush', async () => {
+		const deps = makeDeps();
+		// First write fails, second succeeds
+		deps.write
+			.mockRejectedValueOnce(new Error('disk full'))
+			.mockResolvedValueOnce(undefined);
+		const logger = new AuditLogger(makeConfig(), deps);
+
+		await logger.log(makeEntry({apiKeyId: 'kado_first'}));
+		await logger.flush(); // fails, entries retained
+
+		await logger.log(makeEntry({apiKeyId: 'kado_second'}));
+		await logger.flush(); // retries first + second
+
+		// Second flush call carries both entries (retry-prepended)
+		const lastCall = deps.write.mock.calls[1] as [string];
+		const lines = (lastCall[0] ?? '').split('\n').filter(Boolean);
+		expect(lines).toHaveLength(2);
+		expect(lines[0]).toContain('kado_first');
+		expect(lines[1]).toContain('kado_second');
+	});
+
+	it('updateConfig({enabled:false}) flushes pending entries before disabling', async () => {
+		const deps = makeDeps();
+		const logger = new AuditLogger(makeConfig({enabled: true}), deps);
+
+		await logger.log(makeEntry());
+		expect(deps.write).not.toHaveBeenCalled();
+
+		logger.updateConfig(makeConfig({enabled: false}));
+		// updateConfig must synchronously or immediately flush; support async flush
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(deps.write).toHaveBeenCalledOnce();
+	});
+
+	it('rotation runs once per flush, not once per log call', async () => {
+		const deps = makeDeps({size: 2048});
+		const logger = new AuditLogger(makeConfig({maxSizeBytes: 1024}), deps);
+
+		for (let i = 0; i < 5; i++) {
+			await logger.log(makeEntry());
+		}
+		await logger.flush();
+
+		// getSize should be called once (the flush rotation check), not 5 times
+		expect(deps.getSize).toHaveBeenCalledTimes(1);
 	});
 });
 

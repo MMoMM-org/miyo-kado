@@ -563,6 +563,98 @@ describe('KadoMcpServer — rate limiting', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Rate-limit periodic eviction (L8) — timer-driven cleanup of expired entries
+// ---------------------------------------------------------------------------
+
+describe('KadoMcpServer — periodic rate-limit eviction (L8)', () => {
+	beforeEach(() => {
+		requestCounts.clear();
+	});
+
+	afterEach(() => {
+		requestCounts.clear();
+	});
+
+	it('removes expired entries on the periodic tick even when map is small', async () => {
+		vi.useFakeTimers();
+		try {
+			const port = await getFreePort();
+			const server = makeKadoMcpServer();
+			await server.start(makeServerConfig(port));
+
+			try {
+				// Seed a single expired entry — well under the 10k size threshold
+				requestCounts.set('1.2.3.4', {count: 5, resetAt: Date.now() - 1_000});
+				expect(requestCounts.size).toBe(1);
+
+				// Advance past the 60s eviction tick
+				await vi.advanceTimersByTimeAsync(60_000);
+
+				expect(requestCounts.has('1.2.3.4')).toBe(false);
+			} finally {
+				await server.stop();
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps non-expired entries on the periodic tick', async () => {
+		vi.useFakeTimers();
+		try {
+			const port = await getFreePort();
+			const server = makeKadoMcpServer();
+			await server.start(makeServerConfig(port));
+
+			try {
+				requestCounts.set('5.6.7.8', {count: 2, resetAt: Date.now() + 120_000});
+
+				await vi.advanceTimersByTimeAsync(60_000);
+
+				expect(requestCounts.has('5.6.7.8')).toBe(true);
+			} finally {
+				await server.stop();
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('clears the eviction interval on stop so no ticks fire after teardown', async () => {
+		vi.useFakeTimers();
+		try {
+			const port = await getFreePort();
+			const server = makeKadoMcpServer();
+			await server.start(makeServerConfig(port));
+			await server.stop();
+
+			// Seed AFTER stop — if the timer was cleared, this entry survives
+			requestCounts.set('9.9.9.9', {count: 1, resetAt: Date.now() - 1_000});
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(requestCounts.has('9.9.9.9')).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('does not start the eviction timer before start() is called', async () => {
+		vi.useFakeTimers();
+		try {
+			// Fresh server without start — seed an expired entry
+			makeKadoMcpServer();
+			requestCounts.set('0.0.0.0', {count: 1, resetAt: Date.now() - 1_000});
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			// Entry still there — no timer was scheduled
+			expect(requestCounts.has('0.0.0.0')).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Concurrency cap — 503 response when MAX_CONCURRENT is reached
 // ---------------------------------------------------------------------------
 
