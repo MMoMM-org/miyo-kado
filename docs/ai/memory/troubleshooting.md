@@ -1,5 +1,5 @@
 # Troubleshooting — Kado
-<!-- Known issues and proven fixes. Updated: 2026-04-01 -->
+<!-- Known issues and proven fixes. Updated: 2026-04-08 -->
 <!-- Format: ## [Issue title] — Status: open/resolved — [fix description] -->
 <!-- Resolved entries are archived by /memory-cleanup, not deleted -->
 
@@ -15,3 +15,11 @@
 **Workaround**: For filesystem verification in tests, add ~2s delay after writes that increase file size. MCP API consumers are unaffected (they use `vault.read()` which returns correct content instantly).
 **Kado approach**: Use `vault.adapter.write()` for disk writes (note-adapter updateNote), `vault.create()` for creates. The transient truncation resolves itself.
 **Related**: obsidian-mcp-tools (jacksteamdev) uses external MCP server → bypasses this entirely.
+
+<!-- 2026-04-08 -->
+## Settings page stale after plugin reload — Status: open
+**Problem**: After a hot-reload of the plugin (dev rebuild), the Obsidian settings tab continues showing the old UI state and old version number (e.g. `0.0.27`) even though the Community Plugins page correctly shows the new version (`0.0.28`). Observed: new picker placement and other UI changes don't appear until the user fully disables and re-enables the plugin.
+**Impact**: Dev loop is confusing — changes appear to not land when they actually did. Also affects end users after updates.
+**Suspected cause**: Settings tab is constructed once and not re-rendered on plugin reload; references to the previous plugin instance leak into the DOM.
+**Workaround**: Disable + re-enable the plugin to force a fresh settings tab construction.
+**TODO**: Ensure settings tab is cleanly torn down and rebuilt on plugin lifecycle events; verify no stale closures hold old `this.plugin` references.
