@@ -20,10 +20,13 @@ const { minAppVersion } = manifest;
 manifest.version = targetVersion;
 writeFileSync("manifest.json", JSON.stringify(manifest, null, "\t"));
 
-// update versions.json with target version and minAppVersion from manifest.json
-// but only if the target version is not already in versions.json
+// Update versions.json: every released plugin version maps to the
+// minAppVersion it requires. Obsidian uses this to determine which version
+// of the plugin is compatible with the user's Obsidian build. We always add
+// the current version (idempotent: re-running with the same version is a
+// no-op).
 const versions = JSON.parse(readFileSync('versions.json', 'utf8'));
-if (!Object.values(versions).includes(minAppVersion)) {
+if (versions[targetVersion] !== minAppVersion) {
     versions[targetVersion] = minAppVersion;
-    writeFileSync('versions.json', JSON.stringify(versions, null, '\t'));
+    writeFileSync('versions.json', JSON.stringify(versions, null, '\t') + '\n');
 }
