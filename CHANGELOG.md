@@ -1,3 +1,10 @@
+## [0.1.3](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.2...v0.1.3) (2026-04-08)
+
+
+### Bug Fixes
+
+* **release:** clean stale versions.json and always map current version ([f357a1c](https://github.com/MMoMM-org/miyo-kado/commit/f357a1c389aba47799f6a2ee06b7921d99646501))
+
 ## [0.1.2](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.1...v0.1.2) (2026-04-08)
 
 
