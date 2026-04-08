@@ -70,6 +70,26 @@ Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in 
 }
 ```
 
+## Screenshots
+
+**General tab** -- server status, port, audit logging.
+
+<p align="center">
+  <img src="assets/settings-general.png" alt="MiYo Kado General settings tab" width="720" />
+</p>
+
+**Global Security tab** -- whitelist of paths and tags that any key may reference. Permissions are set per data type (Notes, Frontmatter, Dataview, Files) for each path.
+
+<p align="center">
+  <img src="assets/settings-global-security.png" alt="MiYo Kado Global Security settings tab with two whitelisted paths and one tag" width="720" />
+</p>
+
+**API Key tab** -- per-key access. Each key has its own access mode, paths, tags, and permission matrix, all constrained by the global security scope.
+
+<p align="center">
+  <img src="assets/settings-api-key.png" alt="MiYo Kado API Key settings tab showing key management, permissions, paths and tags" width="720" />
+</p>
+
 ## Documentation
 
 | Document | Audience | Content |
