@@ -31,6 +31,7 @@ export default tseslint.config(
 		"version-bump.mjs",
 		"versions.json",
 		"vitest.config.ts",
+		"vitest.live.config.ts",
 		"main.js",
 		"test/__mocks__/**",
 		"test/**/*.test.ts",
