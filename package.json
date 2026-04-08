@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-kado",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Security-first MCP gateway for Obsidian vaults",
 	"main": "main.js",
 	"type": "module",

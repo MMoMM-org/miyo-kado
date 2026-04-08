@@ -1,3 +1,10 @@
+## [0.1.2](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.1...v0.1.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* **release:** make package.json single source of truth for version ([ef062fe](https://github.com/MMoMM-org/miyo-kado/commit/ef062fe7643f8c7e1a50c448bdc5e650f5b03a6f))
+
 ## [0.1.1](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.0...v0.1.1) (2026-04-08)
 
 
