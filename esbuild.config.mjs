@@ -94,7 +94,12 @@ const context = await esbuild.context({
 });
 
 if (prod) {
-	bumpPatchVersion();
+	// Versioning is owned by semantic-release on master. The local
+	// bumpPatchVersion() helper remains exported above for manual use, but
+	// production builds no longer mutate manifest.json or package.json —
+	// otherwise CI's `npm run build` would race against semantic-release and
+	// produce release assets whose manifest.json version disagrees with the
+	// git tag (observed in v0.1.0).
 	await context.rebuild();
 	process.exit(0);
 } else {
