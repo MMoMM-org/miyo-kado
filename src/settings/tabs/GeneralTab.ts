@@ -185,4 +185,17 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 					}
 				}));
 	}
+
+	// ── Developer Section ──
+	new Setting(containerEl).setName('Developer').setHeading();
+
+	new Setting(containerEl)
+		.setName('Debug logging')
+		.setDesc('Emit debug messages to the developer console (off by default)')
+		.addToggle(toggle => toggle
+			.setValue(config.debugLogging)
+			.onChange(async (value) => {
+				config.debugLogging = value;
+				await plugin.saveSettings();
+			}));
 }

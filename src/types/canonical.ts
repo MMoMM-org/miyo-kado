@@ -215,6 +215,8 @@ export interface KadoConfig {
 	security: SecurityConfig;
 	apiKeys: ApiKeyConfig[];
 	audit: AuditConfig;
+	/** Emit kadoLog debug messages to the developer console. Default: false (per Obsidian plugin guidelines). */
+	debugLogging: boolean;
 }
 
 // ============================================================
@@ -263,6 +265,7 @@ export function createDefaultConfig(): KadoConfig {
 			maxSizeBytes: 10 * 1024 * 1024,
 			maxRetainedLogs: 3,
 		},
+		debugLogging: false,
 	};
 }
 

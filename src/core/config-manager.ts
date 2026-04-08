@@ -67,6 +67,7 @@ export class ConfigManager {
 			audit: mergedAudit as typeof defaults.audit,
 			security: mergedSecurity,
 			apiKeys: keys,
+			debugLogging: partial.debugLogging ?? defaults.debugLogging,
 		};
 	}
 

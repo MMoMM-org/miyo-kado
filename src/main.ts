@@ -9,7 +9,7 @@ import {KadoSettingsTab} from './settings/SettingsTab';
 import type {KadoConfig} from './types/canonical';
 import {ConfigManager} from './core/config-manager';
 import {KadoMcpServer} from './mcp/server';
-import {kadoLog, kadoError} from './core/logger';
+import {kadoLog, kadoError, setDebugLogging} from './core/logger';
 import {registerTools} from './mcp/tools';
 import {createDefaultGateChain} from './core/permission-chain';
 import {createOperationRouter} from './core/operation-router';
@@ -50,6 +50,7 @@ export default class KadoPlugin extends Plugin {
 		);
 		await this.configManager.load();
 		this.settings = this.configManager.getConfig();
+		setDebugLogging(this.settings.debugLogging);
 
 		const registry = {
 			note: createNoteAdapter(this.app),
@@ -150,9 +151,11 @@ export default class KadoPlugin extends Plugin {
 		this.settings = this.configManager.getConfig();
 	}
 
-	/** Persist current settings via ConfigManager and sync AuditLogger config. */
+	/** Persist current settings via ConfigManager and sync AuditLogger + logger config. */
 	async saveSettings(): Promise<void> {
 		await this.configManager.save();
-		this.auditLogger?.updateConfig(this.configManager.getConfig().audit);
+		const cfg = this.configManager.getConfig();
+		this.auditLogger?.updateConfig(cfg.audit);
+		setDebugLogging(cfg.debugLogging);
 	}
 }

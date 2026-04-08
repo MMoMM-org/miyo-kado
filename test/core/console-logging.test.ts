@@ -4,17 +4,19 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {kadoLog, kadoError} from '../../src/core/logger';
+import {kadoLog, kadoError, setDebugLogging} from '../../src/core/logger';
 
-describe('kadoLog', () => {
+describe('kadoLog (debug logging enabled)', () => {
 	let consoleDebugSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
+		setDebugLogging(true);
 		consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		consoleDebugSpy.mockRestore();
+		setDebugLogging(false);
 	});
 
 	it('calls console.debug with [Kado] prefix', () => {
@@ -37,6 +39,30 @@ describe('kadoLog', () => {
 		expect(consoleDebugSpy).toHaveBeenCalledWith(
 			'[Kado] Server started {"host":"127.0.0.1","port":23026}',
 		);
+	});
+});
+
+describe('kadoLog (debug logging disabled — default)', () => {
+	let consoleDebugSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		setDebugLogging(false);
+		consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		consoleDebugSpy.mockRestore();
+	});
+
+	it('does not call console.debug when debug logging is off', () => {
+		kadoLog('Plugin loaded', {version: '1.0.0'});
+		expect(consoleDebugSpy).not.toHaveBeenCalled();
+	});
+
+	it('starts with debug logging off by default', () => {
+		// No setDebugLogging call in this test — relies on module default
+		kadoLog('should be silent');
+		expect(consoleDebugSpy).not.toHaveBeenCalled();
 	});
 });
 

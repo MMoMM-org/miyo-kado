@@ -118,6 +118,11 @@ describe('createDefaultConfig', () => {
 		expect(config.audit.maxRetainedLogs).toBe(3);
 	});
 
+	it('returns debugLogging disabled by default (Obsidian guideline)', () => {
+		const config = createDefaultConfig();
+		expect(config.debugLogging).toBe(false);
+	});
+
 	it('produces independent objects on each call', () => {
 		const a = createDefaultConfig();
 		const b = createDefaultConfig();
