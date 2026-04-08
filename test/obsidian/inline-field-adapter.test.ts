@@ -185,16 +185,26 @@ describe('InlineFieldAdapter write()', () => {
 		app = new App();
 	});
 
+	/** Stub vault.process to feed `initial` to the transform and capture the result. */
+	function stubProcess(initial: string): {captured: () => string | undefined} {
+		let captured: string | undefined;
+		vi.mocked(app.vault.process).mockImplementation(async (_file: unknown, fn: unknown) => {
+			const transform = fn as (data: string) => string;
+			captured = transform(initial);
+			return captured;
+		});
+		return {captured: () => captured};
+	}
+
 	it('modifies a bare field value preserving surrounding text', async () => {
 		const file = makeTFile({ctime: 1000, mtime: 3000, size: 20});
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-		vi.mocked(app.vault.read).mockResolvedValue('rating:: 8\nother text');
-		vi.mocked(app.vault.modify).mockResolvedValue(undefined);
+		const captured = stubProcess('rating:: 8\nother text');
 
 		const adapter = createInlineFieldAdapter(app);
 		await adapter.write(makeWriteRequest({content: {rating: '10'}}));
 
-		const written: string = vi.mocked(app.vault.modify).mock.calls[0][1] as string;
+		const written = captured.captured() ?? '';
 		expect(written).toContain('rating:: 10');
 		expect(written).toContain('other text');
 	});
@@ -202,13 +212,12 @@ describe('InlineFieldAdapter write()', () => {
 	it('modifies a bracket field preserving [key:: newValue] wrapping', async () => {
 		const file = makeTFile({ctime: 1000, mtime: 3000, size: 30});
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-		vi.mocked(app.vault.read).mockResolvedValue('Text [status:: done] more');
-		vi.mocked(app.vault.modify).mockResolvedValue(undefined);
+		const captured = stubProcess('Text [status:: done] more');
 
 		const adapter = createInlineFieldAdapter(app);
 		await adapter.write(makeWriteRequest({content: {status: 'in-progress'}}));
 
-		const written: string = vi.mocked(app.vault.modify).mock.calls[0][1] as string;
+		const written = captured.captured() ?? '';
 		expect(written).toContain('[status:: in-progress]');
 		expect(written).toContain('Text');
 		expect(written).toContain('more');
@@ -217,21 +226,19 @@ describe('InlineFieldAdapter write()', () => {
 	it('modifies a paren field preserving (key:: newValue) wrapping', async () => {
 		const file = makeTFile({ctime: 1000, mtime: 3000, size: 30});
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-		vi.mocked(app.vault.read).mockResolvedValue('Text (priority:: low) more');
-		vi.mocked(app.vault.modify).mockResolvedValue(undefined);
+		const captured = stubProcess('Text (priority:: low) more');
 
 		const adapter = createInlineFieldAdapter(app);
 		await adapter.write(makeWriteRequest({content: {priority: 'high'}}));
 
-		const written: string = vi.mocked(app.vault.modify).mock.calls[0][1] as string;
+		const written = captured.captured() ?? '';
 		expect(written).toContain('(priority:: high)');
 	});
 
 	it('returns CoreWriteResult with path and timestamps', async () => {
 		const file = makeTFile({ctime: 1000, mtime: 4000, size: 20});
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-		vi.mocked(app.vault.read).mockResolvedValue('rating:: 8');
-		vi.mocked(app.vault.modify).mockResolvedValue(undefined);
+		stubProcess('rating:: 8');
 
 		const adapter = createInlineFieldAdapter(app);
 		const result = await adapter.write(makeWriteRequest({content: {rating: '9'}}));
@@ -254,13 +261,12 @@ describe('InlineFieldAdapter write()', () => {
 			code: 'NOT_FOUND',
 			message: expect.stringContaining('notes/missing.md'),
 		});
-		expect(app.vault.modify).not.toHaveBeenCalled();
+		expect(app.vault.process).not.toHaveBeenCalled();
 	});
 
 	it('throws VALIDATION_ERROR when content is not a Record', async () => {
 		const file = makeTFile();
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
-		vi.mocked(app.vault.read).mockResolvedValue('rating:: 8');
 
 		const adapter = createInlineFieldAdapter(app);
 

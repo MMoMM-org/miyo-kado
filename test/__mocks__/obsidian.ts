@@ -32,6 +32,11 @@ export class App {
 		read: vi.fn(),
 		create: vi.fn(),
 		modify: vi.fn(),
+		// process: atomic read-modify-write. The transform callback receives the
+		// current file content as a string and must return the new content.
+		// Tests stub this via vi.mocked(app.vault.process).mockImplementation(...)
+		// when they need realistic behaviour; otherwise it returns undefined.
+		process: vi.fn(),
 		delete: vi.fn(),
 		trash: vi.fn(),
 		readBinary: vi.fn(),
