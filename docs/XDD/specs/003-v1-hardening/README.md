@@ -1,6 +1,6 @@
 # 003 — Kado v1 Hardening
 
-**Status:** SDD Complete
+**Status:** Plan Complete
 **Created:** 2026-04-01
 **Origin:** Code review findings H5, M6, M18, L4, L8
 
@@ -20,9 +20,10 @@ Addresses 5 hardening items identified in the v1 code review before public relea
 |-------|--------|-------------|
 | PRD | Done | `requirements.md` |
 | SDD | Done | `solution.md` |
-| Plan | Pending | |
+| Plan | Done | `plan/` (5 phases) |
 
 ## Documents
 
 - [requirements.md](requirements.md) — Product requirements
 - [solution.md](solution.md) — Solution design
+- [plan/README.md](plan/README.md) — Phase overview
