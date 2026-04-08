@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/MiYo-Kado.png" alt="MiYo Kado logo" width="160" />
+</p>
+
 # Kado -- Obsidian MCP Gateway
 
 Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through three tools: `kado-read`, `kado-write`, and `kado-search`.
@@ -56,7 +60,7 @@ Every request passes through five gates in order. The first denial stops the cha
 | 3 | datatype-permission | Key must have the required CRUD flag for the data type |
 | 4 | path-access | Final path-traversal and validation check |
 
-Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can restrict by **tags** for search operations.
+Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can use **tags** for search operations.
 
 ## Architecture
 
@@ -70,8 +74,45 @@ MCP Client -> [MCP API Handler] -> [Kado Core] -> [Obsidian Interface] -> Vault
 
 ## Part of MiYo
 
-Kado is part of the [MiYo ecosystem](https://github.com/miyo). See MiYo Kokoro for cross-component architecture.
+Kado is part of the MiYo ecosystem...
+
+more to come soon(TM)
+
+## Future Roadmap
+
+### Permission Rework for Tags
+
+At the moment you can search by Tags. Therefore the only option you have as a permission is R = Read. You either allow or deny.
+In the furture this will change to:
+
+- Read (R) => Search (S)
+- Deny (D) = Deny access to data types which have the tag
+
+The Deny Permission will probably not change the behaviour with the white-/blacklist toggle, but I will need to take a look at the scenarios first.
+
+### Granular Whitelist / Blacklist Toggle
+
+At the moment you can toggle the behaviour of the permissions between whitelist (default) and blacklist. This is for all datatypes AND the tags.
+In the future I might allow a more granular white-/blacklisting.
+
+### Choosing Subpathes for Key Permissions
+
+At the moment you can only choose pathes which are eligible from the Global Security Tab, e.g. /Atlas. This means you can't easily change permissions for /Atlas/People
+Workaround for the time being is to also make /Atlas/People eligble from the Global Security Tab.
+
+## Contributing
+
+Contributions are welcome. The short version:
+
+1. **Open an issue first** for anything non-trivial (bugs, features, refactors) so we can align on scope before you invest time.
+2. **Fork & branch** from `master`. Use a descriptive branch name (e.g. `fix/search-tag-case`, `feat/granular-scopes`).
+3. **Keep changes focused** -- one feature or one fix per PR. See [Development Guide](docs/development.md) for build, test, and lint commands.
+4. **Tests & lint must pass** -- run `npm run build`, `npm test`, and `npm run lint` before pushing.
+5. **Conventional commits** -- e.g. `feat:`, `fix:`, `docs:`, `refactor:`. Release notes are generated from commit history.
+6. **Open a PR** against `master` and reference the issue. Small, reviewable diffs get merged fastest.
+
+For security issues, please **do not** open a public issue -- email marcus@mmomm.org instead.
 
 ## License
 
-[0-BSD](LICENSE)
+[MIT](LICENSE)
