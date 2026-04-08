@@ -35,6 +35,7 @@ export default tseslint.config(
 		"main.js",
 		"test/__mocks__/**",
 		"test/**/*.test.ts",
+		"test/**/helpers.ts",
 		"test/MiYo-Kado/**",
 		"claude-docker-home/**",
 	]),

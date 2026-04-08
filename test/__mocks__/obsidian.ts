@@ -96,14 +96,19 @@ export class Plugin extends Component {
 
 export class Modal {
 	app: App;
-	contentEl = document.createElement('div');
+	contentEl: HTMLElement;
 	constructor(app: App) {
 		this.app = app;
+		this.contentEl = augmentEl(document.createElement('div'));
 	}
-	open = vi.fn();
-	close = vi.fn();
-	onOpen() {}
-	onClose() {}
+	open = vi.fn(() => {
+		this.onOpen();
+	});
+	close = vi.fn(() => {
+		this.onClose();
+	});
+	onOpen(): void {}
+	onClose(): void {}
 }
 
 export class Notice {
@@ -115,38 +120,49 @@ export class Setting {
 	nameEl = document.createElement('div');
 	descEl = augmentEl(document.createElement('div'));
 	private _containerEl: HTMLElement;
-	private _name = '';
 
 	constructor(containerEl: HTMLElement) {
 		this._containerEl = containerEl;
+		this.settingEl.appendChild(this.nameEl);
+		this.settingEl.appendChild(this.descEl);
 		this._containerEl.appendChild(this.settingEl);
 	}
 
 	setName = vi.fn((name: string) => {
-		this._name = name;
 		this.nameEl.textContent = name;
 		this.settingEl.setAttribute('data-setting-name', name);
 		return this;
 	});
-	setDesc = vi.fn(() => this);
+	setDesc = vi.fn((desc: string) => {
+		this.descEl.textContent = desc;
+		return this;
+	});
 	setHeading = vi.fn(() => {
 		this.settingEl.classList.add('setting-heading');
 		return this;
 	});
 	addText = vi.fn((cb: (text: TextComponent) => void) => {
-		cb(new TextComponent());
+		const text = new TextComponent();
+		this.settingEl.appendChild(text.inputEl);
+		cb(text);
 		return this;
 	});
 	addToggle = vi.fn((cb: (toggle: ToggleComponent) => void) => {
-		cb(new ToggleComponent());
+		const toggle = new ToggleComponent();
+		this.settingEl.appendChild(toggle.toggleEl);
+		cb(toggle);
 		return this;
 	});
 	addDropdown = vi.fn((cb: (dropdown: DropdownComponent) => void) => {
-		cb(new DropdownComponent());
+		const dropdown = new DropdownComponent();
+		this.settingEl.appendChild(dropdown.selectEl);
+		cb(dropdown);
 		return this;
 	});
 	addButton = vi.fn((cb: (button: ButtonComponent) => void) => {
-		cb(new ButtonComponent());
+		const button = new ButtonComponent();
+		this.settingEl.appendChild(button.buttonEl);
+		cb(button);
 		return this;
 	});
 }
@@ -155,7 +171,7 @@ export class Setting {
 function augmentEl(el: HTMLElement): HTMLElement {
 	const any = el as unknown as Record<string, unknown>;
 
-	any['createEl'] = (childTag: string, opts?: {text?: string; cls?: string; type?: string; placeholder?: string; value?: string; href?: string}): HTMLElement => {
+	any['createEl'] = (childTag: string, opts?: {text?: string; cls?: string; type?: string; placeholder?: string; value?: string; href?: string; attr?: Record<string, string>; title?: string}): HTMLElement => {
 		const child = augmentEl(document.createElement(childTag));
 		if (opts?.text) child.textContent = opts.text;
 		if (opts?.cls) child.className = opts.cls;
@@ -163,6 +179,10 @@ function augmentEl(el: HTMLElement): HTMLElement {
 		if (opts?.placeholder) (child as HTMLInputElement).placeholder = opts.placeholder;
 		if (opts?.value) (child as HTMLInputElement).value = opts.value;
 		if (opts?.href) (child as HTMLAnchorElement).href = opts.href;
+		if (opts?.title) child.title = opts.title;
+		if (opts?.attr) {
+			for (const [k, v] of Object.entries(opts.attr)) child.setAttribute(k, v);
+		}
 		el.appendChild(child);
 		return child;
 	};
@@ -220,41 +240,128 @@ export class PluginSettingTab {
 
 // --- UI Primitives ---
 
+/**
+ * TextComponent — exposes `inputEl` so tests can set value and fire events
+ * directly. Bound via `addText(cb => cb.onChange(...))` in production code.
+ */
 class TextComponent {
-	setValue = vi.fn(() => this);
-	setPlaceholder = vi.fn(() => this);
-	onChange = vi.fn((cb: (value: string) => void) => {
-		this._onChange = cb;
+	inputEl: HTMLInputElement;
+	_onChange?: (value: string) => void;
+
+	constructor() {
+		this.inputEl = document.createElement('input');
+		this.inputEl.type = 'text';
+	}
+
+	setValue = vi.fn((v: string) => {
+		this.inputEl.value = v;
 		return this;
 	});
-	_onChange?: (value: string) => void;
+	setPlaceholder = vi.fn((p: string) => {
+		this.inputEl.placeholder = p;
+		return this;
+	});
+	onChange = vi.fn((cb: (value: string) => void) => {
+		this._onChange = cb;
+		this.inputEl.addEventListener('input', () => cb(this.inputEl.value));
+		return this;
+	});
 }
 
+/**
+ * ToggleComponent — exposes `toggleEl` so tests can click to flip state.
+ */
 class ToggleComponent {
-	setValue = vi.fn(() => this);
+	toggleEl: HTMLElement;
+	_value = false;
+	_onChange?: (value: boolean) => void;
+
+	constructor() {
+		this.toggleEl = document.createElement('div');
+		this.toggleEl.setAttribute('role', 'switch');
+		this.toggleEl.addEventListener('click', () => {
+			this._value = !this._value;
+			this.toggleEl.setAttribute('aria-checked', String(this._value));
+			this._onChange?.(this._value);
+		});
+	}
+
+	setValue = vi.fn((v: boolean) => {
+		this._value = v;
+		this.toggleEl.setAttribute('aria-checked', String(v));
+		return this;
+	});
 	onChange = vi.fn((cb: (value: boolean) => void) => {
 		this._onChange = cb;
 		return this;
 	});
-	_onChange?: (value: boolean) => void;
 }
 
+/**
+ * ButtonComponent — exposes `buttonEl` so tests can dispatch real clicks.
+ */
 class ButtonComponent {
-	setButtonText = vi.fn(() => this);
-	setCta = vi.fn(() => this);
-	setWarning = vi.fn(() => this);
+	buttonEl: HTMLButtonElement;
+	_onClick?: () => void;
+
+	constructor() {
+		this.buttonEl = document.createElement('button');
+		this.buttonEl.addEventListener('click', () => this._onClick?.());
+	}
+
+	setButtonText = vi.fn((text: string) => {
+		this.buttonEl.textContent = text;
+		return this;
+	});
+	setCta = vi.fn(() => {
+		this.buttonEl.classList.add('mod-cta');
+		return this;
+	});
+	setWarning = vi.fn(() => {
+		this.buttonEl.classList.add('mod-warning');
+		return this;
+	});
 	setIcon = vi.fn(() => this);
+	setTooltip = vi.fn((text: string) => {
+		this.buttonEl.setAttribute('aria-label', text);
+		return this;
+	});
 	onClick = vi.fn((cb: () => void) => {
 		this._onClick = cb;
 		return this;
 	});
-	_onClick?: () => void;
 }
 
+/**
+ * DropdownComponent — exposes `selectEl` (an HTMLSelectElement) so tests can
+ * set the value and dispatch a change event.
+ */
 class DropdownComponent {
-	addOption = vi.fn(() => this);
-	setValue = vi.fn(() => this);
-	onChange = vi.fn(() => this);
+	selectEl: HTMLSelectElement;
+	_onChange?: (value: string) => void;
+
+	constructor() {
+		this.selectEl = document.createElement('select');
+		this.selectEl.addEventListener('change', () => {
+			this._onChange?.(this.selectEl.value);
+		});
+	}
+
+	addOption = vi.fn((value: string, display: string) => {
+		const opt = document.createElement('option');
+		opt.value = value;
+		opt.textContent = display;
+		this.selectEl.appendChild(opt);
+		return this;
+	});
+	setValue = vi.fn((v: string) => {
+		this.selectEl.value = v;
+		return this;
+	});
+	onChange = vi.fn((cb: (value: string) => void) => {
+		this._onChange = cb;
+		return this;
+	});
 }
 
 // --- Views ---
