@@ -27,9 +27,17 @@ data.json
 # Test vault build artifacts (copied by npm run build, not symlinks)
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/manifest.json
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/styles.css
+test/MiYo-Kado/.obsidian/plugins/miyo-kado/audit.log
+test/MiYo-Kado/logs/
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
+
+# Workspace scratch / inter-project message channels (not tracked)
+temp/
+_inbox/
+_outbox/
+
 # MCP config (contains API keys)
 .mcp.json
 
