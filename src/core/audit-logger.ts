@@ -5,6 +5,10 @@
  * coupling to `obsidian` or `@modelcontextprotocol/sdk`. Rotation is
  * triggered automatically when the log file exceeds maxSizeBytes.
  *
+ * Entries are buffered in-memory and flushed as a batch either on a 500ms
+ * timer or via an explicit `flush()` call (H5 hardening). This reduces disk
+ * I/O from O(file-size) per entry to a single append per flush window.
+ *
  * CRITICAL: No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
@@ -45,27 +49,112 @@ export interface AuditLoggerDeps {
 // AuditLogger
 // ============================================================
 
+/** Interval after which buffered entries are auto-flushed to disk. */
+const FLUSH_INTERVAL_MS = 500;
+
 export class AuditLogger {
 	private config: AuditConfig;
 	private readonly deps: AuditLoggerDeps;
+
+	/** In-memory line buffer; each element is a JSON line terminated by '\n'. */
+	private buffer: string[] = [];
+
+	/** Pending flush timer; null when idle. */
+	private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/** In-flight flush promise; ensures flush() is reentrant / idempotent. */
+	private flushingPromise: Promise<void> | null = null;
 
 	constructor(config: AuditConfig, deps: AuditLoggerDeps) {
 		this.config = config;
 		this.deps = deps;
 	}
 
-	/** Appends an entry to the audit log. Triggers rotation when the log exceeds maxSizeBytes. */
+	/**
+	 * Queues an entry for the next flush. Returns immediately — actual I/O
+	 * happens on the next flush, either via the 500ms timer or an explicit
+	 * `flush()` call.
+	 */
 	async log(entry: AuditEntry): Promise<void> {
 		if (!this.config.enabled) {
 			return;
 		}
 
-		const size = await this.deps.getSize();
-		if (size > this.config.maxSizeBytes) {
-			await this.rotate();
+		const line = JSON.stringify(entry) + '\n';
+		this.buffer.push(line);
+		this.scheduleFlush();
+	}
+
+	/**
+	 * Drains the buffer to disk. Idempotent: concurrent callers share the
+	 * same underlying write. Safe to call on plugin unload to persist any
+	 * remaining entries.
+	 */
+	async flush(): Promise<void> {
+		if (this.flushingPromise) {
+			return this.flushingPromise;
+		}
+		if (this.buffer.length === 0) {
+			return;
 		}
 
-		await this.deps.write(JSON.stringify(entry) + '\n');
+		// Cancel any scheduled auto-flush — we're flushing now.
+		if (this.flushTimer !== null) {
+			clearTimeout(this.flushTimer);
+			this.flushTimer = null;
+		}
+
+		const snapshot = this.buffer;
+		this.buffer = [];
+
+		this.flushingPromise = this.doFlush(snapshot).finally(() => {
+			this.flushingPromise = null;
+		});
+		return this.flushingPromise;
+	}
+
+	/** Replaces the audit configuration. Flushes any pending entries first. */
+	updateConfig(config: AuditConfig): void {
+		// Fire-and-forget flush — we can't make updateConfig async without
+		// breaking callers, but any pending entries are persisted.
+		void this.flush();
+		this.config = config;
+	}
+
+	// -----------------------------------------------------------------------
+	// Private
+	// -----------------------------------------------------------------------
+
+	/** Arms the 500ms auto-flush timer if not already armed. */
+	private scheduleFlush(): void {
+		if (this.flushTimer !== null) return;
+		this.flushTimer = setTimeout(() => {
+			this.flushTimer = null;
+			void this.flush();
+		}, FLUSH_INTERVAL_MS);
+	}
+
+	/**
+	 * Actual flush pipeline: rotation check once, then single batched write.
+	 * On failure: lines are prepended back to the buffer for the next attempt.
+	 * Errors are swallowed — audit failures must never crash callers.
+	 */
+	private async doFlush(lines: string[]): Promise<void> {
+		try {
+			// Rotation check runs once per flush, not once per entry
+			const size = await this.deps.getSize();
+			if (size > this.config.maxSizeBytes) {
+				await this.rotate();
+			}
+
+			// Lines already carry trailing '\n' — joining is a concat
+			const batched = lines.join('');
+			await this.deps.write(batched);
+		} catch {
+			// Retry-prepend: failed entries stay in FIFO order at the head of
+			// the buffer for the next flush attempt.
+			this.buffer = [...lines, ...this.buffer];
+		}
 	}
 
 	/**
@@ -98,11 +187,6 @@ export class AuditLogger {
 
 		// Create fresh empty log via write
 		await this.deps.write('');
-	}
-
-	/** Replaces the audit configuration (e.g. after settings change). */
-	updateConfig(config: AuditConfig): void {
-		this.config = config;
 	}
 }
 

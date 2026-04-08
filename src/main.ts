@@ -80,8 +80,20 @@ export default class KadoPlugin extends Plugin {
 							await this.app.vault.createFolder(dir).catch(() => {/* already exists */});
 						}
 					}
-					const existing = await adapter.read(logPath).catch(() => '');
-					await adapter.write(logPath, existing + line);
+					// Append-only write (H5): use adapter.append when the file
+					// exists to avoid a per-call read-modify-write cycle. Fall
+					// back to write() for fresh-file creation or empty-string
+					// rotation markers.
+					if (line === '') {
+						await adapter.write(logPath, '');
+						return;
+					}
+					const existed = await adapter.exists(logPath);
+					if (existed) {
+						await adapter.append(logPath, line);
+					} else {
+						await adapter.write(logPath, line);
+					}
 				}).catch(err => kadoError('audit write failed', {error: String(err)}));
 				return writeChain;
 			},
@@ -129,6 +141,10 @@ export default class KadoPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		// Flush any pending audit entries to disk before teardown (H5).
+		// Best-effort — Obsidian does not strictly await onunload, so forced
+		// kills may still lose the final buffer window.
+		void this.auditLogger?.flush();
 		// Explicitly stop the MCP server so a subsequent onload() can rebind the port.
 		// The registered cleanup callback also calls stop(), but during a hot-reload
 		// the timing may allow the new onload() to race against it.

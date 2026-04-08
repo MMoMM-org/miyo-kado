@@ -104,11 +104,14 @@ function makeDenyGate(error: CoreError): PermissionGate {
 	return {name: 'deny-all', evaluate: () => ({allowed: false, error})};
 }
 
-function makeAuditLogger(): {logger: AuditLogger; entries: AuditEntry[]} {
+function makeAuditLogger(): {logger: AuditLogger; entries: AuditEntry[]; drain: () => Promise<void>} {
 	const entries: AuditEntry[] = [];
 	const deps = {
-		write: vi.fn(async (line: string) => {
-			if (line.trim()) entries.push(JSON.parse(line) as AuditEntry);
+		// Batched writes (H5): one call may contain multiple NDJSON lines.
+		write: vi.fn(async (batched: string) => {
+			for (const line of batched.split('\n')) {
+				if (line.trim()) entries.push(JSON.parse(line) as AuditEntry);
+			}
 		}),
 		getSize: vi.fn(async () => 0),
 		exists: vi.fn(async () => false),
@@ -120,7 +123,8 @@ function makeAuditLogger(): {logger: AuditLogger; entries: AuditEntry[]} {
 		{enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10 * 1024 * 1024, maxRetainedLogs: 3},
 		deps,
 	);
-	return {logger, entries};
+	const drain = (): Promise<void> => logger.flush();
+	return {logger, entries, drain};
 }
 
 function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
@@ -145,11 +149,12 @@ function getHandler(toolName: string, deps: ToolDependencies) {
 
 describe('audit integration — allowed kado-read call', () => {
 	it('logs an audit entry with decision "allowed", correct apiKeyId, operation, and path', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const router = vi.fn(async () => makeFileResult({path: 'notes/test.md'}));
 		const handler = getHandler('kado-read', makeDeps({router, auditLogger: logger}));
 
 		await handler({operation: 'note', path: 'notes/test.md'}, makeExtra('kado_test-key'));
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
@@ -159,10 +164,11 @@ describe('audit integration — allowed kado-read call', () => {
 	});
 
 	it('records durationMs greater than zero on allowed read', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const handler = getHandler('kado-read', makeDeps({auditLogger: logger}));
 
 		await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
+		await drain();
 
 		expect(entries[0].durationMs).toBeGreaterThan(0);
 	});
@@ -170,7 +176,7 @@ describe('audit integration — allowed kado-read call', () => {
 
 describe('audit integration — allowed kado-write call', () => {
 	it('logs an audit entry with decision "allowed" and correct path', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const router = vi.fn(async () => makeWriteResult({path: 'notes/w.md'}));
 		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
 
@@ -178,6 +184,7 @@ describe('audit integration — allowed kado-write call', () => {
 			{operation: 'note', path: 'notes/w.md', content: 'text'},
 			makeExtra('kado_writer'),
 		);
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
@@ -186,11 +193,12 @@ describe('audit integration — allowed kado-write call', () => {
 	});
 
 	it('records durationMs greater than zero on allowed write', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const router = vi.fn(async () => makeWriteResult());
 		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
 
 		await handler({operation: 'note', path: 'notes/a.md', content: 'text'}, makeExtra());
+		await drain();
 
 		expect(entries[0].durationMs).toBeGreaterThan(0);
 	});
@@ -198,11 +206,12 @@ describe('audit integration — allowed kado-write call', () => {
 
 describe('audit integration — allowed kado-search call', () => {
 	it('logs an audit entry with decision "allowed"', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const router = vi.fn(async () => makeSearchResult());
 		const handler = getHandler('kado-search', makeDeps({router, auditLogger: logger}));
 
 		await handler({operation: 'byTag', query: 'project'}, makeExtra('kado_searcher'));
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('allowed');
@@ -216,7 +225,7 @@ describe('audit integration — allowed kado-search call', () => {
 
 describe('audit integration — denied kado-read call', () => {
 	it('logs an audit entry with decision "denied" and the gate name', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const denyError: CoreError = {code: 'FORBIDDEN', message: 'No access', gate: 'key-scope'};
 		const handler = getHandler(
 			'kado-read',
@@ -224,6 +233,7 @@ describe('audit integration — denied kado-read call', () => {
 		);
 
 		await handler({operation: 'note', path: 'notes/secret.md'}, makeExtra('kado_test-key'));
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('denied');
@@ -234,7 +244,7 @@ describe('audit integration — denied kado-read call', () => {
 
 describe('audit integration — denied kado-write call', () => {
 	it('logs an audit entry with decision "denied" and the gate name', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const denyError: CoreError = {code: 'FORBIDDEN', message: 'Denied', gate: 'global-scope'};
 		const handler = getHandler(
 			'kado-write',
@@ -242,6 +252,7 @@ describe('audit integration — denied kado-write call', () => {
 		);
 
 		await handler({operation: 'note', path: 'notes/a.md', content: 'x'}, makeExtra());
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('denied');
@@ -251,7 +262,7 @@ describe('audit integration — denied kado-write call', () => {
 
 describe('audit integration — denied kado-search call', () => {
 	it('logs an audit entry with decision "denied" and the gate name', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const denyError: CoreError = {code: 'UNAUTHORIZED', message: 'Bad key', gate: 'authenticate'};
 		const handler = getHandler(
 			'kado-search',
@@ -259,6 +270,7 @@ describe('audit integration — denied kado-search call', () => {
 		);
 
 		await handler({operation: 'byTag', query: 'x'}, makeExtra());
+		await drain();
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('denied');
@@ -324,13 +336,14 @@ describe('audit integration — no auditLogger in deps', () => {
 
 describe('audit integration — multiple tool calls produce multiple entries', () => {
 	it('produces one entry per successful call', async () => {
-		const {logger, entries} = makeAuditLogger();
+		const {logger, entries, drain} = makeAuditLogger();
 		const handler = getHandler('kado-read', makeDeps({auditLogger: logger}));
 		const extra = makeExtra();
 
 		await handler({operation: 'note', path: 'notes/a.md'}, extra);
 		await handler({operation: 'note', path: 'notes/b.md'}, extra);
 		await handler({operation: 'note', path: 'notes/c.md'}, extra);
+		await drain();
 
 		expect(entries).toHaveLength(3);
 	});
