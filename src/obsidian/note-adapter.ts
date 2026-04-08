@@ -56,6 +56,7 @@ async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 	// via adapter, get stat from adapter, and let Obsidian discover the change
 	// through its file watcher (which correctly re-reads the full file).
 	// See docs/upstream-bugs/vault-cache-truncation.md for full details.
+	// Filed upstream: https://forum.obsidian.md/t/vault-cache-truncation-after-adapter-write/113139
 	await app.vault.adapter.write(file.path, request.content as string);
 	const stat = (await app.vault.adapter.stat(file.path)) ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};

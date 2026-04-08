@@ -1,9 +1,10 @@
 # Obsidian bug report — Vault cache truncation after `adapter.write()`
 
-> Status: **observed in production**, workaround in place
+> Status: **filed upstream**, workaround in place
+> Upstream report: https://forum.obsidian.md/t/vault-cache-truncation-after-adapter-write/113139
 > First seen: 2026-04-01 (Kado v1 hardening)
 > Affects: Plugin authors who write files via the Vault API and verify on disk
-> Workaround location: `src/obsidian/note-adapter.ts:53-60`
+> Workaround location: `src/obsidian/note-adapter.ts:53-61`
 > Diagnostic test: `test/diagnostics/diag-truncation.test.ts` (when present)
 
 ## Summary
@@ -144,12 +145,13 @@ In other words: when an `await`ed write resolves, the file should be persisted i
 - Kado MCP Gateway internal diagnostic: `test/diagnostics/diag-truncation.test.ts` (if/when re-added)
 - Internal memory: `obsidian_write_timing.md` (Kado AI memory)
 
-## Filing notes (for Marcus)
+## Filing status
 
-When filing this on the Obsidian forum / GitHub:
+Filed on the Obsidian community forum on 2026-04-08:
+**https://forum.obsidian.md/t/vault-cache-truncation-after-adapter-write/113139**
 
-- Pin down the exact Obsidian desktop version (Help → About) and OS
-- Verify the reproduction in a fresh vault with no other plugins enabled (rules out plugin interaction)
-- Capture a minimal reproducer plugin (~30 lines) and link it as a gist
-- Mention that `vault.read()` is unaffected — this is critical context, otherwise reviewers will assume "you're reading the wrong thing"
-- Reference this doc by URL in the report so the historical context isn't lost
+(GitHub is not used for Obsidian bug reports — the forum is the official channel.)
+
+Track responses there. When the upstream fix lands or a Vault-API path
+is found that doesn't trigger the race, revisit `note-adapter.ts:50` and
+remove the workaround.
