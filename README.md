@@ -8,6 +8,17 @@ Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
+## Why MiYo Kado?
+
+Letting an AI assistant talk to your vault sounds great until you realize most integrations give the assistant **everything** -- every note, every file, full read/write. Kado is built around the opposite default:
+
+- **Nothing is exposed by default.** You opt every path and every data type in, explicitly.
+- **Per-key scopes.** Different assistants get different keys with different permissions. Revoke any key independently.
+- **Audit trail.** Every allowed and denied request is logged so you can see exactly what an assistant touched.
+- **Local-first.** The MCP server runs inside Obsidian on `127.0.0.1` by default. No cloud, no telemetry, no third party.
+
+If you've ever wanted to say "this assistant can read my project notes but not my journal, and definitely cannot delete anything", Kado is for you.
+
 ## Features
 
 - **Default-deny security** -- nothing is accessible until explicitly whitelisted
@@ -19,14 +30,31 @@ Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
 
+## Installation
+
+### From the Obsidian Community Plugins
+
+Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in **Settings -> Community plugins -> Browse**, install, and enable.
+
+### Using BRAT (recommended while pending review)
+
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. In BRAT settings, **Add Beta Plugin** -> paste `MMoMM-org/miyo-kado`
+3. Enable **MiYo Kado** in **Settings -> Community plugins**
+
+### Manual
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/MMoMM-org/miyo-kado/releases/latest)
+2. Copy them into `<your-vault>/.obsidian/plugins/miyo-kado/` (create the folder if it doesn't exist)
+3. Reload Obsidian and enable **MiYo Kado** in **Settings -> Community plugins**
+
 ## Quick Start
 
-1. Install the plugin (see [Installation](docs/configuration.md#installation))
-2. Open **Settings > MiYo Kado**
-3. Add paths to the global security whitelist
-4. Create an API key and assign it paths/permissions
-5. Enable the server
-6. Connect your MCP client using the key
+1. Open **Settings -> MiYo Kado**
+2. Add paths to the global security whitelist (e.g. `notes/`, `projects/`)
+3. Create an API key and assign it paths and per-data-type permissions
+4. Enable the server
+5. Connect your MCP client using the key
 
 ```json
 {
@@ -76,31 +104,25 @@ MCP Client -> [MCP API Handler] -> [Kado Core] -> [Obsidian Interface] -> Vault
 
 ## Part of MiYo
 
-Kado is part of the MiYo ecosystem...
+Kado is part of **MiYo**, a small family of Obsidian-adjacent tools focused on giving you control over what your assistants can see and do. MiYo Kado is the gateway component -- the piece that turns your vault into a properly-scoped MCP server. More tools are in the works.
 
-more to come soon(TM)
+## Roadmap
 
-## Future Roadmap
+A few things I plan to address in upcoming releases. None of these are blockers for v0.1.x:
 
-### Permission Rework for Tags
+- **Tag permissions beyond read-only.** Today tags are read-filters only. I want to add a Deny permission so you can use tags to *exclude* matching items even from otherwise-allowed paths.
+- **Granular whitelist / blacklist toggle.** The mode flip currently applies to paths and tags together. A per-section toggle would allow mixed strategies.
+- **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `/Atlas`, key only sees `/Atlas/People`).
+- **Settings tab hot-reload.** After a plugin update the settings tab still shows the old layout until disable/re-enable. Tracked in `docs/ai/memory/troubleshooting.md`.
 
-At the moment you can search by Tags. Therefore the only option you have as a permission is R = Read. You either allow or deny.
-In the furture this will change to:
+## Support
 
-- Read (R) => Search (S)
-- Deny (D) = Deny access to data types which have the tag
+If MiYo Kado is useful to you and you want to help me keep building, you can support development via:
 
-The Deny Permission will probably not change the behaviour with the white-/blacklist toggle, but I will need to take a look at the scenarios first.
+- [Buy Me a Coffee](https://ko-fi.com/mmomm)
+- [GitHub Sponsors](https://github.com/sponsors/MMoMM-org)
 
-### Granular Whitelist / Blacklist Toggle
-
-At the moment you can toggle the behaviour of the permissions between whitelist (default) and blacklist. This is for all datatypes AND the tags.
-In the future I might allow a more granular white-/blacklisting.
-
-### Choosing Subpathes for Key Permissions
-
-At the moment you can only choose pathes which are eligible from the Global Security Tab, e.g. /Atlas. This means you can't easily change permissions for /Atlas/People
-Workaround for the time being is to also make /Atlas/People eligble from the Global Security Tab.
+Issues and pull requests are also very welcome.
 
 ## Contributing
 
