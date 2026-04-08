@@ -1,3 +1,10 @@
+## [0.1.5](https://github.com/MMoMM-org/miyo-kado/compare/0.1.4...0.1.5) (2026-04-08)
+
+
+### Bug Fixes
+
+* **manifest:** drop 'Obsidian' from description and end with period ([a3c8f7e](https://github.com/MMoMM-org/miyo-kado/commit/a3c8f7e6065c9fa125fc3a9b3944e257406f143f))
+
 ## [0.1.4](https://github.com/MMoMM-org/miyo-kado/compare/0.1.3...0.1.4) (2026-04-08)
 
 
