@@ -1,3 +1,10 @@
+## [0.1.4](https://github.com/MMoMM-org/miyo-kado/compare/0.1.3...0.1.4) (2026-04-08)
+
+
+### Bug Fixes
+
+* **release:** drop v-prefix from release tags ([ecebee3](https://github.com/MMoMM-org/miyo-kado/commit/ecebee38cac71ef96f96645468097bbd23e03e5a))
+
 ## [0.1.3](https://github.com/MMoMM-org/miyo-kado/compare/v0.1.2...v0.1.3) (2026-04-08)
 
 
