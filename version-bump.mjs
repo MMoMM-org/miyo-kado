@@ -1,15 +1,17 @@
 import { readFileSync, writeFileSync } from "fs";
 
-// Resolve target version: prefer the env var (set by `npm version` / `npm run`),
-// fall back to package.json directly. The fallback matters when
-// semantic-release calls this script via `node version-bump.mjs` outside of an
-// `npm run` invocation — `process.env.npm_package_version` is unset there but
-// package.json has already been updated by @semantic-release/npm.
-const targetVersion = process.env.npm_package_version
-	?? JSON.parse(readFileSync("package.json", "utf8")).version;
+// Always read from package.json on disk. We deliberately do NOT use
+// `process.env.npm_package_version` because it has surprising values:
+// - Inside `npm version`'s version script, it holds the OLD version (the
+//   one being replaced) — using it there would write a stale manifest.
+// - When semantic-release runs this script via `node version-bump.mjs`
+//   outside `npm run`, it is unset.
+// package.json on disk is always authoritative because @semantic-release/npm
+// writes it before our exec prepareCmd runs.
+const targetVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
 
 if (!targetVersion) {
-	throw new Error("version-bump: could not resolve target version from env or package.json");
+	throw new Error("version-bump: package.json has no version field");
 }
 
 // read minAppVersion from manifest.json and bump version to target version
