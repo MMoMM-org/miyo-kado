@@ -5,7 +5,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {matchGlob, pathMatchesPatterns, dirCouldContainMatches} from '../../src/core/glob-match';
+import {matchGlob, pathMatchesPatterns, dirCouldContainMatches, validateGlobPattern} from '../../src/core/glob-match';
 
 // ============================================================
 // matchGlob — literal matching
@@ -177,5 +177,85 @@ describe('dirCouldContainMatches()', () => {
 
 	it('returns false for a sibling directory of the pattern', () => {
 		expect(dirCouldContainMatches('notes/**', 'archive/')).toBe(false);
+	});
+});
+
+// ============================================================
+// validateGlobPattern — reject overly complex / unsafe patterns
+// ============================================================
+
+describe('validateGlobPattern() — accepts safe patterns', () => {
+	it('accepts a literal path', () => {
+		const result = validateGlobPattern('notes/daily.md');
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.warnings).toEqual([]);
+	});
+
+	it('accepts a single-star pattern', () => {
+		const result = validateGlobPattern('notes/*.md');
+		expect(result.ok).toBe(true);
+	});
+
+	it('accepts a single ** segment', () => {
+		const result = validateGlobPattern('notes/**/daily.md');
+		expect(result.ok).toBe(true);
+	});
+
+	it('accepts two consecutive ** segments', () => {
+		const result = validateGlobPattern('a/**/**/b');
+		expect(result.ok).toBe(true);
+	});
+
+	it('accepts three consecutive ** segments (at the boundary)', () => {
+		const result = validateGlobPattern('a/**/**/**/b');
+		expect(result.ok).toBe(true);
+	});
+
+	it('accepts a 256-character pattern exactly at the boundary', () => {
+		const pattern = 'a'.repeat(256);
+		const result = validateGlobPattern(pattern);
+		expect(result.ok).toBe(true);
+	});
+
+	it('accepts an empty pattern', () => {
+		const result = validateGlobPattern('');
+		expect(result.ok).toBe(true);
+	});
+});
+
+describe('validateGlobPattern() — rejects unsafe patterns', () => {
+	it('rejects patterns longer than 256 characters', () => {
+		const pattern = 'a'.repeat(257);
+		const result = validateGlobPattern(pattern);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toMatch(/256/);
+	});
+
+	it('rejects four consecutive ** segments', () => {
+		const result = validateGlobPattern('a/**/**/**/**/b');
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toMatch(/\*\*/);
+	});
+
+	it('rejects many consecutive ** segments', () => {
+		const result = validateGlobPattern('a/**/**/**/**/**/**/**');
+		expect(result.ok).toBe(false);
+	});
+});
+
+describe('validateGlobPattern() — warns on dangerous-but-valid patterns', () => {
+	it('warns on bare ** (matches entire vault)', () => {
+		const result = validateGlobPattern('**');
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.warnings.length).toBeGreaterThan(0);
+			expect(result.warnings.join(' ')).toMatch(/entire vault/i);
+		}
+	});
+
+	it('does not warn on **/something (scoped)', () => {
+		const result = validateGlobPattern('**/daily.md');
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.warnings).toEqual([]);
 	});
 });

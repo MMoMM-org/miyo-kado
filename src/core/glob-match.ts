@@ -78,3 +78,59 @@ export function dirCouldContainMatches(pattern: string, dirPath: string): boolea
 	// Check if a hypothetical file under dirPath would match the pattern
 	return matchGlob(pattern, dirPath + '__probe__');
 }
+
+// ============================================================
+// Pattern validation (L4 hardening)
+// ============================================================
+
+/** Maximum accepted pattern length — longer patterns are rejected. */
+export const GLOB_PATTERN_MAX_LENGTH = 256;
+
+/** Maximum number of consecutive `**` segments before a pattern is rejected. */
+export const GLOB_MAX_CONSECUTIVE_DOUBLE_STAR = 3;
+
+/**
+ * Result of validating a glob pattern at config time.
+ * - `ok: true` patterns are safe to store and match against. `warnings` may
+ *   contain non-blocking notices (e.g. very broad patterns).
+ * - `ok: false` patterns must be rejected by the caller — they can cause
+ *   catastrophic regex backtracking or match unintended data.
+ */
+export type GlobValidationResult =
+	| {ok: true; warnings: string[]}
+	| {ok: false; error: string};
+
+// Matches 4 or more consecutive `**/` segments, e.g. `**/**/**/**/`.
+// The final `**` doesn't need a trailing slash, so we allow it too.
+const EXCESSIVE_DOUBLE_STAR_RE = /(?:\*\*\/){3}\*\*/;
+
+/**
+ * Validates a glob pattern before it is stored in config or compiled into a
+ * RegExp. Rejects patterns that are too long or have too many consecutive
+ * `**` segments (both are known backtracking-risk shapes). Warns on patterns
+ * that match the entire vault.
+ *
+ * Safe to call in UI code — pure, no I/O.
+ */
+export function validateGlobPattern(pattern: string): GlobValidationResult {
+	if (pattern.length > GLOB_PATTERN_MAX_LENGTH) {
+		return {
+			ok: false,
+			error: `pattern exceeds ${GLOB_PATTERN_MAX_LENGTH} characters (got ${pattern.length})`,
+		};
+	}
+
+	if (EXCESSIVE_DOUBLE_STAR_RE.test(pattern)) {
+		return {
+			ok: false,
+			error: `pattern has more than ${GLOB_MAX_CONSECUTIVE_DOUBLE_STAR} consecutive ** segments`,
+		};
+	}
+
+	const warnings: string[] = [];
+	if (pattern === '**') {
+		warnings.push('pattern "**" matches the entire vault');
+	}
+
+	return {ok: true, warnings};
+}

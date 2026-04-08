@@ -4,8 +4,9 @@
  * Layout: [-remove] [path input] [browse] [4×4 permission matrix]
  */
 
-import type {App} from 'obsidian';
+import {Notice, type App} from 'obsidian';
 import type {DataTypePermissions} from '../../types/canonical';
+import {validateGlobPattern} from '../../core/glob-match';
 import {renderPermissionMatrix, type PermissionMatrixOptions} from './PermissionMatrix';
 import {VaultFolderModal} from './VaultFolderModal';
 
@@ -52,8 +53,21 @@ export function renderPathEntry(
 			pathInput.setAttribute('aria-invalid', 'true');
 			return;
 		}
+		// Validate glob complexity (length, consecutive **, bare **)
+		const validation = validateGlobPattern(value);
+		if (!validation.ok) {
+			pathInput.addClass('kado-input-error');
+			pathInput.setAttribute('aria-invalid', 'true');
+			pathInput.title = validation.error;
+			new Notice(`Invalid glob pattern: ${validation.error}`);
+			return;
+		}
 		pathInput.removeClass('kado-input-error');
 		pathInput.setAttribute('aria-invalid', 'false');
+		pathInput.removeAttribute('title');
+		for (const warning of validation.warnings) {
+			new Notice(`Warning: ${warning}`);
+		}
 		rule.path = value;
 		options.onChange();
 	});
