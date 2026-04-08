@@ -22,6 +22,12 @@ fi
 # Firewall runs via DOCKER_ENTRYPOINT_PREFIX (as root, before this script).
 # no-new-privileges blocks sudo, so it cannot run here.
 
+# ── Terminal capabilities ────────────────────────────────────
+# Docker passes TERM=xterm by default — too basic for Claude Code's TUI
+# (shift-enter, text selection, true color). Force xterm-256color always.
+export TERM="xterm-256color"
+export COLORTERM="truecolor"
+
 # ── Git user config ──────────────────────────────────────────
 if [[ -n "${GIT_USER_NAME:-}" ]]; then
   git config --global user.name "$GIT_USER_NAME"

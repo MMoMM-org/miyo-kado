@@ -56,6 +56,7 @@ If plugins are missing, run `/setup-docker-home`.
 - While working: flag potential issues with error handling, edge cases, security, and conflicts with existing patterns
 - Add a short description if possible into any file which explains why the file exists.
 - Use the clean architecture and clean code principle.
+- Root Cause Analysis before Test Fixing
 
 ## Tool Usage
 
