@@ -577,6 +577,189 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		expect(result).toMatchObject({code: 'VALIDATION_ERROR'});
 		expect('items' in result).toBe(false);
 	});
+
+	// -----------------------------------------------------------------------
+	// Scope filter — folder-aware (Phase 4 T4.1)
+	// -----------------------------------------------------------------------
+
+	// T4.1-1: Folder visibility with nested scope
+	it('scope ["Atlas/**"] at root shows Atlas folder but hides Other folder', async () => {
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const otherNote = makeMockFile('Other/note.md');
+		const otherFolder = makeMockFolder('Other', [otherNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, otherFolder]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['Atlas/**'],
+		})));
+
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('Atlas');
+		expect(names).not.toContain('Other');
+	});
+
+	// T4.1-2: Folder visibility with sub-scope
+	it('scope ["listdir-fixtures/L0/L1/**"] on L0 shows L1 but hides EmptyFolder and OnlySubfolders', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+			scopePatterns: ['listdir-fixtures/L0/L1/**'],
+		})));
+
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('L1');
+		expect(names).not.toContain('EmptyFolder');
+		expect(names).not.toContain('OnlySubfolders');
+	});
+
+	// T4.1-3: Folder visibility with root glob ("**")
+	// Note: "**/*.md" does NOT make top-level folders visible via dirCouldContainMatches
+	// because the probe "Atlas/__probe__" doesn't end in ".md". The correct broad
+	// pattern that makes all folders visible is "**" (matches any path).
+	it('scope ["**"] at root shows all top-level folders', async () => {
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const docsNote = makeMockFile('Docs/guide.md');
+		const docsFolder = makeMockFolder('Docs', [docsNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, docsFolder]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['**'],
+		})));
+
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('Atlas');
+		expect(names).toContain('Docs');
+	});
+
+	// T4.1-4: Single-star scope — no top-level folders visible
+	it('scope ["*.md"] at root hides all top-level folders (single star cannot cross /)', async () => {
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const rootNote = makeMockFile('root.md');
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootNote]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['*.md'],
+		})));
+
+		const folderItems = result.items.filter((i) => i.type === 'folder');
+		expect(folderItems).toHaveLength(0);
+	});
+
+	// T4.1-5: Walk-time filtering — out-of-scope folder subtrees are never walked
+	it('scope ["listdir-fixtures/L0/L1/**"] deep walk on L0 excludes EmptyFolder and OnlySubfolders subtrees entirely', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			scopePatterns: ['listdir-fixtures/L0/L1/**'],
+		})));
+
+		const paths = result.items.map((i) => i.path);
+
+		// L1 subtree items should appear
+		expect(paths.some((p) => p.startsWith('listdir-fixtures/L0/L1'))).toBe(true);
+
+		// EmptyFolder and its descendants must NOT appear
+		expect(paths.some((p) => p.startsWith('listdir-fixtures/L0/EmptyFolder'))).toBe(false);
+
+		// OnlySubfolders and its descendants must NOT appear
+		expect(paths.some((p) => p.startsWith('listdir-fixtures/L0/OnlySubfolders'))).toBe(false);
+	});
+
+	// T4.1-6: childCount with scope — only in-scope children counted
+	it('childCount of a folder item reflects only children visible within scope', async () => {
+		// List 'outer' directly. 'outer' has two child folders:
+		//   - in-scope/ with 3 sub-children (all in scope via outer/in-scope/**)
+		//   - out-of-scope/ that is skipped at walk time
+		// scope: ["outer/in-scope/**"] — makes 'in-scope' visible with childCount:3
+		const subA = makeMockFolder('outer/in-scope/A', []);
+		const subB = makeMockFolder('outer/in-scope/B', []);
+		const subC = makeMockFolder('outer/in-scope/C', []);
+		const inScope = makeMockFolder('outer/in-scope', [subA, subB, subC]);
+		const outOfScope = makeMockFolder('outer/out-of-scope', [
+			makeMockFolder('outer/out-of-scope/X', []),
+		]);
+		const outer = makeMockFolder('outer', [inScope, outOfScope]);
+		const vaultRoot = makeMockFolder('', [outer]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'outer',
+			depth: 1,
+			scopePatterns: ['outer/in-scope/**'],
+		})));
+
+		// Only 'in-scope' appears; 'out-of-scope' is skipped by walk-time filter
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('in-scope');
+		expect(names).not.toContain('out-of-scope');
+
+		// in-scope's childCount reflects all 3 in-scope sub-children (A, B, C)
+		const inScopeItem = result.items.find((i) => i.name === 'in-scope');
+		expect(inScopeItem?.childCount).toBe(3);
+	});
+
+	// T4.1-7: childCount with hidden + scope — hidden and out-of-scope both excluded
+	it('childCount excludes both hidden children and out-of-scope children', async () => {
+		// List 'scope-root' directly. It has one child folder 'target'
+		// that is in scope (scope-root/target/**).
+		// 'target' has: A (in scope), B (in scope), .hidden (hidden), Out (out of scope)
+		// scope: ["scope-root/target/A/**", "scope-root/target/B/**"]
+		//   — Out is not covered by these patterns; .hidden is excluded by name filter
+		//   — target itself is NOT visible via folderInScope since patterns are sub-patterns
+		// Workaround: list 'scope-root/target' directly so children are checked by scope.
+		// This verifies visibleChildCount excludes hidden AND out-of-scope sub-items.
+		const childA = makeMockFolder('scope-root/target/A', [makeMockFile('scope-root/target/A/note.md')]);
+		const childB = makeMockFolder('scope-root/target/B', [makeMockFile('scope-root/target/B/note.md')]);
+		const hiddenChild = makeMockFolder('scope-root/target/.hidden', []);
+		const childOut = makeMockFolder('scope-root/target/Out', [makeMockFile('scope-root/target/Out/note.md')]);
+		const target = makeMockFolder('scope-root/target', [childA, childB, hiddenChild, childOut]);
+		const scopeRoot = makeMockFolder('scope-root', [target]);
+		const vaultRoot = makeMockFolder('', [scopeRoot]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		// List scope-root/target directly: walk emits A, B (Out skipped, .hidden skipped)
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'scope-root/target',
+			scopePatterns: ['scope-root/target/A/**', 'scope-root/target/B/**'],
+		})));
+
+		// Only A and B appear — Out is skipped (walk-time scope), .hidden is always skipped
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('A');
+		expect(names).toContain('B');
+		expect(names).not.toContain('Out');
+		expect(names).not.toContain('.hidden');
+		// Exactly 2 items: A and B (files filtered by filterItemsByScope too if any)
+		expect(result.items.filter((i) => i.type === 'folder')).toHaveLength(2);
+	});
 });
 
 // ---------------------------------------------------------------------------

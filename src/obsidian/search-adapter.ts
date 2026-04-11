@@ -10,7 +10,7 @@ import {TFile, TFolder} from 'obsidian';
 import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
-import {matchGlob} from '../core/glob-match';
+import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
 import {normalizeTag, matchTag} from '../core/tag-utils';
 
 const DEFAULT_LIMIT = 50;
@@ -78,10 +78,21 @@ function fileInScope(file: TFile, patterns: string[]): boolean {
 	return patterns.some((p) => matchGlob(p, file.path));
 }
 
+/** Returns true when at least one scope pattern could match a child of the folder. */
+function folderInScope(folderPath: string, patterns: string[]): boolean {
+	if (patterns.length === 0) return false;
+	// dirCouldContainMatches expects a trailing slash on the directory path
+	const dirPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+	return patterns.some((p) => dirCouldContainMatches(p, dirPath));
+}
+
 /** Filters search result items to only include paths matching at least one scope pattern. */
 function filterItemsByScope(items: CoreSearchItem[], patterns: string[]): CoreSearchItem[] {
 	if (patterns.length === 0) return [];
-	return items.filter((item) => patterns.some((p) => matchGlob(p, item.path)));
+	return items.filter((item) => {
+		if (item.type === 'folder') return folderInScope(item.path, patterns);
+		return patterns.some((p) => matchGlob(p, item.path));
+	});
 }
 
 /**
@@ -144,30 +155,46 @@ function mapFolderToItem(folder: TFolder, childCount: number): CoreSearchItem {
 }
 
 /**
- * Counts children of a folder whose name does NOT start with '.'.
- * Not yet scope-aware — Phase 4 will extend this.
+ * Counts children of a folder whose name does NOT start with '.' and are in scope.
+ * Hidden children (dot-prefixed) are always excluded.
+ * When scope is provided, folders and files outside scope are excluded.
  */
-function visibleChildCount(folder: TFolder): number {
-	return folder.children.filter((child) => !child.name.startsWith('.')).length;
+function visibleChildCount(folder: TFolder, scope?: string[]): number {
+	let count = 0;
+	for (const child of folder.children) {
+		if (child.name.startsWith('.')) continue;
+		if (child instanceof TFolder) {
+			if (scope && !folderInScope(child.path, scope)) continue;
+			count++;
+		} else if (child instanceof TFile) {
+			if (scope && !scope.some((p) => matchGlob(p, child.path))) continue;
+			count++;
+		}
+	}
+	return count;
 }
 
 /**
  * Recursively walks a TFolder, collecting CoreSearchItems into out.
  * Stops descending when currentDepth + 1 >= maxDepth (depth-bounded).
  * Unlimited when maxDepth is undefined.
+ * When scope is provided, out-of-scope folders are skipped at walk time.
+ * File items pass through unfiltered — filtered post-walk by filterItemsByScope.
  */
 function walk(
 	folder: TFolder,
 	currentDepth: number,
 	maxDepth: number | undefined,
+	scope: string[] | undefined,
 	out: CoreSearchItem[],
 ): void {
 	for (const child of folder.children) {
 		if (child.name.startsWith('.')) continue;
 		if (child instanceof TFolder) {
-			out.push(mapFolderToItem(child, visibleChildCount(child)));
+			if (scope && !folderInScope(child.path, scope)) continue;
+			out.push(mapFolderToItem(child, visibleChildCount(child, scope)));
 			const shouldRecurse = maxDepth === undefined || currentDepth + 1 < maxDepth;
-			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, out);
+			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, scope, out);
 		} else if (child instanceof TFile) {
 			out.push({
 				path: child.path,
@@ -205,7 +232,7 @@ function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreE
 		};
 	}
 	const items: CoreSearchItem[] = [];
-	walk(resolved.folder, 0, request.depth, items);
+	walk(resolved.folder, 0, request.depth, request.scopePatterns, items);
 	items.sort(compareListDirItems);
 	return items;
 }
