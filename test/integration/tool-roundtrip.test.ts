@@ -612,6 +612,7 @@ describe('End-to-end tool call pipeline', () => {
 					},
 				],
 				audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+				debugLogging: false,
 			};
 		}
 
