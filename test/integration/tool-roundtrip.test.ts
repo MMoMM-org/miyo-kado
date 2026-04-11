@@ -578,6 +578,116 @@ describe('End-to-end tool call pipeline', () => {
 	});
 
 	// --------------------------------------------------------
+	// listDir trailing-slash regression (Tomo bug #1, spec 004 Phase 2 T2.1)
+	// --------------------------------------------------------
+
+	describe('listDir trailing-slash regression', () => {
+		/**
+		 * Config that mirrors Tomo's real setup: bare path names (no glob wildcards)
+		 * as the allowed patterns, e.g. "100 Inbox" or "allowed".
+		 */
+		function makeBarePathConfig(): KadoConfig {
+			const perms = {
+				note: {create: true, read: true, update: true, delete: true},
+				frontmatter: {create: true, read: true, update: true, delete: true},
+				file: {create: true, read: true, update: true, delete: true},
+				dataviewInlineField: {create: true, read: true, update: true, delete: true},
+			};
+			return {
+				server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+				security: {
+					listMode: 'whitelist',
+					paths: [{path: '100 Inbox', permissions: perms}],
+					tags: [],
+				},
+				apiKeys: [
+					{
+						id: 'test-key',
+						label: 'Test Key',
+						enabled: true,
+						createdAt: 1000,
+						listMode: 'whitelist',
+						paths: [{path: '100 Inbox', permissions: perms}],
+						tags: [],
+					},
+				],
+				audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+			};
+		}
+
+		it('listDir with trailing slash returns the same result as without slash', async () => {
+			const config = makeBarePathConfig();
+			const app = makeApp();
+
+			const file1 = createMockTFile({
+				path: '100 Inbox/note-a.md',
+				name: 'note-a.md',
+				stat: {ctime: 1000, mtime: 2000, size: 10},
+			});
+			const file2 = createMockTFile({
+				path: '100 Inbox/note-b.md',
+				name: 'note-b.md',
+				stat: {ctime: 1100, mtime: 2100, size: 20},
+			});
+			vi.mocked(app.vault.getFiles).mockReturnValue([file1, file2]);
+
+			// With trailing slash (Tomo's original reproducer)
+			const withSlash = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox/'},
+				'test-key',
+				'kado-search',
+			);
+
+			// Without trailing slash (works per Tomo's report)
+			const withoutSlash = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox'},
+				'test-key',
+				'kado-search',
+			);
+
+			expect(withSlash.isError).toBeUndefined();
+			expect(withoutSlash.isError).toBeUndefined();
+
+			const bodyWithSlash = parseResult(withSlash);
+			const bodyWithoutSlash = parseResult(withoutSlash);
+
+			expect(bodyWithSlash.items).toHaveLength(2);
+			expect(bodyWithoutSlash.items).toHaveLength(2);
+			// Both forms should return the same items
+			expect(bodyWithSlash.items).toEqual(bodyWithoutSlash.items);
+		});
+
+		it('listDir with trailing slash on nested path (100 Inbox/sub/) returns files', async () => {
+			const config = makeBarePathConfig();
+			const app = makeApp();
+
+			const file = createMockTFile({
+				path: '100 Inbox/sub/note.md',
+				name: 'note.md',
+				stat: {ctime: 1000, mtime: 2000, size: 10},
+			});
+			vi.mocked(app.vault.getFiles).mockReturnValue([file]);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox/sub/'},
+				'test-key',
+				'kado-search',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.items).toHaveLength(1);
+			expect(body.items[0].path).toBe('100 Inbox/sub/note.md');
+		});
+	});
+
+	// --------------------------------------------------------
 	// ConfigManager integration
 	// --------------------------------------------------------
 
