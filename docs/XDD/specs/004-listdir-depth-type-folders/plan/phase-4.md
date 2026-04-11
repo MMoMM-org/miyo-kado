@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Scope Filter Refactor (Three-Layer Defense)"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -35,7 +35,7 @@ phase: 4
 
 This phase makes every scope-filter site folder-aware and brings `childCount` into alignment with the visible-children rule. It is a coordinated refactor across two files — the changes must ship together to avoid leaving one defense layer inconsistent with the others.
 
-- [ ] **T4.1 Adapter-layer Folder-aware Scope Filter** `[activity: security]` `[ref: SDD/§4; SDD/§7 Example 2]`
+- [x] **T4.1 Adapter-layer Folder-aware Scope Filter** `[activity: security]` `[ref: SDD/§4; SDD/§7 Example 2]`
 
   1. **Prime**: Read the existing `fileInScope` and `filterItemsByScope` at `src/obsidian/search-adapter.ts:79-88`, the call site at line 274-276, and `dirCouldContainMatches` at `src/core/glob-match.ts:75-80`. Understand the current behavior: `filterItemsByScope` applies `matchGlob(pattern, item.path)` uniformly, which for a folder path like `"Atlas"` against scope `"Atlas/**"` returns false — wrong for folders.
   2. **Test** (RED — write in `test/obsidian/search-adapter.test.ts` or `test/obsidian/listdir-scope.test.ts`):
@@ -58,7 +58,7 @@ This phase makes every scope-filter site folder-aware and brings `childCount` in
       - `childCount` reflects the filtered-visible count of direct children — no hidden, no out-of-scope leak. `[ref: PRD/Feature 7 AC childCount]`
       - `dirCouldContainMatches` is the single source of truth for folder scope logic. No duplicated pattern-probe code in `search-adapter.ts`. `[ref: SDD/ADR-10]`
 
-- [ ] **T4.2 Tools-layer Folder-aware Scope Filter** `[activity: security]` `[ref: SDD/§4; SDD/ADR-9]`
+- [x] **T4.2 Tools-layer Folder-aware Scope Filter** `[activity: security]` `[ref: SDD/§4; SDD/ADR-9]`
 
   1. **Prime**: Read `filterResultsByScope` at `src/mcp/tools.ts:93-102` and the blacklist filter at lines 307-309. Confirm both sites currently call `isPathInScope` (or equivalent) and apply it uniformly to all items regardless of type. Read `dirCouldContainMatches` from `glob-match.ts` — same helper used in T4.1.
   2. **Test** (RED — write in `test/mcp/tools.test.ts` or `test/integration/scope-filter.test.ts`):
@@ -76,7 +76,7 @@ This phase makes every scope-filter site folder-aware and brings `childCount` in
       - Blacklist mode correctly blocks folders whose children would be blacklisted — prevents a bypass where listing the parent leaks the existence of blacklisted descendants. `[ref: PRD/Feature 7 security intent]`
       - Both layers use the same helper, so any future change lands once and propagates consistently. `[ref: SDD/ADR-10]`
 
-- [ ] **T4.3 Phase 4 Validation and Security Checklist** `[activity: validate]` `[ref: Constitution L1 Security rules]`
+- [x] **T4.3 Phase 4 Validation and Security Checklist** `[activity: validate]` `[ref: Constitution L1 Security rules]`
 
   1. **Prime**: Read PRD Feature 7 acceptance criteria. Read the Constitution L1 Security rules (lines 8-41) — the double-layer access control principle.
   2. **Test** (integration): Run a full-flow test through the MCP tool call with a scope-restricted key:

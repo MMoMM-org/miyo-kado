@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: listDir Walk and Fixtures"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -38,7 +38,7 @@ phase: 3
 
 This phase produces the new `listDir` walk — the structural core of the feature. `visibleChildCount` in this phase is **not yet scope-aware**; it only applies the hidden-entry filter. Phase 4 adds the scope-awareness in a coordinated refactor across adapter and tools layers.
 
-- [ ] **T3.1 Test Vault Fixture Extension** `[activity: test-design]` `[ref: PRD/Supporting Research/Market Data; SDD/§Test Examples]`
+- [x] **T3.1 Test Vault Fixture Extension** `[activity: test-design]` `[ref: PRD/Supporting Research/Market Data; SDD/§Test Examples]`
 
   1. **Prime**: Read the current fixture layout at `test/MiYo-Kado/` (`allowed/`, `allowed/sub/`, `maybe-allowed/`, `nope/`, `logs/`, `.obsidian/plugins/`). Review PRD Features 1, 2, 5, 6, 7 to identify which tree shapes the walk tests need.
   2. **Test**: No test code — this task produces test data. The validation is that subsequent T3.2 walk tests have the fixtures they need.
@@ -52,7 +52,7 @@ This phase produces the new `listDir` walk — the structural core of the featur
   4. **Validate**: `git status` shows only additions under `test/MiYo-Kado/`. Existing tests still pass (no fixture regression).
   5. **Success**: Phase 3 walk tests can express every edge case from PRD Features 1, 2, 5, 6, 7 using this fixture. `[ref: PRD/Feature 7 AC; Feature 2 AC]`
 
-- [ ] **T3.2 listDir Walk Implementation** `[activity: backend-api]` `[ref: SDD/§7 Example 1; SDD/§Runtime View]`
+- [x] **T3.2 listDir Walk Implementation** `[activity: backend-api]` `[ref: SDD/§7 Example 1; SDD/§Runtime View]`
 
   1. **Prime**: Read the current `listDir` at `src/obsidian/search-adapter.ts:111-114`, the `mapFileToItem` helper at lines 30-38, and the `byTag` error-return switch-case pattern at lines 252-257. Read the SDD §7 Example 1 walk sketch and §Runtime View depth algorithm. Read the Implementation Gotchas section — especially the `import type` vs runtime-value warning for `TFolder`.
   2. **Test** (RED — write in `test/obsidian/search-adapter.test.ts` or a new `test/obsidian/listdir-walk.test.ts`):
@@ -102,7 +102,7 @@ This phase produces the new `listDir` walk — the structural core of the featur
       - `listDir` signature change (`CoreSearchItem[] | CoreError`) is mirrored in the switch case — no type errors, no runtime fall-through.
       - The old `vault.getFiles()` call for listDir is gone; other operations still use it.
 
-- [ ] **T3.3 Phase 3 Validation** `[activity: validate]`
+- [x] **T3.3 Phase 3 Validation** `[activity: validate]`
 
   1. **Prime**: Read the Phase 3 task list and the SDD §Runtime View depth-algorithm trace.
   2. **Implement**: Run `npm test -- test/obsidian/`, `npm run lint`, `npm run build`. Verify the depth-2 trace example from SDD §7 Example 1 behaves exactly as documented (folders `[Atlas/202 Notes, Atlas/202 Notes/Sub, Atlas/People]` then files `[Atlas/202 Notes/Note1.md, Atlas/People/Alice.md, Atlas/README.md]`) — use an equivalent fixture subtree.

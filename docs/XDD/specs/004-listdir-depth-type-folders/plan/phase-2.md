@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: HTTP 406 Bug #1 Investigation and Fix"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -32,7 +32,7 @@ phase: 2
 
 This phase closes the HTTP 406 trailing-slash bug. It is independent of the main `listDir` refactor and can ship on its own if needed.
 
-- [ ] **T2.1 HTTP 406 Reproducer and Root-Cause Fix** `[parallel: true]` `[activity: backend-api]` `[ref: PRD/Feature 3; SDD/§Known Technical Issues]`
+- [x] **T2.1 HTTP 406 Reproducer and Root-Cause Fix** `[parallel: true]` `[activity: backend-api]` `[ref: PRD/Feature 3; SDD/§Known Technical Issues]`
 
   1. **Prime**: Read Tomo's original reproducer in `_inbox/from-tomo/2026-04-11_tomo-to-kado_listdir-api-gaps.md` §1. Read `src/mcp/request-mapper.ts:90-94` (`normalizeDirPath`) to confirm it does NOT strip the trailing slash — it appends one if missing. Read `src/core/gates/path-access.ts:19-50` to confirm the gate's `normalizePath` keeps trailing slashes intact. Read `src/mcp/tools.ts:68-74` (`kadoSearchShape`) to confirm Zod accepts any string. Skim `src/mcp/tools.ts:277-380` (`registerSearchTool`) for the error-response pipeline between the adapter result and the HTTP layer.
   2. **Test** (RED): Write an integration test in `test/integration/tool-roundtrip.test.ts` (or a new file `test/integration/listdir-trailing-slash.test.ts`) that:
@@ -56,7 +56,7 @@ This phase closes the HTTP 406 trailing-slash bug. It is independent of the main
       - Root cause is documented — a future reader of the commit history can understand why the bug existed and how it was fixed. `[ref: SDD/§Known Technical Issues]`
       - If the contingency fallback (mapper strip) was used, the task's completion note explicitly says so and flags the underlying upstream issue for follow-up.
 
-- [ ] **T2.2 Phase 2 Validation** `[activity: validate]`
+- [x] **T2.2 Phase 2 Validation** `[activity: validate]`
 
   1. **Prime**: Read T2.1 completion notes for the root cause.
   2. **Implement**: Run `npm test`, `npm run lint`, `npm run build`. Run the live test suite at `test/live/mcp-live.test.ts` if it has tests that exercise trailing-slash paths — if they previously skipped this case, add an assertion now.

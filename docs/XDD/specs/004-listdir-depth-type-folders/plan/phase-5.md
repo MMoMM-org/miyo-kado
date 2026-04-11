@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Schema, Integration, Documentation, Handoffs"
-status: pending
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -38,7 +38,7 @@ phase: 5
 
 This phase closes the public surface: the MCP tool description, the developer-facing API doc, the integration and live test updates, and the cross-repo handoff replies. It is the last phase before the feature is considered complete.
 
-- [ ] **T5.1 MCP Tool Schema and Description Update** `[activity: backend-api]` `[ref: SDD/§Documentation Updates; ADR-1, ADR-6, ADR-8]`
+- [x] **T5.1 MCP Tool Schema and Description Update** `[activity: backend-api]` `[ref: SDD/§Documentation Updates; ADR-1, ADR-6, ADR-8]`
 
   1. **Prime**: Read `kadoSearchShape` at `src/mcp/tools.ts:68-74` and the `registerSearchTool` call at line 280. Note the existing Zod import and the `.describe(...)` pattern used by other fields.
   2. **Test** (RED — add to `test/mcp/tools.test.ts` or similar):
@@ -55,7 +55,7 @@ This phase closes the public surface: the MCP tool description, the developer-fa
       - The MCP schema is the migration path (per Constraint CON-4) — any LLM client re-reading the schema understands the new behavior. `[ref: SDD/CON-4]`
       - Zod validation rejects invalid `depth` values at the transport layer as a first line of defense (mapper is second). `[ref: PRD/Feature 2 AC]`
 
-- [ ] **T5.2 Integration and Live Test Migration** `[activity: test-design]` `[ref: SDD/§Known Technical Issues (test mock fragility)]`
+- [x] **T5.2 Integration and Live Test Migration** `[activity: test-design]` `[ref: SDD/§Known Technical Issues (test mock fragility)]`
 
   1. **Prime**: Read the current listDir test in `test/integration/tool-roundtrip.test.ts:419-452`. Grep `test/live/mcp-live.test.ts` for listDir-related assertions at lines 653, 712, 1066, 1308, 1530. Read the walk-based test mock pattern established in Phase 3 (T3.2) — use it as the template.
   2. **Test** (RED — existing tests are failing after Phase 3 merged; this task makes them pass):
@@ -72,7 +72,7 @@ This phase closes the public surface: the MCP tool description, the developer-fa
       - The trailing-slash reproducer from Phase 2 is preserved as an integration regression test. `[ref: PRD/Feature 3]`
       - No test files use `vi.mocked(app.vault.getFiles)` for listDir assertions anymore.
 
-- [ ] **T5.3 API Reference Documentation Update** `[activity: docs]` `[ref: SDD/§Documentation Updates]` `[parallel: true]`
+- [x] **T5.3 API Reference Documentation Update** `[activity: docs]` `[ref: SDD/§Documentation Updates]` `[parallel: true]`
 
   1. **Prime**: Read `docs/api-reference.md` lines 487-509 — the current listDir section. Note its formatting conventions (header style, code block language, response-example layout).
   2. **Test**: Human review. This is documentation — validation is by reading it with the eyes of a new consumer and checking that every PRD Feature 1-8 capability is discoverable.
@@ -88,7 +88,7 @@ This phase closes the public surface: the MCP tool description, the developer-fa
       - A developer reading only `docs/api-reference.md` can understand every new capability and error mode without consulting the SDD. `[ref: SDD/§Quality Requirements Usability]`
       - Consumer agents (Tomo, Kokoro, future) have a canonical reference document when writing their client code.
 
-- [ ] **T5.4 Post-Ship Handoff Acknowledgements** `[activity: coordination]` `[ref: PRD/§Success Metrics Tracking Requirements]`
+- [x] **T5.4 Post-Ship Handoff Acknowledgements** `[activity: coordination]` `[ref: PRD/§Success Metrics Tracking Requirements]`
 
   **NOTE**: This task executes **after** Phases 1-5's implementation commits have been merged to main. The handoff replies reference the merged code, not a draft branch.
 
@@ -112,7 +112,7 @@ This phase closes the public surface: the MCP tool description, the developer-fa
       - Cross-repo coordination is closed — Tomo and Kokoro know what changed, what they must do, and where to find the documentation. `[ref: PRD/§Success Metrics]`
       - No loose ends: zero handoffs remain in `pending` state for this feature.
 
-- [ ] **T5.5 Final Phase Validation and Version Commit** `[activity: validate]`
+- [x] **T5.5 Final Phase Validation and Version Commit** `[activity: validate]`
 
   1. **Prime**: Read the full test suite output, the full `git diff main`, and the README manifest in this spec directory. Confirm all Phase 1-4 tasks are checked off.
   2. **Implement**:

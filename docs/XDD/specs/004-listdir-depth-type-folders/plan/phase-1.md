@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Types and Mapper Foundation"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -33,7 +33,7 @@ phase: 1
 
 This phase establishes the type-system and request-validation foundation that every subsequent phase depends on. Phase 2 (HTTP 406) can start in parallel — it does not depend on these changes.
 
-- [ ] **T1.1 Canonical Type Additions** `[activity: domain-modeling]` `[ref: SDD/§Interface Specifications/Application Data Models]`
+- [x] **T1.1 Canonical Type Additions** `[activity: domain-modeling]` `[ref: SDD/§Interface Specifications/Application Data Models]`
 
   1. **Prime**: Read current `CoreSearchRequest` and `CoreSearchItem` at `src/types/canonical.ts:49-96`. Note the existing optional-field pattern (`tags?`, `frontmatter?`, `scopePatterns?`).
   2. **Test**: No new runtime tests — these are additive type-only changes. Validate via `npm run build` (tsc strict-mode compile). The Phase 3 walk tests will exercise the new fields at runtime.
@@ -47,7 +47,7 @@ This phase establishes the type-system and request-validation foundation that ev
       - `CoreSearchRequest` carries the `depth?` field so Phase 3's walk can read `request.depth`. `[ref: SDD/§Interface Specifications]`
       - `CoreSearchItem` carries `type?` and `childCount?` so Phase 3's walk can populate them and consumers can branch on them. `[ref: PRD/Feature 5]`
 
-- [ ] **T1.2 Request Mapper Depth and Root-Marker Handling** `[activity: backend-api]` `[ref: SDD/§7 Implementation Examples/Example 3; lines: Example 3 in solution.md]`
+- [x] **T1.2 Request Mapper Depth and Root-Marker Handling** `[activity: backend-api]` `[ref: SDD/§7 Implementation Examples/Example 3; lines: Example 3 in solution.md]`
 
   1. **Prime**: Read `mapSearchRequest` at `src/mcp/request-mapper.ts:102-113` and the existing `normalizeDirPath` helper at lines 90-94. Confirm the existing `limit` extraction pattern at line 110 — it is the template for how `depth` is extracted. Read `src/core/gates/path-access.ts:37-40, 56-69` for context on how `undefined` path is already accepted downstream.
   2. **Test** (RED — write these in `test/mcp/request-mapper.test.ts` first, watch them fail):
@@ -74,7 +74,7 @@ This phase establishes the type-system and request-validation foundation that ev
       - `/` and omitted path are equivalent; empty string returns a helpful error. `[ref: PRD/Feature 4 AC]`
       - `byContent` with `path: "/"` matches whole-vault behavior without regression. `[ref: SDD/§5 Effect on byContent]`
 
-- [ ] **T1.3 Phase 1 Validation** `[activity: validate]`
+- [x] **T1.3 Phase 1 Validation** `[activity: validate]`
 
   1. **Prime**: Read the Phase 1 task list above.
   2. **Implement**: Run the full suite: `npm test`, `npm run lint`, `npm run build`.

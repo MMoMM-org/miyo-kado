@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-11 |
-| **Current Phase** | Ready |
+| **Current Phase** | Shipped |
 | **Last Updated** | 2026-04-11 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | PRD complete: 7 Must features + 1 Should, 24 Gherkin acceptance criteria, zero clarification markers |
 | solution.md | completed | SDD complete: 10 ADRs (all pre-confirmed via brainstorm/research), constitution-aligned, 3 worked implementation examples |
-| plan/ | completed | 5 phases, 12 tasks, Phase 2 parallel with Phase 1, all tasks trace to PRD/SDD refs |
+| plan/ | completed | 5 phases, 16 tasks, all shipped. 650/650 tests passing. Target version 0.2.0 via semantic-release. |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -29,6 +29,7 @@
 | 2026-04-11 | `depth: -1` rejected with VALIDATION_ERROR | Single unambiguous way to request unlimited recursion (omit the parameter). Kokoro's original `depth: -1` proposal is rejected; migration note goes to Kokoro reply outbox. |
 | 2026-04-11 | SDD written with 10 ADRs, constitution validated | All L1 Security/Architecture/Testing/Performance rules verified: three-layer defense-in-depth preserved, no new dependencies, pagination unchanged, main-thread walk cost proven O(visited nodes), test coverage planned for every happy path + denial case. |
 | 2026-04-11 | PLAN written: 5 phases, 12 tasks | Phase 1 (types+mapper) and Phase 2 (HTTP 406) parallel-safe; Phases 3→4→5 strictly sequential. All tasks trace to PRD acceptance criteria and SDD sections. TDD discipline (Prime/Test/Implement/Validate) applied per task. |
+| 2026-04-11 | **Spec 004 shipped** on branch `feat/listdir-depth-type-folders`. 13 commits, 20 files changed (+1497/-67), 650/650 tests passing, all 10 ADRs reflected in code, all 24 Gherkin acceptance criteria covered. | Target version 0.2.0 via semantic-release. Outbox handoff replies delivered to Tomo and Kokoro (local — `_outbox/` is gitignored per protocol). Phase 2 Bug #1 discovered to be pre-fixed in historical commit `63fd74c` — regression tests retained. |
 
 ## Context
 

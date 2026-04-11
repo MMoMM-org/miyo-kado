@@ -87,11 +87,11 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the execution method, not separately tracked items.
 
-- [ ] [Phase 1: Types and Mapper Foundation](phase-1.md)
-- [ ] [Phase 2: HTTP 406 Bug #1 Investigation and Fix](phase-2.md)
-- [ ] [Phase 3: listDir Walk and Fixtures](phase-3.md)
-- [ ] [Phase 4: Scope Filter Refactor (Three-Layer Defense)](phase-4.md)
-- [ ] [Phase 5: Schema, Integration, Documentation, Handoffs](phase-5.md)
+- [x] [Phase 1: Types and Mapper Foundation](phase-1.md)
+- [x] [Phase 2: HTTP 406 Bug #1 Investigation and Fix](phase-2.md)
+- [x] [Phase 3: listDir Walk and Fixtures](phase-3.md)
+- [x] [Phase 4: Scope Filter Refactor (Three-Layer Defense)](phase-4.md)
+- [x] [Phase 5: Schema, Integration, Documentation, Handoffs](phase-5.md)
 
 **Phase dependency graph:**
 
