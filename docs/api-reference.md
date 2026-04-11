@@ -484,29 +484,191 @@ For `listTags` and `byTag`, results also respect the key's allowed tags (the int
 }
 ```
 
-**List directory:**
+**List directory (shallow scan — depth: 1):**
+
+Returns only direct children of the target folder. Folder items appear before file items (folders-first sort, alphabetical within each group using locale-independent comparison).
 
 ```json
 // Request arguments
 {
   "operation": "listDir",
-  "path": "Calendar"
+  "path": "Atlas/202 Notes/",
+  "depth": 1
 }
 
 // Response content
 {
   "items": [
     {
-      "path": "Calendar/2026-03-30.md",
-      "name": "2026-03-30.md",
+      "path": "Atlas/202 Notes/Concepts",
+      "name": "Concepts",
+      "type": "folder",
+      "childCount": 14,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Figures",
+      "name": "Figures",
+      "type": "folder",
+      "childCount": 22,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Methods",
+      "name": "Methods",
+      "type": "folder",
+      "childCount": 9,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Projects",
+      "name": "Projects",
+      "type": "folder",
+      "childCount": 31,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Sources",
+      "name": "Sources",
+      "type": "folder",
+      "childCount": 47,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Topics",
+      "name": "Topics",
+      "type": "folder",
+      "childCount": 0,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/MOC.md",
+      "name": "MOC.md",
+      "type": "file",
       "created": 1743292800000,
       "modified": 1743379500000,
-      "size": 1024
+      "size": 3841
+    },
+    {
+      "path": "Atlas/202 Notes/README.md",
+      "name": "README.md",
+      "type": "file",
+      "created": 1743100000000,
+      "modified": 1743200000000,
+      "size": 512
     }
   ],
-  "total": 1
+  "total": 8
 }
 ```
+
+**List directory (unlimited recursive walk):**
+
+Omit `depth` to recurse into all descendants. The result is sorted folders-first at every level, then files, alphabetically within each group.
+
+```json
+// Request arguments
+{
+  "operation": "listDir",
+  "path": "Atlas/"
+}
+
+// Response content (excerpt — full response continues)
+{
+  "items": [
+    {
+      "path": "Atlas/202 Notes",
+      "name": "202 Notes",
+      "type": "folder",
+      "childCount": 8,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Concepts",
+      "name": "Concepts",
+      "type": "folder",
+      "childCount": 14,
+      "created": 0,
+      "modified": 0,
+      "size": 0
+    },
+    {
+      "path": "Atlas/202 Notes/Concepts/abstraction.md",
+      "name": "abstraction.md",
+      "type": "file",
+      "created": 1743292800000,
+      "modified": 1743379500000,
+      "size": 924
+    },
+    {
+      "path": "Atlas/202 Notes/MOC.md",
+      "name": "MOC.md",
+      "type": "file",
+      "created": 1743292800000,
+      "modified": 1743379500000,
+      "size": 3841
+    }
+  ],
+  "cursor": "eyJvZmZzZXQiOjUwfQ==",
+  "total": 281
+}
+```
+
+#### listDir Parameters
+
+In addition to the common search parameters (`cursor`, `limit`), `listDir` accepts:
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `path` | `string` | Yes | Folder to list. `"/"` is the canonical vault-root marker. Trailing slashes are accepted (`"Atlas/202 Notes/"` is equivalent to `"Atlas/202 Notes"`). Empty string `""` is rejected with `VALIDATION_ERROR`. Non-existent paths return `NOT_FOUND`. Paths that resolve to a file return `VALIDATION_ERROR`. |
+| `depth` | `integer` | No | Walk depth. Positive integer: walk at most N levels below the target (`depth: 1` returns only direct children). Omit for unlimited recursion. Zero, negative, non-integer, or non-number values return `VALIDATION_ERROR`. |
+
+#### listDir Response Items
+
+Every item in a `listDir` response carries a `type` discriminator. The `type` field is not present on items from other operations (`byName`, `byTag`, `byContent`, `byFrontmatter`, `listTags`).
+
+| Field | Type | Files | Folders | Description |
+|---|---|---|---|---|
+| `path` | `string` | Always | Always | Vault-relative path |
+| `name` | `string` | Always | Always | Entry name |
+| `type` | `'file' \| 'folder'` | `'file'` | `'folder'` | Entry type discriminator |
+| `childCount` | `number` | — | Always | Filtered count of visible direct children (hidden and out-of-scope children excluded) |
+| `created` | `number` | Real stat (Unix ms) | `0` (placeholder) | Creation timestamp |
+| `modified` | `number` | Real stat (Unix ms) | `0` (placeholder) | Modification timestamp |
+| `size` | `number` | Real size in bytes | `0` (placeholder) | File size |
+
+#### listDir Error Codes
+
+| Code | When |
+|---|---|
+| `NOT_FOUND` | Path does not exist in the vault, OR any segment of the path starts with `.` (hidden target — existence is not confirmed) |
+| `VALIDATION_ERROR` | Path resolves to a file instead of a folder, OR `depth` is invalid (zero, negative, non-integer), OR `path` is an empty string |
+
+#### listDir Hidden Entries
+
+Files and folders whose name starts with `.` (e.g., `.obsidian/`, `.trash/`) are never included in `listDir` responses. They are also excluded from the `childCount` of any parent folder item. A direct request for a hidden path returns `NOT_FOUND` (not `VALIDATION_ERROR`) to avoid confirming the entry's existence.
+
+#### Migration from 0.1.x
+
+- **Folder entries now appear in responses.** Callers that previously iterated items assuming all entries were files must add a `type` guard (`if (item.type === 'file') { ... }`). Folder items have `size: 0`, `created: 0`, `modified: 0`.
+- **`childCount` is a filtered count.** It reflects only visible (non-hidden, in-scope) direct children. It does not equal the raw child count of the folder.
+- **Non-existent and file-targeted paths now return explicit errors.** Previously, `listDir` on a missing or file path could return an empty `items` array. Now it returns `NOT_FOUND` or `VALIDATION_ERROR` respectively. Callers that treated an empty list as "path not found" must handle the error code instead.
+- **`"/"` is the canonical vault-root marker.** Passing `path: "/"` lists the vault root. Omitting `path` continues to work and is equivalent. Empty string `""` is now rejected.
+- **Sort order changed.** Folders appear before files in the response. Within each group items are sorted alphabetically using locale-independent comparison.
 
 **List tags:**
 
