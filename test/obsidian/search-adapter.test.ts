@@ -10,7 +10,7 @@
 import {describe, it, expect, vi} from 'vitest';
 import {TFile, TFolder} from '../__mocks__/obsidian';
 import {createSearchAdapter} from '../../src/obsidian/search-adapter';
-import type {CoreSearchRequest} from '../../src/types/canonical';
+import type {CoreSearchRequest, CoreSearchResult, CoreError} from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
 // Inline mock helpers
@@ -213,6 +213,15 @@ function buildFixtureTree() {
 // ---------------------------------------------------------------------------
 
 describe('SearchAdapter — listDir (TFolder walk)', () => {
+	/**
+	 * Helper to narrow CoreSearchResult | CoreError union by throwing on error.
+	 * Used by success-path tests that access result.items, result.total, result.cursor.
+	 */
+	function expectOk(r: CoreSearchResult | CoreError): CoreSearchResult {
+		if ('code' in r) throw new Error(`expected success, got ${r.code}: ${r.message}`);
+		return r;
+	}
+
 	// -----------------------------------------------------------------------
 	// Happy path: depth:1 returns only direct children, folders sorted first
 	// -----------------------------------------------------------------------
@@ -221,11 +230,11 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
-		}));
+		})));
 
 		// Should have 3 folders + 2 files = 5 items
 		expect(result.items).toHaveLength(5);
@@ -236,7 +245,7 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		expect(result.items[2].type).toBe('folder');
 
 		// Folder names (sorted)
-		const folderNames = result.items.slice(0, 3).map(i => i.name);
+		const folderNames = result.items.slice(0, 3).map((i) => i.name);
 		expect(folderNames).toEqual(['EmptyFolder', 'L1', 'OnlySubfolders']);
 
 		// Last 2 items are files
@@ -249,13 +258,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
-		}));
+		})));
 
-		const l1Item = result.items.find(i => i.name === 'L1');
+		const l1Item = result.items.find((i) => i.name === 'L1');
 		expect(l1Item).toBeDefined();
 		expect(l1Item).toMatchObject({
 			type: 'folder',
@@ -274,13 +283,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 2,
-		}));
+		})));
 
-		const paths = result.items.map(i => i.path);
+		const paths = result.items.map((i) => i.path);
 
 		// L2 folder should be present (it's at depth 2 from L0)
 		expect(paths).toContain('listdir-fixtures/L0/L1/L2');
@@ -304,12 +313,12 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
-		}));
+		})));
 
-		const paths = result.items.map(i => i.path);
+		const paths = result.items.map((i) => i.path);
 
 		// All deep items present
 		expect(paths).toContain('listdir-fixtures/L0/L1/L2/L3/deep-file.md');
@@ -317,8 +326,8 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		expect(paths).toContain('listdir-fixtures/L0/OnlySubfolders/SubB/subB-note.md');
 
 		// Folders before files within each parent's output
-		const folderItems = result.items.filter(i => i.type === 'folder');
-		const fileItems = result.items.filter(i => i.type === 'file');
+		const folderItems = result.items.filter((i) => i.type === 'folder');
+		const fileItems = result.items.filter((i) => i.type === 'file');
 		expect(folderItems.length).toBeGreaterThan(0);
 		expect(fileItems.length).toBeGreaterThan(0);
 	});
@@ -331,13 +340,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
-		}));
+		})));
 
-		const emptyFolder = result.items.find(i => i.name === 'EmptyFolder');
+		const emptyFolder = result.items.find((i) => i.name === 'EmptyFolder');
 		expect(emptyFolder).toBeDefined();
 		expect(emptyFolder?.childCount).toBe(0);
 	});
@@ -347,10 +356,10 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0/EmptyFolder',
-		}));
+		})));
 
 		expect(result.items).toEqual([]);
 		expect('code' in result).toBe(false);
@@ -364,13 +373,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
-		}));
+		})));
 
-		const onlySubfolders = result.items.find(i => i.name === 'OnlySubfolders');
+		const onlySubfolders = result.items.find((i) => i.name === 'OnlySubfolders');
 		expect(onlySubfolders?.childCount).toBe(2);
 	});
 
@@ -382,13 +391,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures',
 			depth: 1,
-		}));
+		})));
 
-		const paths = result.items.map(i => i.path);
+		const paths = result.items.map((i) => i.path);
 		expect(paths).not.toContain('listdir-fixtures/.hidden-root.md');
 	});
 
@@ -465,10 +474,10 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			depth: 1,
-		}));
+		})));
 
 		expect(result.items.length).toBeGreaterThan(0);
 		// Folder should come before file
@@ -485,10 +494,10 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const adapter = createSearchAdapter(app as never);
 
 		const req = makeSearchRequest({operation: 'listDir', path: 'listdir-fixtures/L0', depth: 1});
-		const result1 = await adapter.search(req);
-		const result2 = await adapter.search(req);
+		const result1 = expectOk(await adapter.search(req));
+		const result2 = expectOk(await adapter.search(req));
 
-		expect(result1.items.map(i => i.path)).toEqual(result2.items.map(i => i.path));
+		expect(result1.items.map((i) => i.path)).toEqual(result2.items.map((i) => i.path));
 	});
 
 	// -----------------------------------------------------------------------
@@ -499,13 +508,13 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
-		}));
+		})));
 
-		const fileItem = result.items.find(i => i.path === l0FileA.path);
+		const fileItem = result.items.find((i) => i.path === l0FileA.path);
 		expect(fileItem).toBeDefined();
 		expect(fileItem).toMatchObject({
 			type: 'file',
@@ -523,16 +532,16 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({
+		const result = expectOk(await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			path: 'listdir-fixtures/L0',
 			depth: 1,
 			limit: 3,
-		}));
+		})));
 
 		expect(result.items).toHaveLength(3);
 		// All 3 returned items should be folders
-		expect(result.items.every(i => i.type === 'folder')).toBe(true);
+		expect(result.items.every((i) => i.type === 'folder')).toBe(true);
 	});
 
 	// -----------------------------------------------------------------------
