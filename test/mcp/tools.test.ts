@@ -604,6 +604,106 @@ describe('filterResultsByScope()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// filterResultsByScope — folder-aware scope filter (T4.2)
+// ---------------------------------------------------------------------------
+
+describe('filterResultsByScope() — folder items', () => {
+	function makeConfig(
+		globalListMode: 'whitelist' | 'blacklist',
+		globalPaths: string[],
+		keyListMode: 'whitelist' | 'blacklist',
+		keyPaths: string[],
+	): KadoConfig {
+		return {
+			...createDefaultConfig(),
+			security: makeSecurityConfig({
+				listMode: globalListMode,
+				paths: globalPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+			}),
+			apiKeys: [
+				makeApiKey('key-1', {
+					listMode: keyListMode,
+					paths: keyPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+				}),
+			],
+		};
+	}
+
+	function makeFolderItem(path: string, childCount = 5): CoreSearchItem {
+		return {path, name: path.split('/').pop()!, created: 1000, modified: 2000, size: 0, type: 'folder', childCount};
+	}
+
+	function makeFileItem(path: string): CoreSearchItem {
+		return {path, name: path.split('/').pop()!, created: 1000, modified: 2000, size: 100, type: 'file'};
+	}
+
+	// T4.2-case-1: whitelist folder visibility
+	it('returns a folder item when a whitelist pattern could match its children', () => {
+		const config = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Atlas'), makeFolderItem('Notes')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].path).toBe('Atlas');
+	});
+
+	// T4.2-case-2: blacklist folder blocking
+	it('filters out a folder item when a blacklist pattern covers its children', () => {
+		const config = makeConfig('blacklist', ['Private/**'], 'blacklist', ['Private/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Private')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	// T4.2-case-3: blacklist parent-leakage prevention
+	it('does NOT block a folder when the blacklist pattern covers only unrelated descendants', () => {
+		const config = makeConfig('blacklist', ['Private/**'], 'blacklist', ['Private/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Atlas'), makeFolderItem('Private')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].path).toBe('Atlas');
+	});
+
+	// T4.2-case-4: file items unchanged (regression)
+	it('keeps file items using existing isPathInScope logic — whitelist allows, blacklist blocks', () => {
+		const whitelistConfig = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const fileInScope = makeFileItem('Atlas/note.md');
+		const fileOutOfScope = makeFileItem('Other/note.md');
+
+		const wFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', whitelistConfig);
+		expect(wFiltered).toHaveLength(1);
+		expect(wFiltered[0].path).toBe('Atlas/note.md');
+
+		const blacklistConfig = makeConfig('blacklist', ['Atlas/**'], 'blacklist', ['Atlas/**']);
+		const bFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', blacklistConfig);
+		expect(bFiltered).toHaveLength(1);
+		expect(bFiltered[0].path).toBe('Other/note.md');
+	});
+
+	// T4.2-case-5: defense-in-depth consistency — tools-layer agrees with core helper
+	// Both the adapter (T4.1) and this tools-layer filter use dirCouldContainMatches.
+	// We verify that for 'Atlas' folder with whitelist ['Atlas/**'], both the tools-layer
+	// filterResultsByScope and the underlying dirCouldContainMatches agree it is visible.
+	it('agrees with dirCouldContainMatches for Atlas folder with whitelist [Atlas/**]', async () => {
+		const {dirCouldContainMatches} = await import('../../src/core/glob-match');
+
+		const config = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const folderItem = makeFolderItem('Atlas');
+
+		// Core helper: dirCouldContainMatches says Atlas/ could contain matches for 'Atlas/**'
+		const coreVerdict = dirCouldContainMatches('Atlas/**', 'Atlas/');
+		expect(coreVerdict).toBe(true);
+
+		// Tools-layer: filterResultsByScope should agree and include Atlas
+		const toolsResult = filterResultsByScope([folderItem], 'key-1', config);
+		expect(toolsResult).toHaveLength(1);
+		expect(toolsResult[0].path).toBe('Atlas');
+	});
+});
+
+// ---------------------------------------------------------------------------
 // computeAllowedTags
 // ---------------------------------------------------------------------------
 

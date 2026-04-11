@@ -30,7 +30,7 @@ import type {
 } from '../types/canonical';
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
-import {matchGlob} from '../core/glob-match';
+import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
 
 // ============================================================
 // Public types
@@ -95,10 +95,27 @@ export function filterResultsByScope(items: CoreSearchItem[], keyId: string, con
 	if (!key) return [];
 
 	return items.filter((item) => {
+		if (item.type === 'folder') {
+			const inGlobal = isFolderInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
+			const inKey = isFolderInScope(item.path, key.listMode, key.paths.map((p) => p.path));
+			return inGlobal && inKey;
+		}
 		const inGlobal = isPathInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
 		const inKey = isPathInScope(item.path, key.listMode, key.paths.map((p) => p.path));
 		return inGlobal && inKey;
 	});
+}
+
+/**
+ * Returns true when a folder path is permitted by a whitelist/blacklist scope.
+ * Whitelist: at least one pattern could match a child of this folder.
+ * Blacklist: NO pattern could match a child of this folder (otherwise the folder
+ *   would leak the existence of blacklisted descendants).
+ */
+function isFolderInScope(folderPath: string, listMode: string, patterns: string[]): boolean {
+	const prefix = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+	const couldMatchChild = patterns.some((p) => dirCouldContainMatches(p, prefix));
+	return listMode === 'whitelist' ? couldMatchChild : !couldMatchChild;
 }
 
 /**
