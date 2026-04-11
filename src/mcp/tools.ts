@@ -65,13 +65,25 @@ const kadoWriteShape = {
 	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file.'),
 };
 
-const kadoSearchShape = {
+export const kadoSearchShape = {
 	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']).describe('Search operation type'),
 	query: z.string().optional().describe('Search query. Required for all operations except listDir and listTags. Supports * and ? glob wildcards for byName and byTag.'),
-	path: z.string().optional().describe('Folder path for listDir (e.g. "Calendar") or path prefix for byContent'),
+	path: z.string().optional().describe('Folder path. For listDir: "/" is the canonical vault-root marker; trailing slashes are accepted; non-existent paths return NOT_FOUND; paths pointing to a file return VALIDATION_ERROR; empty string is rejected. For byContent: path prefix filter.'),
 	cursor: z.string().optional().describe('Pagination cursor from a previous response'),
 	limit: z.number().int().min(1).max(500).optional().describe('Max items per page (default 50, max 500)'),
+	depth: z.number().int().positive().optional().describe('Walk depth for listDir. Omit for unlimited recursion. depth=1 returns only direct children. Invalid values (0, negative, non-integer) return VALIDATION_ERROR.'),
 };
+
+export const KADO_SEARCH_TOOL_DESCRIPTION =
+	'Search the Obsidian vault. Operations: ' +
+	'byName (substring or glob e.g. "2026-03-*"), ' +
+	'byTag (exact or glob e.g. "#project/*"), ' +
+	'byContent (substring in note body), ' +
+	'byFrontmatter (key=value or key-only), ' +
+	'listDir (folder contents with type: "file" | "folder" discriminator; folder items carry childCount; results sort folders-first then alphabetically; use depth=1 for a shallow scan of direct children only, omit depth for unlimited recursion; "/" is the canonical vault-root marker; missing paths return NOT_FOUND, file targets return VALIDATION_ERROR), ' +
+	'listTags (all permitted tags with counts). ' +
+	'Results are scoped to this key\'s permissions and paginated (default 50, max 500). ' +
+	'Hidden entries (names starting with ".") are never returned.';
 
 // ============================================================
 // Helpers
@@ -294,7 +306,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 }
 
 function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-search', {description: 'Search the Obsidian vault. Operations: byName (substring or glob e.g. "2026-03-*"), byTag (exact or glob e.g. "#project/*"), byContent (substring in note body), byFrontmatter (key=value or key-only), listDir (folder contents), listTags (all permitted tags with counts). Results are scoped to this key\'s permissions and paginated (default 50, max 500).', inputSchema: kadoSearchShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-search', {description: KADO_SEARCH_TOOL_DESCRIPTION, inputSchema: kadoSearchShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 

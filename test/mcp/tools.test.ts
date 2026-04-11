@@ -7,8 +7,9 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
+import {z} from 'zod';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
@@ -812,5 +813,65 @@ describe('computeScopePatterns()', () => {
 		const config = makeConfig('whitelist', ['docs/**'], 'whitelist', []);
 		const result = computeScopePatterns('key-1', config);
 		expect(result).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kadoSearchShape — depth and description
+// ---------------------------------------------------------------------------
+
+describe('kadoSearchShape — depth and description', () => {
+	const schema = z.object(kadoSearchShape);
+
+	it('schema accepts valid depth', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 5});
+		expect(result.success).toBe(true);
+	});
+
+	it('schema accepts depth omitted', () => {
+		const result = schema.safeParse({operation: 'listDir'});
+		expect(result.success).toBe(true);
+	});
+
+	it('schema rejects invalid depth — negative', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: -1});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — zero', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 0});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — non-integer', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 1.5});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — string', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: '5' as unknown as number});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('tool description and schema contain required documentation substrings', () => {
+		const pathDesc = kadoSearchShape.path._def.description ?? '';
+		const depthDesc = kadoSearchShape.depth._def.description ?? '';
+		const combined = KADO_SEARCH_TOOL_DESCRIPTION + pathDesc + depthDesc;
+
+		for (const substring of ['type', 'folder', 'childCount', 'depth', '/', 'VALIDATION_ERROR', 'NOT_FOUND']) {
+			expect(combined, `expected combined description to contain "${substring}"`).toContain(substring);
+		}
 	});
 });
