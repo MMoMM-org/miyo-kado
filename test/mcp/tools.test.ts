@@ -866,8 +866,8 @@ describe('kadoSearchShape — depth and description', () => {
 	});
 
 	it('tool description and schema contain required documentation substrings', () => {
-		const pathDesc = kadoSearchShape.path._def.description ?? '';
-		const depthDesc = kadoSearchShape.depth._def.description ?? '';
+		const pathDesc = kadoSearchShape.path.description ?? '';
+		const depthDesc = kadoSearchShape.depth.description ?? '';
 		const combined = KADO_SEARCH_TOOL_DESCRIPTION + pathDesc + depthDesc;
 
 		for (const substring of ['type', 'folder', 'childCount', 'depth', '/', 'VALIDATION_ERROR', 'NOT_FOUND']) {
