@@ -718,6 +718,49 @@ describe('Kado MCP Live Tests', () => {
 			const body = parseResult<{items: unknown[]; cursor?: string}>(result);
 			expect(body.items.length).toBeLessThanOrEqual(2);
 		});
+
+		// Regression test: depth:1 returns only direct children; folders sort first
+		it('listDir depth:1 returns only direct children with folders sorted first', async (ctx) => {
+			requireReady(ctx);
+			// allowed/ has: sub/ (folder) + 5 .md files + 3 binary files as direct children
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+				depth: 1,
+			});
+
+			expect(result.isError).toBeFalsy();
+			type ListDirItem = {path: string; name: string; type: 'file' | 'folder'; childCount?: number};
+			const body = parseResult<{items: ListDirItem[]}>(result);
+			const items = body.items;
+
+			// There are both folders and files as direct children
+			const folders = items.filter((i) => i.type === 'folder');
+			const files = items.filter((i) => i.type === 'file');
+
+			// allowed/sub/ must appear as a folder item
+			expect(folders.length).toBeGreaterThanOrEqual(1);
+			const subFolder = folders.find((i) => i.path === 'allowed/sub');
+			expect(subFolder).toBeDefined();
+			expect(subFolder!.type).toBe('folder');
+
+			// Direct files are present (Project Alpha.md etc.)
+			expect(files.length).toBeGreaterThanOrEqual(1);
+			const directFile = files.find((i) => i.path === 'allowed/Project Alpha.md');
+			expect(directFile).toBeDefined();
+			expect(directFile!.type).toBe('file');
+
+			// Grandchildren must NOT appear (allowed/sub/Nested Note.md is depth 2)
+			const grandchildren = items.filter((i) => i.path.startsWith('allowed/sub/'));
+			expect(grandchildren).toHaveLength(0);
+
+			// Folders sort before files: all folder items come before all file items
+			const firstFileIndex = items.findIndex((i) => i.type === 'file');
+			const lastFolderIndex = items.findLastIndex((i) => i.type === 'folder');
+			if (firstFileIndex !== -1 && lastFolderIndex !== -1) {
+				expect(lastFolderIndex).toBeLessThan(firstFileIndex);
+			}
+		});
 	});
 
 	// --------------------------------------------------------
