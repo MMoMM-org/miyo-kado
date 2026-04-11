@@ -53,6 +53,7 @@ export interface CoreSearchRequest {
 	path?: string;
 	cursor?: string;
 	limit?: number;
+	depth?: number;
 	/** Glob patterns for file-level scope filtering (set by tools layer from key config). */
 	scopePatterns?: string[];
 	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */
@@ -93,6 +94,8 @@ export interface CoreSearchItem {
 	size: number;
 	tags?: string[];
 	frontmatter?: Record<string, unknown>;
+	type?: 'file' | 'folder';
+	childCount?: number;
 }
 
 /** Paginated search result with optional cursor for the next page. */
