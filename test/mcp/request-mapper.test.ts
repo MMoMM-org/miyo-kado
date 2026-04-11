@@ -194,3 +194,83 @@ describe('mapSearchRequest()', () => {
 		expect(() => mapSearchRequest(args, KEY_ID)).toThrow();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// mapSearchRequest — depth validation
+// ---------------------------------------------------------------------------
+
+describe('mapSearchRequest — depth validation', () => {
+	it('depth: 1 → result.depth === 1', () => {
+		const result = mapSearchRequest(makeSearchArgs({depth: 1}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.depth).toBe(1);
+	});
+
+	it('depth: 3 → result.depth === 3', () => {
+		const result = mapSearchRequest(makeSearchArgs({depth: 3}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.depth).toBe(3);
+	});
+
+	it('depth: 0 → throws with message matching /depth must be a positive integer/', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({depth: 0}), KEY_ID)).toThrow(/depth must be a positive integer/);
+	});
+
+	it('depth: -1 → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({depth: -1}), KEY_ID)).toThrow(/depth must be a positive integer/);
+	});
+
+	it('depth: 1.5 → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({depth: 1.5}), KEY_ID)).toThrow(/depth must be a positive integer/);
+	});
+
+	it('depth: "1" (string) → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({depth: '1'}), KEY_ID)).toThrow(/depth must be a positive integer/);
+	});
+
+	it('depth omitted → result.depth === undefined', () => {
+		const result = mapSearchRequest(makeSearchArgs(), KEY_ID) as CoreSearchRequest;
+
+		expect(result.depth).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapSearchRequest — path handling (/ and empty)
+// ---------------------------------------------------------------------------
+
+describe('mapSearchRequest — path handling (/ and empty)', () => {
+	it('path: "/" → result.path === undefined (canonical root)', () => {
+		const result = mapSearchRequest(makeSearchArgs({path: '/'}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBeUndefined();
+	});
+
+	it('path: "" → throws with message matching /path must not be empty.*Use \'\\/\' to list the vault root\\./', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({path: ''}), KEY_ID)).toThrow(/path must not be empty/);
+	});
+
+	it('path omitted → result.path === undefined', () => {
+		const result = mapSearchRequest({operation: 'listDir'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBeUndefined();
+	});
+
+	it('path: "Atlas" → result.path === "Atlas/" (existing normalization preserved)', () => {
+		const result = mapSearchRequest({operation: 'listDir', path: 'Atlas'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBe('Atlas/');
+	});
+
+	it('path: "Atlas/" → result.path === "Atlas/" (existing, unchanged)', () => {
+		const result = mapSearchRequest({operation: 'listDir', path: 'Atlas/'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBe('Atlas/');
+	});
+
+	it('byContent with path: "/" → result.path === undefined (global fix, covers all search ops)', () => {
+		const result = mapSearchRequest({operation: 'byContent', path: '/'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBeUndefined();
+	});
+});
