@@ -27,6 +27,7 @@ export class Component {
 
 export class App {
 	vault = {
+		getRoot: vi.fn(() => new TFolder()),
 		getAbstractFileByPath: vi.fn(),
 		getFileByPath: vi.fn(),
 		read: vi.fn(),

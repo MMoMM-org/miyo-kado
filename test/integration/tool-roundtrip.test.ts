@@ -10,7 +10,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {App, TFile, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
+import {App, TFile, TFolder, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest} from '../../src/mcp/request-mapper';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from '../../src/mcp/response-mapper';
 import {evaluatePermissions, createDefaultGateChain} from '../../src/core/permission-chain';
@@ -92,6 +92,64 @@ function makeConfigManager(config: KadoConfig): ConfigManager {
 
 function makeApp(): App {
 	return new App();
+}
+
+/**
+ * Wires getRoot() and getAbstractFileByPath() on an existing App mock
+ * given a flat list of TFile instances. Creates a minimal folder tree
+ * (one TFolder per unique parent path) so the TFolder walk works.
+ */
+function wireVaultTree(app: App, files: TFile[]): void {
+	// Collect all unique folder paths from file paths
+	const folderMap = new Map<string, TFolder>();
+
+	function getOrCreateFolder(folderPath: string): TFolder {
+		const existing = folderMap.get(folderPath);
+		if (existing) return existing;
+		const folder = new TFolder();
+		folder.path = folderPath;
+		folder.name = folderPath.split('/').pop() ?? folderPath;
+		folder.children = [];
+		folderMap.set(folderPath, folder);
+		return folder;
+	}
+
+	// Create root
+	const root = getOrCreateFolder('');
+	root.name = '/';
+
+	// Create folder hierarchy and assign file children
+	for (const file of files) {
+		const segments = file.path.split('/');
+		segments.pop(); // remove filename
+		let currentPath = '';
+		let parentFolder = root;
+		for (const seg of segments) {
+			const childPath = currentPath === '' ? seg : `${currentPath}/${seg}`;
+			const childFolder = getOrCreateFolder(childPath);
+			if (!parentFolder.children.includes(childFolder)) {
+				parentFolder.children.push(childFolder);
+			}
+			parentFolder = childFolder;
+			currentPath = childPath;
+		}
+		// Add file to its immediate parent folder
+		if (!parentFolder.children.includes(file)) {
+			parentFolder.children.push(file);
+		}
+	}
+
+	// Build index: path → file or folder
+	const pathIndex = new Map<string, TFile | TFolder>();
+	for (const file of files) pathIndex.set(file.path, file);
+	for (const [path, folder] of folderMap.entries()) {
+		if (path !== '') pathIndex.set(path, folder);
+	}
+
+	vi.mocked(app.vault.getRoot).mockReturnValue(root);
+	vi.mocked(app.vault.getAbstractFileByPath).mockImplementation((p: string) => {
+		return pathIndex.get(p) ?? null;
+	});
 }
 
 function makeAdapters(app: App) {
@@ -432,6 +490,7 @@ describe('End-to-end tool call pipeline', () => {
 				stat: {ctime: 1100, mtime: 2100, size: 20},
 			});
 			vi.mocked(app.vault.getFiles).mockReturnValue([file1, file2]);
+			wireVaultTree(app, [file1, file2]);
 
 			const result = await runPipeline(
 				config,
@@ -631,6 +690,7 @@ describe('End-to-end tool call pipeline', () => {
 				stat: {ctime: 1100, mtime: 2100, size: 20},
 			});
 			vi.mocked(app.vault.getFiles).mockReturnValue([file1, file2]);
+			wireVaultTree(app, [file1, file2]);
 
 			// With trailing slash (Tomo's original reproducer)
 			const withSlash = await runPipeline(
@@ -672,6 +732,7 @@ describe('End-to-end tool call pipeline', () => {
 				stat: {ctime: 1000, mtime: 2000, size: 10},
 			});
 			vi.mocked(app.vault.getFiles).mockReturnValue([file]);
+			wireVaultTree(app, [file]);
 
 			const result = await runPipeline(
 				config,

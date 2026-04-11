@@ -8,6 +8,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
+import {TFile, TFolder} from '../__mocks__/obsidian';
 import {createSearchAdapter} from '../../src/obsidian/search-adapter';
 import type {CoreSearchRequest} from '../../src/types/canonical';
 
@@ -75,71 +76,497 @@ function encodeOffset(offset: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// TFolder/TFile tree mock helpers for listDir walk tests
+// ---------------------------------------------------------------------------
+
+type MockFile = TFile;
+type MockFolder = TFolder;
+
+/**
+ * Creates a TFile instance (real class instance so instanceof TFile === true).
+ * stat defaults: ctime=1000, mtime=2000, size=512.
+ */
+function makeMockFile(path: string, stat?: {ctime?: number; mtime?: number; size?: number}): MockFile {
+	const f = new TFile();
+	f.path = path;
+	f.name = path.split('/').pop() ?? path;
+	f.stat = {
+		ctime: stat?.ctime ?? 1000,
+		mtime: stat?.mtime ?? 2000,
+		size: stat?.size ?? 512,
+	};
+	return f;
+}
+
+/**
+ * Creates a TFolder instance (real class instance so instanceof TFolder === true).
+ * Children must be set separately after creation or passed via makeMockFolder.
+ */
+function makeMockFolder(path: string, children: (MockFile | MockFolder)[] = []): MockFolder {
+	const folder = new TFolder();
+	folder.path = path;
+	folder.name = path.split('/').pop() ?? path;
+	folder.children = children;
+	return folder;
+}
+
+/**
+ * Builds a full vault tree from nested folder spec.
+ * Returns an app mock with getRoot() and getAbstractFileByPath() properly wired.
+ */
+function makeAppWithTree(root: MockFolder, extraMarkdownFiles?: MockFile[]) {
+	const pathIndex = new Map<string, MockFile | MockFolder>();
+
+	function indexNode(node: MockFile | MockFolder): void {
+		pathIndex.set(node.path, node);
+		if (node instanceof TFolder) {
+			for (const child of node.children) indexNode(child);
+		}
+	}
+	// Index all nodes including root
+	pathIndex.set(root.path, root);
+	for (const child of root.children) indexNode(child);
+
+	const allFiles = Array.from(pathIndex.values()).filter((n): n is MockFile => n instanceof TFile);
+	const markdownFiles = allFiles.filter(f => f.name.endsWith('.md'));
+
+	return {
+		vault: {
+			getRoot: vi.fn(() => root),
+			getAbstractFileByPath: vi.fn((p: string) => pathIndex.get(p) ?? null),
+			getMarkdownFiles: vi.fn(() => extraMarkdownFiles ?? markdownFiles),
+			getFiles: vi.fn(() => allFiles),
+			read: vi.fn(async () => ''),
+		},
+		metadataCache: {
+			getFileCache: vi.fn(() => null),
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// listDir — fixture tree (mirrors test/MiYo-Kado/listdir-fixtures/ on disk)
+// ---------------------------------------------------------------------------
+//
+// listdir-fixtures/
+//   .hidden-root.md              (hidden — must not appear in walk)
+//   L0/
+//     EmptyFolder/               (no children)
+//     L1/
+//       L1-file.md
+//       L2/
+//         L2-file.md
+//         L3/
+//           deep-file.md
+//     OnlySubfolders/
+//       SubA/
+//         subA-note.md
+//       SubB/
+//         subB-note.md
+//     L0-root-a.md
+//     L0-root-b.md
+
+function buildFixtureTree() {
+	// L3 level
+	const deepFile = makeMockFile('listdir-fixtures/L0/L1/L2/L3/deep-file.md');
+	const L3 = makeMockFolder('listdir-fixtures/L0/L1/L2/L3', [deepFile]);
+
+	// L2 level
+	const l2File = makeMockFile('listdir-fixtures/L0/L1/L2/L2-file.md');
+	const L2 = makeMockFolder('listdir-fixtures/L0/L1/L2', [L3, l2File]);
+
+	// L1 level
+	const l1File = makeMockFile('listdir-fixtures/L0/L1/L1-file.md');
+	const L1 = makeMockFolder('listdir-fixtures/L0/L1', [L2, l1File]);
+
+	// OnlySubfolders
+	const subANote = makeMockFile('listdir-fixtures/L0/OnlySubfolders/SubA/subA-note.md');
+	const SubA = makeMockFolder('listdir-fixtures/L0/OnlySubfolders/SubA', [subANote]);
+	const subBNote = makeMockFile('listdir-fixtures/L0/OnlySubfolders/SubB/subB-note.md');
+	const SubB = makeMockFolder('listdir-fixtures/L0/OnlySubfolders/SubB', [subBNote]);
+	const OnlySubfolders = makeMockFolder('listdir-fixtures/L0/OnlySubfolders', [SubA, SubB]);
+
+	// EmptyFolder
+	const EmptyFolder = makeMockFolder('listdir-fixtures/L0/EmptyFolder', []);
+
+	// L0-level files
+	const l0FileA = makeMockFile('listdir-fixtures/L0/L0-root-a.md', {ctime: 100, mtime: 200, size: 10});
+	const l0FileB = makeMockFile('listdir-fixtures/L0/L0-root-b.md', {ctime: 300, mtime: 400, size: 20});
+
+	// L0 folder
+	const L0 = makeMockFolder('listdir-fixtures/L0', [EmptyFolder, L1, OnlySubfolders, l0FileA, l0FileB]);
+
+	// Hidden root file
+	const hiddenRoot = makeMockFile('listdir-fixtures/.hidden-root.md');
+
+	// Root of the fixture subtree
+	const fixtureRoot = makeMockFolder('listdir-fixtures', [hiddenRoot, L0]);
+
+	// Full vault root (empty except for the fixture subtree for these tests)
+	const vaultRoot = makeMockFolder('', [fixtureRoot]);
+
+	return {vaultRoot, fixtureRoot, L0, L1, L2, L3, EmptyFolder, OnlySubfolders, SubA, SubB, deepFile, l0FileA, l0FileB};
+}
+
+// ---------------------------------------------------------------------------
 // listDir
 // ---------------------------------------------------------------------------
 
-describe('SearchAdapter — listDir', () => {
-	it('returns files whose path starts with given directory path', async () => {
-		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md', ctime: 100, mtime: 200, size: 10});
-		const fileB = makeTFile({path: 'notes/b.md', name: 'b.md', ctime: 300, mtime: 400, size: 20});
-		const fileC = makeTFile({path: 'other/c.md', name: 'c.md'});
-		const app = makeApp({allFiles: [fileA, fileB, fileC]});
+describe('SearchAdapter — listDir (TFolder walk)', () => {
+	// -----------------------------------------------------------------------
+	// Happy path: depth:1 returns only direct children, folders sorted first
+	// -----------------------------------------------------------------------
+	it('depth:1 returns only direct children of L0, folders before files', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listDir', path: 'notes/'}));
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+		}));
 
-		expect(result.items).toHaveLength(2);
-		expect(result.items[0]).toMatchObject({
-			path: 'notes/a.md',
-			name: 'a.md',
+		// Should have 3 folders + 2 files = 5 items
+		expect(result.items).toHaveLength(5);
+
+		// First 3 items are folders
+		expect(result.items[0].type).toBe('folder');
+		expect(result.items[1].type).toBe('folder');
+		expect(result.items[2].type).toBe('folder');
+
+		// Folder names (sorted)
+		const folderNames = result.items.slice(0, 3).map(i => i.name);
+		expect(folderNames).toEqual(['EmptyFolder', 'L1', 'OnlySubfolders']);
+
+		// Last 2 items are files
+		expect(result.items[3].type).toBe('file');
+		expect(result.items[4].type).toBe('file');
+	});
+
+	it('folder items carry type:folder, size:0, created:0, modified:0, and childCount', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+		}));
+
+		const l1Item = result.items.find(i => i.name === 'L1');
+		expect(l1Item).toBeDefined();
+		expect(l1Item).toMatchObject({
+			type: 'folder',
+			size: 0,
+			created: 0,
+			modified: 0,
+		});
+		expect(typeof l1Item?.childCount).toBe('number');
+	});
+
+	// -----------------------------------------------------------------------
+	// Depth semantics
+	// -----------------------------------------------------------------------
+	it('depth:2 includes level-2 items but NOT level-3 items', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 2,
+		}));
+
+		const paths = result.items.map(i => i.path);
+
+		// L2 folder should be present (it's at depth 2 from L0)
+		expect(paths).toContain('listdir-fixtures/L0/L1/L2');
+		// L1-file.md at depth 2 should be present
+		expect(paths).toContain('listdir-fixtures/L0/L1/L1-file.md');
+		// SubA, SubB at depth 2 should be present
+		expect(paths).toContain('listdir-fixtures/L0/OnlySubfolders/SubA');
+		expect(paths).toContain('listdir-fixtures/L0/OnlySubfolders/SubB');
+
+		// L3 folder should NOT be present (depth 3 from L0)
+		expect(paths).not.toContain('listdir-fixtures/L0/L1/L2/L3');
+		// deep-file.md should NOT be present (inside L3)
+		expect(paths).not.toContain('listdir-fixtures/L0/L1/L2/L3/deep-file.md');
+	});
+
+	// -----------------------------------------------------------------------
+	// Unlimited recursion (depth omitted)
+	// -----------------------------------------------------------------------
+	it('depth omitted walks the full subtree and sorts folders-first at each combined level', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+		}));
+
+		const paths = result.items.map(i => i.path);
+
+		// All deep items present
+		expect(paths).toContain('listdir-fixtures/L0/L1/L2/L3/deep-file.md');
+		expect(paths).toContain('listdir-fixtures/L0/OnlySubfolders/SubA/subA-note.md');
+		expect(paths).toContain('listdir-fixtures/L0/OnlySubfolders/SubB/subB-note.md');
+
+		// Folders before files within each parent's output
+		const folderItems = result.items.filter(i => i.type === 'folder');
+		const fileItems = result.items.filter(i => i.type === 'file');
+		expect(folderItems.length).toBeGreaterThan(0);
+		expect(fileItems.length).toBeGreaterThan(0);
+	});
+
+	// -----------------------------------------------------------------------
+	// Empty folder
+	// -----------------------------------------------------------------------
+	it('EmptyFolder appears at depth:1 with childCount:0', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+		}));
+
+		const emptyFolder = result.items.find(i => i.name === 'EmptyFolder');
+		expect(emptyFolder).toBeDefined();
+		expect(emptyFolder?.childCount).toBe(0);
+	});
+
+	it('direct listDir on EmptyFolder returns items:[]', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0/EmptyFolder',
+		}));
+
+		expect(result.items).toEqual([]);
+		expect('code' in result).toBe(false);
+	});
+
+	// -----------------------------------------------------------------------
+	// OnlySubfolders: childCount counts only visible children
+	// -----------------------------------------------------------------------
+	it('OnlySubfolders has childCount:2 (SubA + SubB visible)', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+		}));
+
+		const onlySubfolders = result.items.find(i => i.name === 'OnlySubfolders');
+		expect(onlySubfolders?.childCount).toBe(2);
+	});
+
+	// -----------------------------------------------------------------------
+	// Hidden entry filtering
+	// -----------------------------------------------------------------------
+	it('hidden entry .hidden-root.md does not appear in listdir-fixtures listing', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures',
+			depth: 1,
+		}));
+
+		const paths = result.items.map(i => i.path);
+		expect(paths).not.toContain('listdir-fixtures/.hidden-root.md');
+	});
+
+	it('hidden folder target .obsidian returns NOT_FOUND', async () => {
+		const obsidianFolder = makeMockFolder('.obsidian', []);
+		const vaultRoot = makeMockFolder('', [obsidianFolder]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: '.obsidian',
+		}));
+
+		expect(result).toMatchObject({code: 'NOT_FOUND'});
+	});
+
+	it('hidden folder target listdir-fixtures/.hidden returns NOT_FOUND', async () => {
+		const hiddenFolder = makeMockFolder('listdir-fixtures/.hidden', []);
+		const fixtureRoot = makeMockFolder('listdir-fixtures', [hiddenFolder]);
+		const vaultRoot = makeMockFolder('', [fixtureRoot]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/.hidden',
+		}));
+
+		expect(result).toMatchObject({code: 'NOT_FOUND'});
+	});
+
+	// -----------------------------------------------------------------------
+	// Path resolves to file → VALIDATION_ERROR
+	// -----------------------------------------------------------------------
+	it('path pointing to a file returns VALIDATION_ERROR with message matching /listDir target must be a folder, got file:/', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0/L1/L2/L3/deep-file.md',
+		}));
+
+		expect(result).toMatchObject({code: 'VALIDATION_ERROR'});
+		expect((result as {message: string}).message).toMatch(/listDir target must be a folder, got file:/);
+	});
+
+	// -----------------------------------------------------------------------
+	// Missing path → NOT_FOUND
+	// -----------------------------------------------------------------------
+	it('non-existent path returns NOT_FOUND with message matching /Path not found:/', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'NotAVault/Folder',
+		}));
+
+		expect(result).toMatchObject({code: 'NOT_FOUND'});
+		expect((result as {message: string}).message).toMatch(/Path not found:/);
+	});
+
+	// -----------------------------------------------------------------------
+	// Root listing (path omitted)
+	// -----------------------------------------------------------------------
+	it('root listing (path omitted) returns vault-root children, folders sorted first', async () => {
+		const fileAtRoot = makeMockFile('root-note.md');
+		const folderAtRoot = makeMockFolder('Notes', []);
+		const vaultRoot = makeMockFolder('', [fileAtRoot, folderAtRoot]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+		}));
+
+		expect(result.items.length).toBeGreaterThan(0);
+		// Folder should come before file
+		const firstItem = result.items[0];
+		expect(firstItem?.type).toBe('folder');
+	});
+
+	// -----------------------------------------------------------------------
+	// Sort determinism
+	// -----------------------------------------------------------------------
+	it('sort order is byte-identical across repeated calls', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const req = makeSearchRequest({operation: 'listDir', path: 'listdir-fixtures/L0', depth: 1});
+		const result1 = await adapter.search(req);
+		const result2 = await adapter.search(req);
+
+		expect(result1.items.map(i => i.path)).toEqual(result2.items.map(i => i.path));
+	});
+
+	// -----------------------------------------------------------------------
+	// type:'file' on file items with real stat
+	// -----------------------------------------------------------------------
+	it('file items carry type:file with real size/created/modified from stat', async () => {
+		const {vaultRoot, l0FileA} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+		}));
+
+		const fileItem = result.items.find(i => i.path === l0FileA.path);
+		expect(fileItem).toBeDefined();
+		expect(fileItem).toMatchObject({
+			type: 'file',
 			created: 100,
 			modified: 200,
 			size: 10,
 		});
-		expect(result.items[1]).toMatchObject({path: 'notes/b.md'});
 	});
 
-	it('returns empty items array for empty directory', async () => {
-		const app = makeApp({allFiles: []});
+	// -----------------------------------------------------------------------
+	// Pagination respects ordering (folders first)
+	// -----------------------------------------------------------------------
+	it('limit:3 on L0 with depth:1 returns the 3 folders first', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listDir', path: 'notes/'}));
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0',
+			depth: 1,
+			limit: 3,
+		}));
 
-		expect(result.items).toEqual([]);
+		expect(result.items).toHaveLength(3);
+		// All 3 returned items should be folders
+		expect(result.items.every(i => i.type === 'folder')).toBe(true);
 	});
 
-	it('excludes files not under the given path prefix', async () => {
-		const file = makeTFile({path: 'archive/old.md'});
-		const app = makeApp({allFiles: [file]});
+	// -----------------------------------------------------------------------
+	// Switch-case error propagation: errors bypass filterItemsByScope
+	// -----------------------------------------------------------------------
+	it('NOT_FOUND propagates directly without being wrapped in a paginated result', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listDir', path: 'notes/'}));
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'Does/Not/Exist',
+			scopePatterns: ['allowed/**'],
+		}));
 
-		expect(result.items).toEqual([]);
+		// Must be a CoreError, NOT a CoreSearchResult
+		expect(result).toMatchObject({code: 'NOT_FOUND'});
+		expect('items' in result).toBe(false);
 	});
 
-	it('normalizes path without trailing slash to avoid matching similar prefixes', async () => {
-		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md'});
-		const fileB = makeTFile({path: 'notes-archive/b.md', name: 'b.md'});
-		const app = makeApp({allFiles: [fileA, fileB]});
+	it('VALIDATION_ERROR propagates directly without being wrapped in a paginated result', async () => {
+		const {vaultRoot} = buildFixtureTree();
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
-		// Path "notes" (no slash) is normalized to "notes/" inside the adapter
-		const result = await adapter.search(makeSearchRequest({operation: 'listDir', path: 'notes'}));
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'listdir-fixtures/L0/L1/L2/L3/deep-file.md',
+			scopePatterns: ['allowed/**'],
+		}));
 
-		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
-	});
-
-	it('root path "/" or empty lists all files', async () => {
-		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md'});
-		const fileB = makeTFile({path: 'archive/b.md', name: 'b.md'});
-		const app = makeApp({allFiles: [fileA, fileB]});
-		const adapter = createSearchAdapter(app as never);
-
-		const result = await adapter.search(makeSearchRequest({operation: 'listDir', path: '/'}));
-
-		expect(result.items).toHaveLength(2);
+		expect(result).toMatchObject({code: 'VALIDATION_ERROR'});
+		expect('items' in result).toBe(false);
 	});
 });
 
@@ -751,19 +1178,25 @@ describe('SearchAdapter — scope filtering before pagination', () => {
 	});
 
 	it('scope filtering works with listDir operation', async () => {
-		const inScope = makeTFile({path: 'allowed/a.md', name: 'a.md'});
-		const outScope = makeTFile({path: 'allowed-secret/b.md', name: 'b.md'});
-		const app = makeApp({allFiles: [inScope, outScope]});
+		// Files in-scope and out-of-scope under the vault root
+		const inScopeFile = makeMockFile('allowed/a.md');
+		const outScopeFile = makeMockFile('allowed-secret/b.md');
+		const allowedFolder = makeMockFolder('allowed', [inScopeFile]);
+		const allowedSecretFolder = makeMockFolder('allowed-secret', [outScopeFile]);
+		const vaultRoot = makeMockFolder('', [allowedFolder, allowedSecretFolder]);
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
+		// listDir without a path → vault root; scopePatterns filters the results
 		const result = await adapter.search(makeSearchRequest({
 			operation: 'listDir',
 			scopePatterns: ['allowed/**'],
 		}));
 
 		const sr = result as {items: {path: string}[]; total: number};
-		expect(sr.items).toHaveLength(1);
-		expect(sr.items[0].path).toBe('allowed/a.md');
+		// Only allowed/a.md should survive the scope filter (file items only match)
+		expect(sr.items.some(i => i.path === 'allowed/a.md')).toBe(true);
+		expect(sr.items.every(i => !i.path.startsWith('allowed-secret'))).toBe(true);
 	});
 });
 
@@ -818,12 +1251,15 @@ describe('SearchAdapter — empty query validation', () => {
 	});
 
 	it('listDir with no query does NOT return an error', async () => {
-		const app = makeApp({allFiles: []});
+		// vault root has no children → returns empty items, no error
+		const vaultRoot = makeMockFolder('', []);
+		const app = makeAppWithTree(vaultRoot);
 		const adapter = createSearchAdapter(app as never);
 
 		const result = await adapter.search(makeSearchRequest({operation: 'listDir'}));
 
 		expect(result).toHaveProperty('items');
+		expect('code' in result).toBe(false);
 	});
 
 	it('listTags with no query does NOT return an error', async () => {

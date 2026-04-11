@@ -6,7 +6,8 @@
  * byFrontmatter. Pagination uses a base64-encoded offset cursor.
  */
 
-import type {App, TFile} from 'obsidian';
+import {TFile, TFolder} from 'obsidian';
+import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
 import {matchGlob} from '../core/glob-match';
@@ -48,10 +49,6 @@ function paginate(items: CoreSearchItem[], cursor: string | undefined, limit: nu
 	};
 }
 
-function normalizeDir(path: string): string {
-	if (path === '' || path === '/') return '';
-	return path.endsWith('/') ? path : path + '/';
-}
 
 function isGlobQuery(query: string): boolean {
 	return query.includes('*') || query.includes('?');
@@ -105,12 +102,112 @@ function requireQuery(request: CoreSearchRequest, operation: string): CoreError 
 }
 
 // -----------------------------------------------------------------------
+// listDir walk helpers
+// -----------------------------------------------------------------------
+
+type ResolveResult =
+	| {kind: 'folder'; folder: TFolder}
+	| {kind: 'file'}
+	| {kind: 'missing'};
+
+/** Returns true if any path segment starts with '.', indicating a hidden path. */
+function hasDotSegment(path: string): boolean {
+	return path.split('/').some((seg) => seg.startsWith('.'));
+}
+
+/**
+ * Resolves a path string to a TFolder, TFile, or missing result.
+ * undefined path resolves to vault root.
+ * Dot-prefixed path segments are treated as missing (hidden).
+ */
+function resolveFolder(app: App, path: string | undefined): ResolveResult {
+	if (path === undefined) return {kind: 'folder', folder: app.vault.getRoot()};
+	if (hasDotSegment(path)) return {kind: 'missing'};
+	const clean = path.replace(/\/$/, '');
+	const target = app.vault.getAbstractFileByPath(clean);
+	if (target === null) return {kind: 'missing'};
+	if (target instanceof TFolder) return {kind: 'folder', folder: target};
+	return {kind: 'file'};
+}
+
+/** Maps a TFolder to a CoreSearchItem with folder metadata. */
+function mapFolderToItem(folder: TFolder, childCount: number): CoreSearchItem {
+	return {
+		path: folder.path,
+		name: folder.name,
+		type: 'folder',
+		created: 0,
+		modified: 0,
+		size: 0,
+		childCount,
+	};
+}
+
+/**
+ * Counts children of a folder whose name does NOT start with '.'.
+ * Not yet scope-aware — Phase 4 will extend this.
+ */
+function visibleChildCount(folder: TFolder): number {
+	return folder.children.filter((child) => !child.name.startsWith('.')).length;
+}
+
+/**
+ * Recursively walks a TFolder, collecting CoreSearchItems into out.
+ * Stops descending when currentDepth + 1 >= maxDepth (depth-bounded).
+ * Unlimited when maxDepth is undefined.
+ */
+function walk(
+	folder: TFolder,
+	currentDepth: number,
+	maxDepth: number | undefined,
+	out: CoreSearchItem[],
+): void {
+	for (const child of folder.children) {
+		if (child.name.startsWith('.')) continue;
+		if (child instanceof TFolder) {
+			out.push(mapFolderToItem(child, visibleChildCount(child)));
+			const shouldRecurse = maxDepth === undefined || currentDepth + 1 < maxDepth;
+			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, out);
+		} else if (child instanceof TFile) {
+			out.push({
+				path: child.path,
+				name: child.name,
+				type: 'file',
+				created: child.stat.ctime,
+				modified: child.stat.mtime,
+				size: child.stat.size,
+			});
+		}
+	}
+}
+
+/** Sorts CoreSearchItems folders-first, then by path with locale variant sensitivity. */
+function compareListDirItems(a: CoreSearchItem, b: CoreSearchItem): number {
+	const aIsFolder = a.type === 'folder';
+	const bIsFolder = b.type === 'folder';
+	if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+	return a.path.localeCompare(b.path, undefined, {sensitivity: 'variant'});
+}
+
+// -----------------------------------------------------------------------
 // Operations
 // -----------------------------------------------------------------------
 
-function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] {
-	const prefix = normalizeDir(request.path ?? '');
-	return app.vault.getFiles().filter((f) => f.path.startsWith(prefix)).map(mapFileToItem);
+function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
+	const resolved = resolveFolder(app, request.path);
+	if (resolved.kind === 'missing') {
+		return {code: 'NOT_FOUND', message: `Path not found: ${request.path ?? '/'}`};
+	}
+	if (resolved.kind === 'file') {
+		return {
+			code: 'VALIDATION_ERROR',
+			message: `listDir target must be a folder, got file: ${request.path}`,
+		};
+	}
+	const items: CoreSearchItem[] = [];
+	walk(resolved.folder, 0, request.depth, items);
+	items.sort(compareListDirItems);
+	return items;
 }
 
 function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
@@ -246,9 +343,12 @@ export function createSearchAdapter(app: App): SearchAdapter {
 
 			let items: CoreSearchItem[];
 			switch (request.operation) {
-				case 'listDir':
-					items = listDir(app, request);
+				case 'listDir': {
+					const listResult = listDir(app, request);
+					if ('code' in listResult) return listResult;
+					items = listResult;
 					break;
+				}
 				case 'byTag': {
 					const tagResult = byTag(app, request);
 					if ('code' in tagResult) return tagResult;
