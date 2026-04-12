@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/MMoMM-org/miyo-kado/compare/0.2.0...0.2.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **search:** return FORBIDDEN for glob queries on denied tag namespaces ([d7b081e](https://github.com/MMoMM-org/miyo-kado/commit/d7b081e8d7ead010bf777f1a355520d3e2ee30b2))
+
 # [0.2.0](https://github.com/MMoMM-org/miyo-kado/compare/0.1.6...0.2.0) (2026-04-12)
 
 
