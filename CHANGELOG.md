@@ -1,3 +1,17 @@
+# [0.3.0](https://github.com/MMoMM-org/miyo-kado/compare/0.2.1...0.3.0) (2026-04-12)
+
+
+### Bug Fixes
+
+* **glob:** remove warning for ** pattern (ADR-4 full vault access) ([6b29250](https://github.com/MMoMM-org/miyo-kado/commit/6b292501d4d97098132d2900f515c11985b2e0e1))
+* **listDir:** filter files by scope in walk() at walk time ([036e811](https://github.com/MMoMM-org/miyo-kado/commit/036e81154cebe58e8cbf8fe5419610bef09052d6))
+
+
+### Features
+
+* **config:** migrate legacy path "/" to "**" on load ([6731f5c](https://github.com/MMoMM-org/miyo-kado/commit/6731f5c5469beb376c5f16ece333f64e068a76c3))
+* **settings:** full vault picker entry + / error notice ([545e72e](https://github.com/MMoMM-org/miyo-kado/commit/545e72e1f36ea7e3cccb8075f381991182acb8f2))
+
 ## [0.2.1](https://github.com/MMoMM-org/miyo-kado/compare/0.2.0...0.2.1) (2026-04-12)
 
 
