@@ -1945,4 +1945,56 @@ describe('SearchAdapter — tag permissions', () => {
 		const items = (result as {items: {path: string}[]}).items;
 		expect(items).toHaveLength(1);
 	});
+
+	it('byTag with bare-name allowedTag permits sub-tag match', async () => {
+		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
+		const cacheMap = new Map([[file, {tags: [{tag: '#MiYo-Tomo/proposed'}]}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#MiYo-Tomo/proposed',
+			allowedTags: ['MiYo-Tomo'],
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+	});
+
+	it('listTags with bare-name allowedTag includes sub-tags', async () => {
+		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
+		const cacheMap = new Map([[file, {tags: [{tag: '#MiYo-Tomo'}, {tag: '#MiYo-Tomo/proposed'}]}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listTags',
+			allowedTags: ['MiYo-Tomo'],
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {path: string; name: string}[]}).items;
+		const tagNames = items.map((i) => i.name);
+		expect(tagNames).toContain('#MiYo-Tomo');
+		expect(tagNames).toContain('#MiYo-Tomo/proposed');
+	});
+
+	it('byTag with glob and * allowedTag permits any tag', async () => {
+		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
+		const cacheMap = new Map([[file, {tags: [{tag: '#anything/deep'}]}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#anything/*',
+			allowedTags: ['*'],
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+	});
 });

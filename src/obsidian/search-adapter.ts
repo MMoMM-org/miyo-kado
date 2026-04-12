@@ -114,11 +114,16 @@ function isTagPermitted(tag: string, allowedTags: string[]): boolean {
  */
 function canGlobMatchAllowedTag(queryRegex: RegExp, allowedTags: string[]): boolean {
 	return allowedTags.some((pattern) => {
-		// Create a representative tag that would be matched by this pattern.
-		// Wildcard 'foo/*' → '#foo/_rep'; exact 'foo' → '#foo'
+		if (pattern === '*') return true;
+		// Create representative tags that would be matched by this pattern.
+		// Wildcard 'foo/*' → '#foo/_rep'; bare 'foo' → '#foo' and '#foo/_rep'
 		const representative = isWildcardTag(pattern)
 			? `#${pattern.slice(0, -1)}_rep`  // 'foo/*' → '#foo/_rep'
 			: `#${pattern}`;
+		if (!isWildcardTag(pattern)) {
+			// Bare name also permits sub-tags, so test a sub-tag representative
+			return queryRegex.test(representative) || queryRegex.test(`#${pattern}/_rep`);
+		}
 		return queryRegex.test(representative);
 	});
 }
