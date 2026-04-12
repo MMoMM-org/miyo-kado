@@ -760,6 +760,39 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		// Exactly 2 items: A and B (files filtered by filterItemsByScope too if any)
 		expect(result.items.filter((i) => i.type === 'folder')).toHaveLength(2);
 	});
+
+	it('childCount excludes out-of-scope children (F7 AC 5)', async () => {
+		// Tree: parent/ → allowed/ and blocked/ subfolders, each with one file.
+		// scopePatterns restricts to parent/allowed/** only.
+		// When listing 'parent' at depth 1:
+		//   - allowed/  is in scope → appears in results (childCount: 1)
+		//   - blocked/  is out of scope → excluded from walk
+		// This verifies visibleChildCount and walk-time scope exclusion work together.
+		const allowedFile = makeMockFile('parent/allowed/note.md');
+		const blockedFile = makeMockFile('parent/blocked/note.md');
+		const allowed = makeMockFolder('parent/allowed', [allowedFile]);
+		const blocked = makeMockFolder('parent/blocked', [blockedFile]);
+		const parent = makeMockFolder('parent', [allowed, blocked]);
+		const vaultRoot = makeMockFolder('', [parent]);
+		const app = makeAppWithTree(vaultRoot, [allowedFile, blockedFile]);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'parent',
+			depth: 1,
+			scopePatterns: ['parent/allowed/**'],
+		})));
+
+		// Only 'allowed' appears; 'blocked' is skipped by walk-time scope filter.
+		const names = result.items.map((i) => i.name);
+		expect(names).toContain('allowed');
+		expect(names).not.toContain('blocked');
+
+		// The 'allowed' folder has childCount: 1 (its one in-scope child file).
+		const allowedItem = result.items.find((i) => i.name === 'allowed');
+		expect(allowedItem?.childCount).toBe(1);
+	});
 });
 
 // ---------------------------------------------------------------------------

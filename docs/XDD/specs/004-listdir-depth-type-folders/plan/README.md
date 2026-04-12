@@ -1,6 +1,6 @@
 ---
 title: "listDir — structural awareness, depth control, and error hygiene"
-status: draft
+status: completed
 version: "1.0"
 ---
 

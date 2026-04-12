@@ -747,6 +747,29 @@ describe('End-to-end tool call pipeline', () => {
 			expect(body.items).toHaveLength(1);
 			expect(body.items[0].path).toBe('100 Inbox/sub/note.md');
 		});
+
+		it('byContent with path "/" returns same results as path omitted', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: 100},
+			});
+			vi.mocked(app.vault.getMarkdownFiles).mockReturnValue([file]);
+			vi.mocked(app.vault.read).mockResolvedValue('important content');
+
+			const withSlash = await runPipeline(config, app, {operation: 'byContent', query: 'important', path: '/'}, 'test-key', 'kado-search');
+			const withoutPath = await runPipeline(config, app, {operation: 'byContent', query: 'important'}, 'test-key', 'kado-search');
+
+			expect(withSlash.isError).toBeUndefined();
+			expect(withoutPath.isError).toBeUndefined();
+
+			const bodySlash = parseResult(withSlash);
+			const bodyNoPath = parseResult(withoutPath);
+
+			expect(bodySlash.items).toHaveLength(bodyNoPath.items.length);
+		});
 	});
 
 	// --------------------------------------------------------

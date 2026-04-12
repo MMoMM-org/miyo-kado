@@ -877,35 +877,35 @@ All ADRs below were decided during the brainstorm and research phases with expli
 Translated from the 24 Gherkin criteria in `requirements.md` into EARS-format system-level specifications. Each criterion is traceable to a PRD feature (F1–F8).
 
 **Main Flow Criteria (F1, F2, F5):**
-- [ ] `THE SYSTEM SHALL` return items with `type: 'file' | 'folder'` on every listDir response.
-- [ ] `WHEN depth is a positive integer N, THE SYSTEM SHALL` walk no deeper than N levels below the requested path.
-- [ ] `WHEN depth is omitted, THE SYSTEM SHALL` walk all descendants of the requested path.
-- [ ] `THE SYSTEM SHALL` set `childCount` on every folder item to the count of visible direct children.
-- [ ] `THE SYSTEM SHALL` set `size`, `created`, and `modified` to 0 on every folder item.
-- [ ] `THE SYSTEM SHALL NOT` set `type` or `childCount` on any item returned by `byName`, `byTag`, `byContent`, `byFrontmatter`, or `listTags`.
+- [x] `THE SYSTEM SHALL` return items with `type: 'file' | 'folder'` on every listDir response.
+- [x] `WHEN depth is a positive integer N, THE SYSTEM SHALL` walk no deeper than N levels below the requested path.
+- [x] `WHEN depth is omitted, THE SYSTEM SHALL` walk all descendants of the requested path.
+- [x] `THE SYSTEM SHALL` set `childCount` on every folder item to the count of visible direct children.
+- [x] `THE SYSTEM SHALL` set `size`, `created`, and `modified` to 0 on every folder item.
+- [x] `THE SYSTEM SHALL NOT` set `type` or `childCount` on any item returned by `byName`, `byTag`, `byContent`, `byFrontmatter`, or `listTags`.
 
 **Trailing Slash and Root Marker Criteria (F3, F4):**
-- [ ] `WHEN path carries a trailing slash on any valid folder, THE SYSTEM SHALL` return a success response equivalent to the same path without the trailing slash.
-- [ ] `IF path is "/", THEN THE SYSTEM SHALL` treat the request as a vault-root listing (equivalent to omitting path).
-- [ ] `IF path is an empty string, THEN THE SYSTEM SHALL` reject the request with `VALIDATION_ERROR` and message `"path must not be empty. Use '/' to list the vault root."`.
-- [ ] `IF path is "/" on a byContent request, THEN THE SYSTEM SHALL` return the same result as omitting path (whole-vault search).
+- [x] `WHEN path carries a trailing slash on any valid folder, THE SYSTEM SHALL` return a success response equivalent to the same path without the trailing slash.
+- [x] `IF path is "/", THEN THE SYSTEM SHALL` treat the request as a vault-root listing (equivalent to omitting path).
+- [x] `IF path is an empty string, THEN THE SYSTEM SHALL` reject the request with `VALIDATION_ERROR` and message `"path must not be empty. Use '/' to list the vault root."`.
+- [x] `IF path is "/" on a byContent request, THEN THE SYSTEM SHALL` return the same result as omitting path (whole-vault search).
 
 **Error Handling Criteria (F6):**
-- [ ] `IF path does not resolve to any existing entry, THEN THE SYSTEM SHALL` return `NOT_FOUND` with message `"Path not found: {path}"`.
-- [ ] `IF path resolves to a file, THEN THE SYSTEM SHALL` return `VALIDATION_ERROR` with message `"listDir target must be a folder, got file: {path}"`.
-- [ ] `IF depth is not a positive integer, THEN THE SYSTEM SHALL` return `VALIDATION_ERROR` with message `"depth must be a positive integer"`.
-- [ ] `THE SYSTEM SHALL NOT` return an empty items array in place of any of the above errors.
+- [x] `IF path does not resolve to any existing entry, THEN THE SYSTEM SHALL` return `NOT_FOUND` with message `"Path not found: {path}"`.
+- [x] `IF path resolves to a file, THEN THE SYSTEM SHALL` return `VALIDATION_ERROR` with message `"listDir target must be a folder, got file: {path}"`.
+- [x] `IF depth is not a positive integer, THEN THE SYSTEM SHALL` return `VALIDATION_ERROR` with message `"depth must be a positive integer"`.
+- [x] `THE SYSTEM SHALL NOT` return an empty items array in place of any of the above errors.
 
 **Security Criteria (F7):**
-- [ ] `THE SYSTEM SHALL NOT` include any file or folder whose name starts with `.` in any listDir response.
-- [ ] `IF any segment of the requested path starts with ".", THEN THE SYSTEM SHALL` return `NOT_FOUND` (not `VALIDATION_ERROR`).
-- [ ] `WHERE scopePatterns is non-empty, THE SYSTEM SHALL` include a folder item only if at least one scope pattern could match a child of that folder (via `dirCouldContainMatches`).
-- [ ] `THE SYSTEM SHALL` set `childCount` on each folder item to the count of children that pass both the hidden-entry filter and the scope filter.
+- [x] `THE SYSTEM SHALL NOT` include any file or folder whose name starts with `.` in any listDir response.
+- [x] `IF any segment of the requested path starts with ".", THEN THE SYSTEM SHALL` return `NOT_FOUND` (not `VALIDATION_ERROR`).
+- [x] `WHERE scopePatterns is non-empty, THE SYSTEM SHALL` include a folder item only if at least one scope pattern could match a child of that folder (via `dirCouldContainMatches`).
+- [x] `THE SYSTEM SHALL` set `childCount` on each folder item to the count of children that pass both the hidden-entry filter and the scope filter.
 
 **Ordering and Pagination Criteria (F8):**
-- [ ] `THE SYSTEM SHALL` order listDir response items with all folder items preceding all file items.
-- [ ] `WITHIN each type group, THE SYSTEM SHALL` sort items by `path` via `localeCompare` with `{sensitivity: 'variant'}` for runtime-locale-independent ordering.
-- [ ] `WHEN paginated, THE SYSTEM SHALL` let cursors be valid only for requests with identical parameters (documented, not runtime-enforced).
+- [x] `THE SYSTEM SHALL` order listDir response items with all folder items preceding all file items.
+- [x] `WITHIN each type group, THE SYSTEM SHALL` sort items by `path` via `localeCompare` with `{sensitivity: 'variant'}` for runtime-locale-independent ordering.
+- [x] `WHEN paginated, THE SYSTEM SHALL` let cursors be valid only for requests with identical parameters (documented, not runtime-enforced).
 
 ## Risks and Technical Debt
 

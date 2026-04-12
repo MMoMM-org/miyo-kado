@@ -89,7 +89,6 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 /** Ensures directory paths end with '/' for consistent prefix matching. */
 function normalizeDirPath(path: string, operation: string): string {
 	if (operation !== 'listDir') return path;
-	if (path === '' || path === '/') return '';
 	return path.endsWith('/') ? path : path + '/';
 }
 
