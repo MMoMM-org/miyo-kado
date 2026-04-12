@@ -1724,6 +1724,38 @@ describe('SearchAdapter — tag permissions', () => {
 		expect(items).toEqual([]);
 	});
 
+	it('byTag with glob returns FORBIDDEN when glob cannot match any allowed tag', async () => {
+		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
+		const cacheMap = new Map([[file, {tags: [{tag: '#MiYo-Tomo/proposed'}]}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#MiYo-Tomo/*',
+			allowedTags: ['MiYo-Kado/*'],
+		}));
+
+		expect(result).toMatchObject({code: 'FORBIDDEN'});
+	});
+
+	it('byTag with glob proceeds when glob could match an allowed tag', async () => {
+		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
+		const cacheMap = new Map([[file, {tags: [{tag: '#project/alpha'}]}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#project/*',
+			allowedTags: ['project/*'],
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+	});
+
 	it('byTag with wildcard allowed tag permits matching sub-tags', async () => {
 		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
 		const cacheMap = new Map([[file, {tags: [{tag: '#project/alpha'}]}]]);
