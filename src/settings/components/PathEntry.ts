@@ -51,6 +51,9 @@ export function renderPathEntry(
 		if (value.includes('..') || value.startsWith('/') || value.startsWith('\\')) {
 			pathInput.addClass('kado-input-error');
 			pathInput.setAttribute('aria-invalid', 'true');
+			if (value.startsWith('/')) {
+				new Notice('/ is not a valid path. Use ** for full vault access or pick a folder.');
+			}
 			return;
 		}
 		// Validate glob complexity (length, consecutive **, bare **)
