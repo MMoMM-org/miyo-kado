@@ -37,14 +37,25 @@ export class VaultFolderModal extends Modal {
 
 		const listEl = contentEl.createDiv({cls: 'kado-picker-list'});
 
+		const FULL_VAULT_LABEL = '** (Full vault)';
+
 		const renderList = (filter: string): void => {
 			listEl.empty();
+			const lowerFilter = filter.toLowerCase();
+			const showFullVault = FULL_VAULT_LABEL.toLowerCase().includes(lowerFilter);
 			const filtered = this.folders.filter(f =>
-				f.path.toLowerCase().includes(filter.toLowerCase()),
+				f.path.toLowerCase().includes(lowerFilter),
 			);
-			if (filtered.length === 0) {
+			if (!showFullVault && filtered.length === 0) {
 				listEl.createDiv({cls: 'kado-picker-empty', text: 'No matching folders'});
 				return;
+			}
+			if (showFullVault) {
+				const fullVaultItem = listEl.createEl('button', {cls: 'kado-picker-item', text: FULL_VAULT_LABEL});
+				fullVaultItem.addEventListener('click', () => {
+					this.onSelect('**');
+					this.close();
+				});
 			}
 			for (const folder of filtered) {
 				const item = listEl.createEl('button', {cls: 'kado-picker-item', text: folder.path});

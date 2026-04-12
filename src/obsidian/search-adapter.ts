@@ -10,7 +10,7 @@ import {TFile, TFolder} from 'obsidian';
 import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
-import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
+import {matchGlob, dirCouldContainMatches, pathMatchesPatterns} from '../core/glob-match';
 import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
 
 const DEFAULT_LIMIT = 50;
@@ -185,7 +185,7 @@ function visibleChildCount(folder: TFolder, scope?: string[]): number {
 			if (scope && !folderInScope(child.path, scope)) continue;
 			count++;
 		} else if (child instanceof TFile) {
-			if (scope && !scope.some((p) => matchGlob(p, child.path))) continue;
+			if (scope && !pathMatchesPatterns(child.path, scope)) continue;
 			count++;
 		}
 	}
@@ -196,8 +196,7 @@ function visibleChildCount(folder: TFolder, scope?: string[]): number {
  * Recursively walks a TFolder, collecting CoreSearchItems into out.
  * Stops descending when currentDepth + 1 >= maxDepth (depth-bounded).
  * Unlimited when maxDepth is undefined.
- * When scope is provided, out-of-scope folders are skipped at walk time.
- * File items pass through unfiltered — filtered post-walk by filterItemsByScope.
+ * When scope is provided, both out-of-scope folders and files are skipped at walk time.
  */
 function walk(
 	folder: TFolder,
@@ -214,6 +213,7 @@ function walk(
 			const shouldRecurse = maxDepth === undefined || currentDepth + 1 < maxDepth;
 			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, scope, out);
 		} else if (child instanceof TFile) {
+			if (scope && !pathMatchesPatterns(child.path, scope)) continue;
 			out.push({
 				path: child.path,
 				name: child.name,

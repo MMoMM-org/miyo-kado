@@ -21,7 +21,7 @@ function makeAppWithFolders(paths: string[]): App {
 }
 
 describe('VaultFolderModal — rendering', () => {
-	it('lists all folders from the vault sorted alphabetically', () => {
+	it('lists ** (Full vault) first, then all folders sorted alphabetically', () => {
 		const app = makeAppWithFolders(['zeta', 'alpha', 'mu']);
 		const modal = new VaultFolderModal(
 			app as never,
@@ -31,13 +31,14 @@ describe('VaultFolderModal — rendering', () => {
 		modal.open();
 
 		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		expect(items).toHaveLength(3);
-		expect(items[0].textContent).toBe('alpha');
-		expect(items[1].textContent).toBe('mu');
-		expect(items[2].textContent).toBe('zeta');
+		expect(items).toHaveLength(4);
+		expect(items[0].textContent).toBe('** (Full vault)');
+		expect(items[1].textContent).toBe('alpha');
+		expect(items[2].textContent).toBe('mu');
+		expect(items[3].textContent).toBe('zeta');
 	});
 
-	it('shows empty state when vault has no folders', () => {
+	it('shows ** (Full vault) even when vault has no folders', () => {
 		const app = makeAppWithFolders([]);
 		const modal = new VaultFolderModal(
 			app as never,
@@ -46,12 +47,15 @@ describe('VaultFolderModal — rendering', () => {
 
 		modal.open();
 
-		expect(modal.contentEl.querySelector('.kado-picker-empty')).not.toBeNull();
+		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
+		expect(items).toHaveLength(1);
+		expect(items[0].textContent).toBe('** (Full vault)');
+		expect(modal.contentEl.querySelector('.kado-picker-empty')).toBeNull();
 	});
 });
 
 describe('VaultFolderModal — interactivity', () => {
-	it('clicking a folder fires onSelect with its path', () => {
+	it('clicking ** (Full vault) fires onSelect with **', () => {
 		const app = makeAppWithFolders(['notes', 'archive']);
 		const onSelect = vi.fn();
 		const modal = new VaultFolderModal(
@@ -63,6 +67,23 @@ describe('VaultFolderModal — interactivity', () => {
 
 		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
 		(items[0] as HTMLElement).click();
+
+		expect(onSelect).toHaveBeenCalledWith('**');
+	});
+
+	it('clicking a folder fires onSelect with its path', () => {
+		const app = makeAppWithFolders(['notes', 'archive']);
+		const onSelect = vi.fn();
+		const modal = new VaultFolderModal(
+			app as never,
+			onSelect,
+		);
+
+		modal.open();
+
+		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
+		// items[0] is ** (Full vault), items[1] is archive, items[2] is notes
+		(items[1] as HTMLElement).click();
 
 		expect(onSelect).toHaveBeenCalledWith('archive');
 	});

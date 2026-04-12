@@ -439,6 +439,24 @@ Updated 2026-04-01 after security test implementation.
 | Binary files | PNG/PDF read with header verification, base64 roundtrip, create/update, permission enforcement (T11.1–T11.9) |
 | Rate limiting | RateLimit headers on every response, 429 with Retry-After on burst (Rate limiting tests) |
 
+### Manual Test Scenarios
+
+**Full vault access (`**` pattern):**
+
+To test full vault access, configure a key with `**` as the only path pattern in both global security and the API key:
+
+1. Set Global Security path: `**` with read permissions
+2. Set API key path: `**` with read permissions
+3. Call `listDir` with `path: "/"` — should return all non-hidden files and folders at the vault root
+4. Call `listDir` with `path: "/"` and `depth: 1` — root-level files and folders with childCounts
+5. Read a file at the vault root — should succeed
+6. Read a file deep in a subfolder — should succeed
+
+**Scope filtering verification:**
+
+1. Set Global Security path: `allowed` only (not `**`)
+2. Call `listDir` with `path: "/"` — should return only `allowed/` folder and files matching `allowed/**`, NOT files at vault root or in `nope/`
+
 ### Not Covered (Requires UI Testing)
 
 These features are Obsidian Settings UI screens and cannot be exercised through

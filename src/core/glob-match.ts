@@ -127,10 +127,5 @@ export function validateGlobPattern(pattern: string): GlobValidationResult {
 		};
 	}
 
-	const warnings: string[] = [];
-	if (pattern === '**') {
-		warnings.push('pattern "**" matches the entire vault');
-	}
-
-	return {ok: true, warnings};
+	return {ok: true, warnings: []};
 }

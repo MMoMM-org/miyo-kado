@@ -52,6 +52,13 @@ export class ConfigManager {
 			...(storedSecurity ?? {}),
 		};
 
+		// Migrate legacy path "/" → "**" in global security paths
+		for (const entry of mergedSecurity.paths) {
+			if (entry.path === '/') {
+				entry.path = '**';
+			}
+		}
+
 		// Ensure apiKeys have new flat fields (listMode, paths, tags)
 		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
 			...key,
@@ -59,6 +66,15 @@ export class ConfigManager {
 			paths: key.paths ?? [],
 			tags: key.tags ?? [],
 		}));
+
+		// Migrate legacy path "/" → "**" in each API key's paths
+		for (const key of keys) {
+			for (const entry of key.paths) {
+				if (entry.path === '/') {
+					entry.path = '**';
+				}
+			}
+		}
 
 		this.config = {
 			...defaults,

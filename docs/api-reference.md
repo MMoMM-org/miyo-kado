@@ -368,10 +368,12 @@ Each item in `items`:
 
 ### Scope Filtering
 
-Search results are filtered to only include files within the calling key's permitted path scope. Both the global security scope and the key-specific scope are applied:
+Search results are filtered to only include items within the calling key's permitted path scope. Both the global security scope and the key-specific scope are applied:
 
-- **Whitelist mode**: only files matching at least one permitted path pattern are returned.
-- **Blacklist mode**: files matching any blocked path pattern are excluded.
+- **Whitelist mode**: only items matching at least one permitted path pattern are returned.
+- **Blacklist mode**: items matching any blocked path pattern are excluded.
+
+For `listDir`, both files and folders are scope-filtered. Folders appear if they could contain in-scope items; files appear only if they directly match a scope pattern. Use `**` as the scope pattern for full vault access.
 
 For `listTags` and `byTag`, results also respect the key's allowed tags (the intersection of global and key-level tag lists).
 
@@ -667,7 +669,8 @@ Files and folders whose name starts with `.` (e.g., `.obsidian/`, `.trash/`) are
 - **Folder entries now appear in responses.** Callers that previously iterated items assuming all entries were files must add a `type` guard (`if (item.type === 'file') { ... }`). Folder items have `size: 0`, `created: 0`, `modified: 0`.
 - **`childCount` is a filtered count.** It reflects only visible (non-hidden, in-scope) direct children. It does not equal the raw child count of the folder.
 - **Non-existent and file-targeted paths now return explicit errors.** Previously, `listDir` on a missing or file path could return an empty `items` array. Now it returns `NOT_FOUND` or `VALIDATION_ERROR` respectively. Callers that treated an empty list as "path not found" must handle the error code instead.
-- **`"/"` is the canonical vault-root marker.** Passing `path: "/"` lists the vault root. Omitting `path` continues to work and is equivalent. Empty string `""` is now rejected.
+- **`"/"` is the canonical vault-root marker.** Passing `path: "/"` lists the vault root. Omitting `path` continues to work and is equivalent. Empty string `""` is now rejected. Note: `"/"` is a *listDir path parameter*, not a scope pattern. To grant full vault access in the security config, use `**`.
+- **File-level scope filtering.** Both files and folders are now filtered by the key's scope patterns. Previously only folders were scope-checked during directory walks; files at the walk root could appear regardless of scope.
 - **Sort order changed.** Folders appear before files in the response. Within each group items are sorted alphabetically using locale-independent comparison.
 
 **List tags:**

@@ -51,7 +51,7 @@ Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in 
 ## Quick Start
 
 1. Open **Settings -> MiYo Kado**
-2. Add paths to the global security whitelist (e.g. `notes/`, `projects/`)
+2. Add paths to the global security whitelist (e.g. `notes/`, `projects/`, or `**` for full vault)
 3. Create an API key and assign it paths and per-data-type permissions
 4. Enable the server
 5. Connect your MCP client using the key
@@ -132,7 +132,7 @@ A few things I plan to address in upcoming releases. None of these are blockers 
 
 - **Tag permissions beyond read-only.** Today tags are read-filters only. I want to add a Deny permission so you can use tags to *exclude* matching items even from otherwise-allowed paths.
 - **Granular whitelist / blacklist toggle.** The mode flip currently applies to paths and tags together. A per-section toggle would allow mixed strategies.
-- **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `/Atlas`, key only sees `/Atlas/People`).
+- **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
 - **Settings tab hot-reload.** After a plugin update the settings tab still shows the old layout until disable/re-enable. Tracked in `docs/ai/memory/troubleshooting.md`.
 
 ## Support

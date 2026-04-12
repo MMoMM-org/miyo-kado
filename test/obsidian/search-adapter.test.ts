@@ -793,6 +793,142 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		const allowedItem = result.items.find((i) => i.name === 'allowed');
 		expect(allowedItem?.childCount).toBe(1);
 	});
+
+	// -----------------------------------------------------------------------
+	// File scope filtering in walk() — T1.3
+	// -----------------------------------------------------------------------
+
+	// T1.3-1: scope ["Atlas"] at root excludes root-level files, includes Atlas folder
+	it('scope ["Atlas"] at root excludes root-level files and includes only Atlas content', async () => {
+		const rootFile = makeMockFile('root-note.md');
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootFile]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['Atlas'],
+		})));
+
+		const paths = result.items.map((i) => i.path);
+		expect(paths).toContain('Atlas');
+		expect(paths).not.toContain('root-note.md');
+	});
+
+	// T1.3-2: scope ["**"] at root returns all non-hidden items including root-level files
+	it('scope ["**"] at root returns all non-hidden items including root-level files', async () => {
+		const rootFile = makeMockFile('root-note.md');
+		const hiddenFile = makeMockFile('.hidden.md');
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootFile, hiddenFile]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['**'],
+		})));
+
+		const paths = result.items.map((i) => i.path);
+		expect(paths).toContain('Atlas');
+		expect(paths).toContain('root-note.md');
+		expect(paths).not.toContain('.hidden.md');
+	});
+
+	// T1.3-3: scope [] (empty array) returns no items
+	it('scope [] (empty array) returns no items', async () => {
+		const rootFile = makeMockFile('root-note.md');
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootFile]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: [],
+		})));
+
+		expect(result.items).toHaveLength(0);
+	});
+
+	// T1.3-4: scope undefined returns all non-hidden items (backward compatible)
+	it('scope undefined returns all non-hidden items without filtering', async () => {
+		const rootFile = makeMockFile('root-note.md');
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootFile]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+		})));
+
+		const paths = result.items.map((i) => i.path);
+		expect(paths).toContain('Atlas');
+		expect(paths).toContain('root-note.md');
+	});
+
+	// T1.3-5: visibleChildCount with scope excludes out-of-scope files from count
+	it('visibleChildCount with scope excludes out-of-scope files from childCount', async () => {
+		// 'container' has two files: allowed.md (in scope) and blocked.md (out of scope).
+		// scope ["container/allowed.md"] — folderInScope passes for 'container' because
+		// dirCouldContainMatches probes "container/__probe__" against "container/allowed.md/**"
+		// which expands the bare name. The depth:1 walk shows container folder; listing
+		// container directly at depth:1 should show only allowed.md (childCount:1).
+		const inScopeFile = makeMockFile('container/allowed.md');
+		const outScopeFile = makeMockFile('container/blocked.md');
+		const container = makeMockFolder('container', [inScopeFile, outScopeFile]);
+		const vaultRoot = makeMockFolder('', [container]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		// List 'container' directly with scope ["container/allowed.md"]
+		// visibleChildCount should count only allowed.md, not blocked.md
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'container',
+			depth: 1,
+			scopePatterns: ['container/allowed.md'],
+		})));
+
+		// Only allowed.md appears; blocked.md is filtered by walk-time file scope check
+		const paths = result.items.map((i) => i.path);
+		expect(paths).toContain('container/allowed.md');
+		expect(paths).not.toContain('container/blocked.md');
+		expect(result.items).toHaveLength(1);
+	});
+
+	// T1.3-6: walk() with scope filters root-level files at walk time (not just post-walk)
+	it('walk() with scope filters out-of-scope root-level files at walk time', async () => {
+		// vault root has two files and one folder; only Atlas folder is in scope
+		const rootFileA = makeMockFile('L0-root-a.md');
+		const rootFileB = makeMockFile('L0-root-b.md');
+		const atlasNote = makeMockFile('Atlas/note.md');
+		const atlasFolder = makeMockFolder('Atlas', [atlasNote]);
+		const vaultRoot = makeMockFolder('', [atlasFolder, rootFileA, rootFileB]);
+		const app = makeAppWithTree(vaultRoot);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			depth: 1,
+			scopePatterns: ['Atlas'],
+		})));
+
+		const paths = result.items.map((i) => i.path);
+		expect(paths).toContain('Atlas');
+		expect(paths).not.toContain('L0-root-a.md');
+		expect(paths).not.toContain('L0-root-b.md');
+	});
 });
 
 // ---------------------------------------------------------------------------

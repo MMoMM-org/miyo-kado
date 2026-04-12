@@ -256,6 +256,88 @@ describe('ConfigManager.getKeyById()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Migration: path "/" → "**"
+// ---------------------------------------------------------------------------
+
+describe('ConfigManager.load() migration: "/" → "**"', () => {
+	it('migrates path "/" in global security.paths to "**"', async () => {
+		const storedPathPerm = makePathPermission({path: '/'});
+		const {manager} = makeConfigManager({
+			security: {
+				listMode: 'whitelist',
+				paths: [storedPathPerm],
+				tags: [],
+			},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.paths[0]?.path).toBe('**');
+	});
+
+	it('migrates path "/" in API key paths to "**"', async () => {
+		const storedKey: ApiKeyConfig = {
+			id: 'kado_abc-migration',
+			label: 'Migration Key',
+			enabled: true,
+			createdAt: 1700000000000,
+			listMode: 'whitelist',
+			paths: [makePathPermission({path: '/'})],
+			tags: [],
+		};
+		const {manager} = makeConfigManager({
+			apiKeys: [storedKey],
+			security: {listMode: 'whitelist', paths: [], tags: []},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.apiKeys[0]?.paths[0]?.path).toBe('**');
+	});
+
+	it('leaves paths that are not exactly "/" unchanged', async () => {
+		const {manager} = makeConfigManager({
+			security: {
+				listMode: 'whitelist',
+				paths: [
+					makePathPermission({path: 'projects/**'}),
+					makePathPermission({path: '/notes'}),
+					makePathPermission({path: 'Atlas/**'}),
+				],
+				tags: [],
+			},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.paths[0]?.path).toBe('projects/**');
+		expect(config.security.paths[1]?.path).toBe('/notes');
+		expect(config.security.paths[2]?.path).toBe('Atlas/**');
+	});
+
+	it('round-trip: load config with "/" in global paths, save, reload preserves "**"', async () => {
+		let persisted: KadoConfig | null = null;
+		const saveFn = vi.fn(async (data: KadoConfig) => {
+			persisted = data;
+		});
+
+		const manager1 = new ConfigManager(
+			async () => ({
+				security: {
+					listMode: 'whitelist',
+					paths: [makePathPermission({path: '/'})],
+					tags: [],
+				},
+			}),
+			saveFn,
+		);
+		await manager1.load();
+		await manager1.save();
+
+		const manager2 = new ConfigManager(async () => persisted as unknown, saveFn);
+		await manager2.load();
+		expect(manager2.getConfig().security.paths[0]?.path).toBe('**');
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Round-trip: save → load
 // ---------------------------------------------------------------------------
 
