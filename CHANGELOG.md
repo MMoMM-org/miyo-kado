@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/MMoMM-org/miyo-kado/compare/0.3.0...0.3.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **tags:** whitelist semantics, * wildcard, bare-name sub-tag expansion ([dd21af5](https://github.com/MMoMM-org/miyo-kado/commit/dd21af57de4841dbac5281330adf38115e1563c8))
+
 # [0.3.0](https://github.com/MMoMM-org/miyo-kado/compare/0.2.1...0.3.0) (2026-04-12)
 
 
