@@ -7,11 +7,13 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
+import {z} from 'zod';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
+	CoreSearchRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
@@ -165,6 +167,15 @@ function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
 	};
 }
 
+/**
+ * Extracts text from the first content item of a CallToolResult.
+ * Casts to text content type to work around the MCP SDK union
+ * (content items can be text | image | resource | etc.).
+ */
+function getFirstText(result: {content: {type: string; text?: string}[]}): string {
+	return (result.content[0] as {type: string; text: string}).text;
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -219,7 +230,7 @@ describe('kado-read handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/test.md');
+		expect(getFirstText(result)).toContain('notes/test.md');
 	});
 
 	it('passes the keyId from extra.authInfo.token to the request mapper', async () => {
@@ -241,7 +252,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('FORBIDDEN');
+		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -252,7 +263,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/missing.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('NOT_FOUND');
+		expect(getFirstText(result)).toContain('NOT_FOUND');
 	});
 
 	it('returns isError:true when extra.authInfo is absent', async () => {
@@ -291,7 +302,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/w.md');
+		expect(getFirstText(result)).toContain('notes/w.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -319,7 +330,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('FORBIDDEN');
+		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when concurrency guard fires a CONFLICT', async () => {
@@ -333,7 +344,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('CONFLICT');
+		expect(getFirstText(result)).toContain('CONFLICT');
 	});
 
 	it('allows write when expectedModified matches current mtime', async () => {
@@ -375,7 +386,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('INTERNAL_ERROR');
+		expect(getFirstText(result)).toContain('INTERNAL_ERROR');
 	});
 });
 
@@ -404,7 +415,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'project'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/a.md');
+		expect(getFirstText(result)).toContain('notes/a.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -426,7 +437,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('UNAUTHORIZED');
+		expect(getFirstText(result)).toContain('UNAUTHORIZED');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -437,7 +448,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('VALIDATION_ERROR');
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
 	});
 
 	it('injects scopePatterns from key config into the search request', async () => {
@@ -465,7 +476,7 @@ describe('kado-search handler', () => {
 		await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		// The router receives the request with scopePatterns injected
-		const routedRequest = router.mock.calls[0][0];
+		const routedRequest = (router.mock.calls as unknown as [CoreSearchRequest[]])[0][0];
 		expect(routedRequest.scopePatterns).toEqual(['projects/**']);
 	});
 
@@ -496,7 +507,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byName', query: 'a'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(result.content[0].text);
+		const parsed = JSON.parse(getFirstText(result));
 		expect(parsed.items).toHaveLength(1);
 		expect(parsed.total).toBe(1);
 	});
@@ -600,6 +611,106 @@ describe('filterResultsByScope()', () => {
 
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].path).toBe('projects/a.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// filterResultsByScope — folder-aware scope filter (T4.2)
+// ---------------------------------------------------------------------------
+
+describe('filterResultsByScope() — folder items', () => {
+	function makeConfig(
+		globalListMode: 'whitelist' | 'blacklist',
+		globalPaths: string[],
+		keyListMode: 'whitelist' | 'blacklist',
+		keyPaths: string[],
+	): KadoConfig {
+		return {
+			...createDefaultConfig(),
+			security: makeSecurityConfig({
+				listMode: globalListMode,
+				paths: globalPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+			}),
+			apiKeys: [
+				makeApiKey('key-1', {
+					listMode: keyListMode,
+					paths: keyPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+				}),
+			],
+		};
+	}
+
+	function makeFolderItem(path: string, childCount = 5): CoreSearchItem {
+		return {path, name: path.split('/').pop()!, created: 1000, modified: 2000, size: 0, type: 'folder', childCount};
+	}
+
+	function makeFileItem(path: string): CoreSearchItem {
+		return {path, name: path.split('/').pop()!, created: 1000, modified: 2000, size: 100, type: 'file'};
+	}
+
+	// T4.2-case-1: whitelist folder visibility
+	it('returns a folder item when a whitelist pattern could match its children', () => {
+		const config = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Atlas'), makeFolderItem('Notes')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].path).toBe('Atlas');
+	});
+
+	// T4.2-case-2: blacklist folder blocking
+	it('filters out a folder item when a blacklist pattern covers its children', () => {
+		const config = makeConfig('blacklist', ['Private/**'], 'blacklist', ['Private/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Private')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	// T4.2-case-3: blacklist parent-leakage prevention
+	it('does NOT block a folder when the blacklist pattern covers only unrelated descendants', () => {
+		const config = makeConfig('blacklist', ['Private/**'], 'blacklist', ['Private/**']);
+		const items: CoreSearchItem[] = [makeFolderItem('Atlas'), makeFolderItem('Private')];
+		const filtered = filterResultsByScope(items, 'key-1', config);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].path).toBe('Atlas');
+	});
+
+	// T4.2-case-4: file items unchanged (regression)
+	it('keeps file items using existing isPathInScope logic — whitelist allows, blacklist blocks', () => {
+		const whitelistConfig = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const fileInScope = makeFileItem('Atlas/note.md');
+		const fileOutOfScope = makeFileItem('Other/note.md');
+
+		const wFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', whitelistConfig);
+		expect(wFiltered).toHaveLength(1);
+		expect(wFiltered[0].path).toBe('Atlas/note.md');
+
+		const blacklistConfig = makeConfig('blacklist', ['Atlas/**'], 'blacklist', ['Atlas/**']);
+		const bFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', blacklistConfig);
+		expect(bFiltered).toHaveLength(1);
+		expect(bFiltered[0].path).toBe('Other/note.md');
+	});
+
+	// T4.2-case-5: defense-in-depth consistency — tools-layer agrees with core helper
+	// Both the adapter (T4.1) and this tools-layer filter use dirCouldContainMatches.
+	// We verify that for 'Atlas' folder with whitelist ['Atlas/**'], both the tools-layer
+	// filterResultsByScope and the underlying dirCouldContainMatches agree it is visible.
+	it('agrees with dirCouldContainMatches for Atlas folder with whitelist [Atlas/**]', async () => {
+		const {dirCouldContainMatches} = await import('../../src/core/glob-match');
+
+		const config = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
+		const folderItem = makeFolderItem('Atlas');
+
+		// Core helper: dirCouldContainMatches says Atlas/ could contain matches for 'Atlas/**'
+		const coreVerdict = dirCouldContainMatches('Atlas/**', 'Atlas/');
+		expect(coreVerdict).toBe(true);
+
+		// Tools-layer: filterResultsByScope should agree and include Atlas
+		const toolsResult = filterResultsByScope([folderItem], 'key-1', config);
+		expect(toolsResult).toHaveLength(1);
+		expect(toolsResult[0].path).toBe('Atlas');
 	});
 });
 
@@ -712,5 +823,65 @@ describe('computeScopePatterns()', () => {
 		const config = makeConfig('whitelist', ['docs/**'], 'whitelist', []);
 		const result = computeScopePatterns('key-1', config);
 		expect(result).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kadoSearchShape — depth and description
+// ---------------------------------------------------------------------------
+
+describe('kadoSearchShape — depth and description', () => {
+	const schema = z.object(kadoSearchShape);
+
+	it('schema accepts valid depth', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 5});
+		expect(result.success).toBe(true);
+	});
+
+	it('schema accepts depth omitted', () => {
+		const result = schema.safeParse({operation: 'listDir'});
+		expect(result.success).toBe(true);
+	});
+
+	it('schema rejects invalid depth — negative', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: -1});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — zero', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 0});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — non-integer', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: 1.5});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('schema rejects invalid depth — string', () => {
+		const result = schema.safeParse({operation: 'listDir', depth: '5' as unknown as number});
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBeInstanceOf(z.ZodError);
+		}
+	});
+
+	it('tool description and schema contain required documentation substrings', () => {
+		const pathDesc = kadoSearchShape.path.description ?? '';
+		const depthDesc = kadoSearchShape.depth.description ?? '';
+		const combined = KADO_SEARCH_TOOL_DESCRIPTION + pathDesc + depthDesc;
+
+		for (const substring of ['type', 'folder', 'childCount', 'depth', '/', 'VALIDATION_ERROR', 'NOT_FOUND']) {
+			expect(combined, `expected combined description to contain "${substring}"`).toContain(substring);
+		}
 	});
 });

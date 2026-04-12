@@ -6,10 +6,11 @@
  * byFrontmatter. Pagination uses a base64-encoded offset cursor.
  */
 
-import type {App, TFile} from 'obsidian';
+import {TFile, TFolder} from 'obsidian';
+import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
-import {matchGlob} from '../core/glob-match';
+import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
 import {normalizeTag, matchTag} from '../core/tag-utils';
 
 const DEFAULT_LIMIT = 50;
@@ -48,10 +49,6 @@ function paginate(items: CoreSearchItem[], cursor: string | undefined, limit: nu
 	};
 }
 
-function normalizeDir(path: string): string {
-	if (path === '' || path === '/') return '';
-	return path.endsWith('/') ? path : path + '/';
-}
 
 function isGlobQuery(query: string): boolean {
 	return query.includes('*') || query.includes('?');
@@ -81,10 +78,21 @@ function fileInScope(file: TFile, patterns: string[]): boolean {
 	return patterns.some((p) => matchGlob(p, file.path));
 }
 
+/** Returns true when at least one scope pattern could match a child of the folder. */
+function folderInScope(folderPath: string, patterns: string[]): boolean {
+	if (patterns.length === 0) return false;
+	// dirCouldContainMatches expects a trailing slash on the directory path
+	const dirPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+	return patterns.some((p) => dirCouldContainMatches(p, dirPath));
+}
+
 /** Filters search result items to only include paths matching at least one scope pattern. */
 function filterItemsByScope(items: CoreSearchItem[], patterns: string[]): CoreSearchItem[] {
 	if (patterns.length === 0) return [];
-	return items.filter((item) => patterns.some((p) => matchGlob(p, item.path)));
+	return items.filter((item) => {
+		if (item.type === 'folder') return folderInScope(item.path, patterns);
+		return patterns.some((p) => matchGlob(p, item.path));
+	});
 }
 
 /**
@@ -105,12 +113,128 @@ function requireQuery(request: CoreSearchRequest, operation: string): CoreError 
 }
 
 // -----------------------------------------------------------------------
+// listDir walk helpers
+// -----------------------------------------------------------------------
+
+type ResolveResult =
+	| {kind: 'folder'; folder: TFolder}
+	| {kind: 'file'}
+	| {kind: 'missing'};
+
+/** Returns true if any path segment starts with '.', indicating a hidden path. */
+function hasDotSegment(path: string): boolean {
+	return path.split('/').some((seg) => seg.startsWith('.'));
+}
+
+/**
+ * Resolves a path string to a TFolder, TFile, or missing result.
+ * undefined path resolves to vault root.
+ * Dot-prefixed path segments are treated as missing (hidden).
+ */
+function resolveFolder(app: App, path: string | undefined): ResolveResult {
+	if (path === undefined) return {kind: 'folder', folder: app.vault.getRoot()};
+	if (hasDotSegment(path)) return {kind: 'missing'};
+	const clean = path.replace(/\/$/, '');
+	const target = app.vault.getAbstractFileByPath(clean);
+	if (target === null) return {kind: 'missing'};
+	if (target instanceof TFolder) return {kind: 'folder', folder: target};
+	return {kind: 'file'};
+}
+
+/** Maps a TFolder to a CoreSearchItem with folder metadata. */
+function mapFolderToItem(folder: TFolder, childCount: number): CoreSearchItem {
+	return {
+		path: folder.path,
+		name: folder.name,
+		type: 'folder',
+		created: 0,
+		modified: 0,
+		size: 0,
+		childCount,
+	};
+}
+
+/**
+ * Counts children of a folder whose name does NOT start with '.' and are in scope.
+ * Hidden children (dot-prefixed) are always excluded.
+ * When scope is provided, folders and files outside scope are excluded.
+ */
+function visibleChildCount(folder: TFolder, scope?: string[]): number {
+	let count = 0;
+	for (const child of folder.children) {
+		if (child.name.startsWith('.')) continue;
+		if (child instanceof TFolder) {
+			if (scope && !folderInScope(child.path, scope)) continue;
+			count++;
+		} else if (child instanceof TFile) {
+			if (scope && !scope.some((p) => matchGlob(p, child.path))) continue;
+			count++;
+		}
+	}
+	return count;
+}
+
+/**
+ * Recursively walks a TFolder, collecting CoreSearchItems into out.
+ * Stops descending when currentDepth + 1 >= maxDepth (depth-bounded).
+ * Unlimited when maxDepth is undefined.
+ * When scope is provided, out-of-scope folders are skipped at walk time.
+ * File items pass through unfiltered — filtered post-walk by filterItemsByScope.
+ */
+function walk(
+	folder: TFolder,
+	currentDepth: number,
+	maxDepth: number | undefined,
+	scope: string[] | undefined,
+	out: CoreSearchItem[],
+): void {
+	for (const child of folder.children) {
+		if (child.name.startsWith('.')) continue;
+		if (child instanceof TFolder) {
+			if (scope && !folderInScope(child.path, scope)) continue;
+			out.push(mapFolderToItem(child, visibleChildCount(child, scope)));
+			const shouldRecurse = maxDepth === undefined || currentDepth + 1 < maxDepth;
+			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, scope, out);
+		} else if (child instanceof TFile) {
+			out.push({
+				path: child.path,
+				name: child.name,
+				type: 'file',
+				created: child.stat.ctime,
+				modified: child.stat.mtime,
+				size: child.stat.size,
+			});
+		}
+	}
+}
+
+/** Sorts CoreSearchItems folders-first, then by path with locale variant sensitivity. */
+function compareListDirItems(a: CoreSearchItem, b: CoreSearchItem): number {
+	const aIsFolder = a.type === 'folder';
+	const bIsFolder = b.type === 'folder';
+	if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+	return a.path.localeCompare(b.path, undefined, {sensitivity: 'variant'});
+}
+
+// -----------------------------------------------------------------------
 // Operations
 // -----------------------------------------------------------------------
 
-function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] {
-	const prefix = normalizeDir(request.path ?? '');
-	return app.vault.getFiles().filter((f) => f.path.startsWith(prefix)).map(mapFileToItem);
+function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
+	const resolved = resolveFolder(app, request.path);
+	if (resolved.kind === 'missing') {
+		return {code: 'NOT_FOUND', message: `Path not found: ${request.path ?? '/'}`};
+	}
+	if (resolved.kind === 'file') {
+		return {
+			code: 'VALIDATION_ERROR',
+			message: `listDir target must be a folder, got file: ${request.path}`,
+		};
+	}
+	const items: CoreSearchItem[] = [];
+	walk(resolved.folder, 0, request.depth, request.scopePatterns, items);
+	items.sort(compareListDirItems);
+	return items;
 }
 
 function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
@@ -246,9 +370,12 @@ export function createSearchAdapter(app: App): SearchAdapter {
 
 			let items: CoreSearchItem[];
 			switch (request.operation) {
-				case 'listDir':
-					items = listDir(app, request);
+				case 'listDir': {
+					const listResult = listDir(app, request);
+					if ('code' in listResult) return listResult;
+					items = listResult;
 					break;
+				}
 				case 'byTag': {
 					const tagResult = byTag(app, request);
 					if ('code' in tagResult) return tagResult;

@@ -10,7 +10,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {App, TFile, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
+import {App, TFile, TFolder, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest} from '../../src/mcp/request-mapper';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from '../../src/mcp/response-mapper';
 import {evaluatePermissions, createDefaultGateChain} from '../../src/core/permission-chain';
@@ -75,6 +75,7 @@ function makeTestConfig(): KadoConfig {
 			},
 		],
 		audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+		debugLogging: false,
 	};
 }
 
@@ -94,13 +95,71 @@ function makeApp(): App {
 	return new App();
 }
 
-function makeAdapters(app: App) {
+/**
+ * Wires getRoot() and getAbstractFileByPath() on an existing App mock
+ * given a flat list of TFile instances. Creates a minimal folder tree
+ * (one TFolder per unique parent path) so the TFolder walk works.
+ */
+function wireVaultTree(app: App, files: TFile[]): void {
+	// Collect all unique folder paths from file paths
+	const folderMap = new Map<string, TFolder>();
+
+	function getOrCreateFolder(folderPath: string): TFolder {
+		const existing = folderMap.get(folderPath);
+		if (existing) return existing;
+		const folder = new TFolder();
+		folder.path = folderPath;
+		folder.name = folderPath.split('/').pop() ?? folderPath;
+		folder.children = [];
+		folderMap.set(folderPath, folder);
+		return folder;
+	}
+
+	// Create root
+	const root = getOrCreateFolder('');
+	root.name = '/';
+
+	// Create folder hierarchy and assign file children
+	for (const file of files) {
+		const segments = file.path.split('/');
+		segments.pop(); // remove filename
+		let currentPath = '';
+		let parentFolder = root;
+		for (const seg of segments) {
+			const childPath = currentPath === '' ? seg : `${currentPath}/${seg}`;
+			const childFolder = getOrCreateFolder(childPath);
+			if (!parentFolder.children.includes(childFolder)) {
+				parentFolder.children.push(childFolder);
+			}
+			parentFolder = childFolder;
+			currentPath = childPath;
+		}
+		// Add file to its immediate parent folder
+		if (!parentFolder.children.includes(file)) {
+			parentFolder.children.push(file);
+		}
+	}
+
+	// Build index: path → file or folder
+	const pathIndex = new Map<string, TFile | TFolder>();
+	for (const file of files) pathIndex.set(file.path, file);
+	for (const [path, folder] of folderMap.entries()) {
+		if (path !== '') pathIndex.set(path, folder);
+	}
+
+	vi.mocked(app.vault.getRoot).mockReturnValue(root);
+	vi.mocked(app.vault.getAbstractFileByPath).mockImplementation((p: string) => {
+		return pathIndex.get(p) ?? null;
+	});
+}
+
+function makeAdapters(app: ReturnType<typeof makeApp>) {
 	return {
-		note: createNoteAdapter(app),
-		frontmatter: createFrontmatterAdapter(app),
-		file: createNoteAdapter(app), // file adapter re-uses note path for tests
-		'dataview-inline-field': createInlineFieldAdapter(app),
-		search: createSearchAdapter(app),
+		note: createNoteAdapter(app as never),
+		frontmatter: createFrontmatterAdapter(app as never),
+		file: createNoteAdapter(app as never), // file adapter re-uses note path for tests
+		'dataview-inline-field': createInlineFieldAdapter(app as never),
+		search: createSearchAdapter(app as never),
 	};
 }
 
@@ -110,7 +169,7 @@ function makeAdapters(app: App) {
 
 async function runPipeline(
 	config: KadoConfig,
-	app: App,
+	app: ReturnType<typeof makeApp>,
 	toolArgs: Record<string, unknown>,
 	keyId: string,
 	toolName: 'kado-read' | 'kado-write' | 'kado-search',
@@ -163,8 +222,9 @@ async function runPipeline(
 	return mapWriteResult(result);
 }
 
-function parseResult(callResult: {content: {type: string; text: string}[]}) {
-	return JSON.parse(callResult.content[0]!.text);
+function parseResult(callResult: unknown) {
+	const cr = callResult as {content: {type: string; text: string}[]};
+	return JSON.parse(cr.content[0]!.text);
 }
 
 // ============================================================
@@ -432,6 +492,7 @@ describe('End-to-end tool call pipeline', () => {
 				stat: {ctime: 1100, mtime: 2100, size: 20},
 			});
 			vi.mocked(app.vault.getFiles).mockReturnValue([file1, file2]);
+			wireVaultTree(app, [file1, file2]);
 
 			const result = await runPipeline(
 				config,
@@ -574,6 +635,142 @@ describe('End-to-end tool call pipeline', () => {
 			expect(result.isError).toBe(true);
 			const body = parseResult(result);
 			expect(body.code).toBe('FORBIDDEN');
+		});
+	});
+
+	// --------------------------------------------------------
+	// listDir trailing-slash regression (Tomo bug #1, spec 004 Phase 2 T2.1)
+	// --------------------------------------------------------
+
+	describe('listDir trailing-slash regression', () => {
+		/**
+		 * Config that mirrors Tomo's real setup: bare path names (no glob wildcards)
+		 * as the allowed patterns, e.g. "100 Inbox" or "allowed".
+		 */
+		function makeBarePathConfig(): KadoConfig {
+			const perms = {
+				note: {create: true, read: true, update: true, delete: true},
+				frontmatter: {create: true, read: true, update: true, delete: true},
+				file: {create: true, read: true, update: true, delete: true},
+				dataviewInlineField: {create: true, read: true, update: true, delete: true},
+			};
+			return {
+				server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+				security: {
+					listMode: 'whitelist',
+					paths: [{path: '100 Inbox', permissions: perms}],
+					tags: [],
+				},
+				apiKeys: [
+					{
+						id: 'test-key',
+						label: 'Test Key',
+						enabled: true,
+						createdAt: 1000,
+						listMode: 'whitelist',
+						paths: [{path: '100 Inbox', permissions: perms}],
+						tags: [],
+					},
+				],
+				audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+				debugLogging: false,
+			};
+		}
+
+		it('listDir with trailing slash returns the same result as without slash', async () => {
+			const config = makeBarePathConfig();
+			const app = makeApp();
+
+			const file1 = createMockTFile({
+				path: '100 Inbox/note-a.md',
+				name: 'note-a.md',
+				stat: {ctime: 1000, mtime: 2000, size: 10},
+			});
+			const file2 = createMockTFile({
+				path: '100 Inbox/note-b.md',
+				name: 'note-b.md',
+				stat: {ctime: 1100, mtime: 2100, size: 20},
+			});
+			vi.mocked(app.vault.getFiles).mockReturnValue([file1, file2]);
+			wireVaultTree(app, [file1, file2]);
+
+			// With trailing slash (Tomo's original reproducer)
+			const withSlash = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox/'},
+				'test-key',
+				'kado-search',
+			);
+
+			// Without trailing slash (works per Tomo's report)
+			const withoutSlash = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox'},
+				'test-key',
+				'kado-search',
+			);
+
+			expect(withSlash.isError).toBeUndefined();
+			expect(withoutSlash.isError).toBeUndefined();
+
+			const bodyWithSlash = parseResult(withSlash);
+			const bodyWithoutSlash = parseResult(withoutSlash);
+
+			expect(bodyWithSlash.items).toHaveLength(2);
+			expect(bodyWithoutSlash.items).toHaveLength(2);
+			// Both forms should return the same items
+			expect(bodyWithSlash.items).toEqual(bodyWithoutSlash.items);
+		});
+
+		it('listDir with trailing slash on nested path (100 Inbox/sub/) returns files', async () => {
+			const config = makeBarePathConfig();
+			const app = makeApp();
+
+			const file = createMockTFile({
+				path: '100 Inbox/sub/note.md',
+				name: 'note.md',
+				stat: {ctime: 1000, mtime: 2000, size: 10},
+			});
+			vi.mocked(app.vault.getFiles).mockReturnValue([file]);
+			wireVaultTree(app, [file]);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'listDir', path: '100 Inbox/sub/'},
+				'test-key',
+				'kado-search',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.items).toHaveLength(1);
+			expect(body.items[0].path).toBe('100 Inbox/sub/note.md');
+		});
+
+		it('byContent with path "/" returns same results as path omitted', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: 100},
+			});
+			vi.mocked(app.vault.getMarkdownFiles).mockReturnValue([file]);
+			vi.mocked(app.vault.read).mockResolvedValue('important content');
+
+			const withSlash = await runPipeline(config, app, {operation: 'byContent', query: 'important', path: '/'}, 'test-key', 'kado-search');
+			const withoutPath = await runPipeline(config, app, {operation: 'byContent', query: 'important'}, 'test-key', 'kado-search');
+
+			expect(withSlash.isError).toBeUndefined();
+			expect(withoutPath.isError).toBeUndefined();
+
+			const bodySlash = parseResult(withSlash);
+			const bodyNoPath = parseResult(withoutPath);
+
+			expect(bodySlash.items).toHaveLength(bodyNoPath.items.length);
 		});
 	});
 

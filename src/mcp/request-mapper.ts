@@ -89,7 +89,6 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 /** Ensures directory paths end with '/' for consistent prefix matching. */
 function normalizeDirPath(path: string, operation: string): string {
 	if (operation !== 'listDir') return path;
-	if (path === '' || path === '/') return '';
 	return path.endsWith('/') ? path : path + '/';
 }
 
@@ -105,9 +104,25 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 	const result: CoreSearchRequest = {apiKeyId: keyId, operation};
 
 	if (typeof args['query'] === 'string') result.query = args['query'];
-	if (typeof args['path'] === 'string') result.path = normalizeDirPath(args['path'], operation);
 	if (typeof args['cursor'] === 'string') result.cursor = args['cursor'];
 	if (typeof args['limit'] === 'number') result.limit = args['limit'];
+
+	if ('depth' in args && args['depth'] !== undefined) {
+		const d = args['depth'];
+		if (typeof d !== 'number' || !Number.isInteger(d) || d < 1) {
+			throw new Error('mapSearchRequest: depth must be a positive integer');
+		}
+		result.depth = d;
+	}
+
+	if (typeof args['path'] === 'string') {
+		if (args['path'] === '') {
+			throw new Error("mapSearchRequest: path must not be empty. Use '/' to list the vault root.");
+		}
+		if (args['path'] !== '/') {
+			result.path = normalizeDirPath(args['path'], operation);
+		}
+	}
 
 	return result;
 }
