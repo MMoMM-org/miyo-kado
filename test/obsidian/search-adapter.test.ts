@@ -75,6 +75,15 @@ function encodeOffset(offset: number): string {
 	return Buffer.from(String(offset)).toString('base64');
 }
 
+/**
+ * Narrows CoreSearchResult | CoreError to CoreSearchResult, throwing on error.
+ * Used by success-path tests that access result.items, result.total, result.cursor.
+ */
+function expectOk(r: CoreSearchResult | CoreError): CoreSearchResult {
+	if ('code' in r) throw new Error(`expected success, got ${(r as CoreError).code}: ${(r as CoreError).message}`);
+	return r as CoreSearchResult;
+}
+
 // ---------------------------------------------------------------------------
 // TFolder/TFile tree mock helpers for listDir walk tests
 // ---------------------------------------------------------------------------
@@ -213,15 +222,6 @@ function buildFixtureTree() {
 // ---------------------------------------------------------------------------
 
 describe('SearchAdapter — listDir (TFolder walk)', () => {
-	/**
-	 * Helper to narrow CoreSearchResult | CoreError union by throwing on error.
-	 * Used by success-path tests that access result.items, result.total, result.cursor.
-	 */
-	function expectOk(r: CoreSearchResult | CoreError): CoreSearchResult {
-		if ('code' in r) throw new Error(`expected success, got ${r.code}: ${r.message}`);
-		return r;
-	}
-
 	// -----------------------------------------------------------------------
 	// Happy path: depth:1 returns only direct children, folders sorted first
 	// -----------------------------------------------------------------------
@@ -810,7 +810,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0]).toMatchObject({
@@ -828,7 +828,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -838,7 +838,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap: new Map()});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -855,7 +855,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB, fileC], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project/*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project/*'})));
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map((i) => i.name)).toContain('a.md');
@@ -868,7 +868,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project*'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -879,7 +879,7 @@ describe('SearchAdapter — byTag', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#archive/*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#archive/*'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -892,7 +892,7 @@ describe('SearchAdapter — byTag', () => {
 
 		// * does not cross / (it uses .* so it does match across /) — but the
 		// pattern must still cover the full tag to match
-		const result = await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project/?'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byTag', query: '#project/?'})));
 
 		// #project/? matches only single-char after slash, not "alpha/v2"
 		expect(result.items).toEqual([]);
@@ -911,7 +911,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [fileA, fileB, fileC]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'meeting'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'meeting'})));
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map((i) => i.name)).toContain('Meeting Notes.md');
@@ -923,7 +923,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'xyz'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'xyz'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -933,7 +933,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'upper'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'upper'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -945,7 +945,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [fileA, fileB, fileC]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: '2026-03-*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: '2026-03-*'})));
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map((i) => i.name)).toContain('Daily Note 2026-03-28.md');
@@ -959,7 +959,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [fileA, fileB, fileC]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'v?.md'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'v?.md'})));
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map((i) => i.name)).toContain('v1.md');
@@ -971,7 +971,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'read*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'read*'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -981,7 +981,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: '2099-*'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: '2099-*'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -991,7 +991,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'v?.md'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'v?.md'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -1002,7 +1002,7 @@ describe('SearchAdapter — byName', () => {
 		const app = makeApp({allFiles: [file]});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'normal'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'normal'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -1023,7 +1023,7 @@ describe('SearchAdapter — listTags', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listTags'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'listTags'})));
 
 		expect(result.items).toHaveLength(2);
 		const projectItem = result.items.find((i) => i.tags?.includes('#project'));
@@ -1043,7 +1043,7 @@ describe('SearchAdapter — listTags', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB, fileC], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listTags'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'listTags'})));
 
 		const projectItem = result.items.find((i) => i.tags?.includes('#project'));
 		const archiveItem = result.items.find((i) => i.tags?.includes('#archive'));
@@ -1056,7 +1056,7 @@ describe('SearchAdapter — listTags', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap: new Map([[file, null]])});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'listTags'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'listTags'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -1079,7 +1079,7 @@ describe('SearchAdapter — byContent', () => {
 		});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0]).toMatchObject({path: 'notes/a.md', name: 'a.md', created: 10, modified: 20, size: 5});
@@ -1093,7 +1093,7 @@ describe('SearchAdapter — byContent', () => {
 		});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -1106,7 +1106,7 @@ describe('SearchAdapter — byContent', () => {
 		});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'zebra'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'zebra'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -1123,7 +1123,7 @@ describe('SearchAdapter — byContent', () => {
 		});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', path: 'notes/'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', path: 'notes/'})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0].path).toBe('notes/a.md');
@@ -1136,7 +1136,7 @@ describe('SearchAdapter — byContent', () => {
 		const app = makeApp({markdownFiles: files, readFile});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byContent', query: 'search term', limit: 3}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'search term', limit: 3})));
 
 		expect(result.items).toHaveLength(3);
 		// byContent finds all matches; pagination limits the page
@@ -1159,7 +1159,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0]).toMatchObject({path: 'notes/a.md', name: 'a.md', created: 10, modified: 20, size: 5});
@@ -1175,7 +1175,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status'})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0].path).toBe('notes/a.md');
@@ -1187,7 +1187,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'})));
 
 		expect(result.items).toHaveLength(1);
 	});
@@ -1198,7 +1198,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const app = makeApp({markdownFiles: [file], cacheMap});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status=active'})));
 
 		expect(result.items).toEqual([]);
 	});
@@ -1220,7 +1220,7 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'})));
 
 		expect(result.items).toHaveLength(50);
 	});
@@ -1230,7 +1230,7 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'})));
 
 		expect(result.cursor).toBeDefined();
 		expect(result.cursor).toBe(encodeOffset(50));
@@ -1241,9 +1241,9 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(
+		const result = expectOk(await adapter.search(
 			makeSearchRequest({operation: 'byName', query: 'file', cursor: encodeOffset(50)}),
-		);
+		));
 
 		expect(result.items).toHaveLength(10);
 		expect(result.cursor).toBeUndefined();
@@ -1254,10 +1254,10 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const page1 = await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'}));
-		const page2 = await adapter.search(
+		const page1 = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'})));
+		const page2 = expectOk(await adapter.search(
 			makeSearchRequest({operation: 'byName', query: 'file', cursor: page1.cursor}),
-		);
+		));
 
 		const allPaths = [...page1.items.map((i) => i.path), ...page2.items.map((i) => i.path)];
 		expect(new Set(allPaths).size).toBe(60);
@@ -1268,9 +1268,9 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(
+		const result = expectOk(await adapter.search(
 			makeSearchRequest({operation: 'byName', query: 'file', limit: 5}),
-		);
+		));
 
 		expect(result.items).toHaveLength(5);
 		expect(result.cursor).toBe(encodeOffset(5));
@@ -1281,7 +1281,7 @@ describe('SearchAdapter — pagination', () => {
 		const app = makeApp({allFiles: files});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'}));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byName', query: 'file'})));
 
 		expect(result.total).toBe(60);
 	});

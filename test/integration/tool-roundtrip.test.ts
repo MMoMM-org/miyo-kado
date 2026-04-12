@@ -75,6 +75,7 @@ function makeTestConfig(): KadoConfig {
 			},
 		],
 		audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+		debugLogging: false,
 	};
 }
 
@@ -152,13 +153,13 @@ function wireVaultTree(app: App, files: TFile[]): void {
 	});
 }
 
-function makeAdapters(app: App) {
+function makeAdapters(app: ReturnType<typeof makeApp>) {
 	return {
-		note: createNoteAdapter(app),
-		frontmatter: createFrontmatterAdapter(app),
-		file: createNoteAdapter(app), // file adapter re-uses note path for tests
-		'dataview-inline-field': createInlineFieldAdapter(app),
-		search: createSearchAdapter(app),
+		note: createNoteAdapter(app as never),
+		frontmatter: createFrontmatterAdapter(app as never),
+		file: createNoteAdapter(app as never), // file adapter re-uses note path for tests
+		'dataview-inline-field': createInlineFieldAdapter(app as never),
+		search: createSearchAdapter(app as never),
 	};
 }
 
@@ -168,7 +169,7 @@ function makeAdapters(app: App) {
 
 async function runPipeline(
 	config: KadoConfig,
-	app: App,
+	app: ReturnType<typeof makeApp>,
 	toolArgs: Record<string, unknown>,
 	keyId: string,
 	toolName: 'kado-read' | 'kado-write' | 'kado-search',
@@ -221,8 +222,9 @@ async function runPipeline(
 	return mapWriteResult(result);
 }
 
-function parseResult(callResult: {content: {type: string; text: string}[]}) {
-	return JSON.parse(callResult.content[0]!.text);
+function parseResult(callResult: unknown) {
+	const cr = callResult as {content: {type: string; text: string}[]};
+	return JSON.parse(cr.content[0]!.text);
 }
 
 // ============================================================

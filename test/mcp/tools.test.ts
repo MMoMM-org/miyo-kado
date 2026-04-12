@@ -13,6 +13,7 @@ import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePat
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
+	CoreSearchRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
@@ -166,6 +167,15 @@ function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
 	};
 }
 
+/**
+ * Extracts text from the first content item of a CallToolResult.
+ * Casts to text content type to work around the MCP SDK union
+ * (content items can be text | image | resource | etc.).
+ */
+function getFirstText(result: {content: {type: string; text?: string}[]}): string {
+	return (result.content[0] as {type: string; text: string}).text;
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -220,7 +230,7 @@ describe('kado-read handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/test.md');
+		expect(getFirstText(result)).toContain('notes/test.md');
 	});
 
 	it('passes the keyId from extra.authInfo.token to the request mapper', async () => {
@@ -242,7 +252,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('FORBIDDEN');
+		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -253,7 +263,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/missing.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('NOT_FOUND');
+		expect(getFirstText(result)).toContain('NOT_FOUND');
 	});
 
 	it('returns isError:true when extra.authInfo is absent', async () => {
@@ -292,7 +302,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/w.md');
+		expect(getFirstText(result)).toContain('notes/w.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -320,7 +330,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('FORBIDDEN');
+		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when concurrency guard fires a CONFLICT', async () => {
@@ -334,7 +344,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('CONFLICT');
+		expect(getFirstText(result)).toContain('CONFLICT');
 	});
 
 	it('allows write when expectedModified matches current mtime', async () => {
@@ -376,7 +386,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('INTERNAL_ERROR');
+		expect(getFirstText(result)).toContain('INTERNAL_ERROR');
 	});
 });
 
@@ -405,7 +415,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'project'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		expect(result.content[0].text).toContain('notes/a.md');
+		expect(getFirstText(result)).toContain('notes/a.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -427,7 +437,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('UNAUTHORIZED');
+		expect(getFirstText(result)).toContain('UNAUTHORIZED');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -438,7 +448,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toContain('VALIDATION_ERROR');
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
 	});
 
 	it('injects scopePatterns from key config into the search request', async () => {
@@ -466,7 +476,7 @@ describe('kado-search handler', () => {
 		await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		// The router receives the request with scopePatterns injected
-		const routedRequest = router.mock.calls[0][0];
+		const routedRequest = (router.mock.calls as unknown as [CoreSearchRequest[]])[0][0];
 		expect(routedRequest.scopePatterns).toEqual(['projects/**']);
 	});
 
@@ -497,7 +507,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byName', query: 'a'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(result.content[0].text);
+		const parsed = JSON.parse(getFirstText(result));
 		expect(parsed.items).toHaveLength(1);
 		expect(parsed.total).toBe(1);
 	});
