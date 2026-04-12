@@ -568,13 +568,16 @@ case 'listDir': {
 
 #### Example 2: Folder-aware scope filtering with the existing `dirCouldContainMatches` helper
 
-**Why this example:** The scope-filter extension spans two files (`search-adapter.ts` and `tools.ts`) and must stay consistent. Using the pre-existing helper in `src/core/glob-match.ts:75-80` prevents drift between the two sites and avoids reinventing probe logic.
+**Why this example:** The scope-filter extension spans two files (`search-adapter.ts` and `tools.ts`) and must stay consistent. The adapter uses `folderInScope` (wrapping `dirCouldContainMatches`); the tools layer uses `isFolderInScope` which additionally handles whitelist/blacklist mode inversion. Using the pre-existing helper in `src/core/glob-match.ts:75-80` prevents drift between the two sites and avoids reinventing probe logic.
 
 ```typescript
-// src/obsidian/search-adapter.ts — filterItemsByScope (MODIFIED, lines 85-88)
+// src/obsidian/search-adapter.ts — folderInScope + filterItemsByScope
 
 function folderInScope(folderPath: string, patterns: string[]): boolean {
-  return dirCouldContainMatches(folderPath, patterns);
+  if (patterns.length === 0) return false;
+  // dirCouldContainMatches expects a trailing slash on the directory path
+  const dirPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+  return patterns.some((p) => dirCouldContainMatches(p, dirPath));
 }
 
 function filterItemsByScope(items: CoreSearchItem[], patterns: string[]): CoreSearchItem[] {
@@ -587,30 +590,46 @@ function filterItemsByScope(items: CoreSearchItem[], patterns: string[]): CoreSe
 ```
 
 ```typescript
-// src/mcp/tools.ts — filterResultsByScope (MODIFIED, lines 93-102)
+// src/mcp/tools.ts — isFolderInScope + filterResultsByScope
 
-function filterResultsByScope(result: CoreSearchResult, patterns: string[]): CoreSearchResult {
-  if (patterns.length === 0) return {...result, items: []};
-  const filtered = result.items.filter((item) => {
-    if (item.type === 'folder') return dirCouldContainMatches(item.path, patterns);
-    return isPathInScope(item.path, patterns);  // existing file-path logic
-  });
-  return {...result, items: filtered, total: filtered.length};
+/**
+ * Whitelist: at least one pattern could match a child of this folder.
+ * Blacklist: NO pattern could match a child — otherwise the folder would
+ *   leak the existence of blacklisted descendants.
+ */
+function isFolderInScope(folderPath: string, listMode: string, patterns: string[]): boolean {
+  const prefix = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+  const couldMatchChild = patterns.some((p) => dirCouldContainMatches(p, prefix));
+  return listMode === 'whitelist' ? couldMatchChild : !couldMatchChild;
 }
 
-// Blacklist filter at line 307-309 follows the same pattern: folders go through
-// a folder-aware inversion check, files through the existing rule.
+export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
+  const key = config.apiKeys.find((k) => k.id === keyId);
+  if (!key) return [];
+
+  return items.filter((item) => {
+    if (item.type === 'folder') {
+      const inGlobal = isFolderInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
+      const inKey    = isFolderInScope(item.path, key.listMode,             key.paths.map((p) => p.path));
+      return inGlobal && inKey;
+    }
+    // files use the standard path-match helper
+    const inGlobal = isPathInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
+    const inKey    = isPathInScope(item.path, key.listMode,             key.paths.map((p) => p.path));
+    return inGlobal && inKey;
+  });
+}
 ```
 
-**Traced walkthrough — scope `["Atlas/**"]` with three folders:**
+**Traced walkthrough — whitelist scope `["Atlas/**"]` with three folders:**
 
-| Folder path | `p.startsWith('Atlas/Private/')` | `dirCouldContainMatches('Atlas/Private', ['Atlas/**'])` | Visible? |
-|-------------|----------------------------------|-------------------------------------------------------|----------|
-| `Atlas` (root listing) | `"Atlas/**".startsWith("Atlas/")` → true | helper returns true | ✅ |
-| `Atlas/Private` | `"Atlas/**".startsWith("Atlas/Private/")` → false | helper: `matchGlob("Atlas/**", "Atlas/Private/__probe__")` → true | ✅ |
-| `Notes` (sibling of Atlas) | `"Atlas/**".startsWith("Notes/")` → false | helper: `matchGlob("Atlas/**", "Notes/__probe__")` → false | ❌ |
+| Folder path | Trailing-slash prefix | `dirCouldContainMatches("Atlas/**", prefix)` | `listMode === 'whitelist'` → Visible? |
+|-------------|----------------------|---------------------------------------------|--------------------------------------|
+| `Atlas` | `"Atlas/"` | `matchGlob("Atlas/**", "Atlas/__probe__")` → true | ✅ |
+| `Atlas/Private` | `"Atlas/Private/"` | `matchGlob("Atlas/**", "Atlas/Private/__probe__")` → true | ✅ |
+| `Notes` | `"Notes/"` | `matchGlob("Atlas/**", "Notes/__probe__")` → false | ❌ |
 
-All three outcomes match the intended "folder visible iff the caller has access to anything inside" rule. The three scope patterns that broke the inlined version of this logic during security research (`Atlas/Public/**` vs `Atlas/Private`, `**/*.md` vs `Private`, `*.md` vs `Atlas`) all evaluate correctly through `dirCouldContainMatches`.
+Blacklist inversion: for `listMode === 'blacklist'` with pattern `["Atlas/**"]`, `Atlas/Private` returns `!true` → ❌ (hidden), while `Notes` returns `!false` → ✅ (visible). The three scope patterns that broke inlined logic during security research (`Atlas/Public/**` vs `Atlas/Private`, `**/*.md` vs `Private`, `*.md` vs `Atlas`) all evaluate correctly through `dirCouldContainMatches`.
 
 #### Example 3: Request-mapper updates for `depth`, `/`, and empty-path rejection
 
