@@ -243,13 +243,12 @@ describe('validateGlobPattern() — rejects unsafe patterns', () => {
 	});
 });
 
-describe('validateGlobPattern() — warns on dangerous-but-valid patterns', () => {
-	it('warns on bare ** (matches entire vault)', () => {
+describe('validateGlobPattern() — validates ** pattern', () => {
+	it('accepts bare ** (full vault access) with no warnings', () => {
 		const result = validateGlobPattern('**');
 		expect(result.ok).toBe(true);
 		if (result.ok) {
-			expect(result.warnings.length).toBeGreaterThan(0);
-			expect(result.warnings.join(' ')).toMatch(/entire vault/i);
+			expect(result.warnings).toEqual([]);
 		}
 	});
 
