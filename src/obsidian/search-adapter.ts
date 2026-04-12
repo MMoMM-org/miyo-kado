@@ -11,7 +11,7 @@ import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
 import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
-import {normalizeTag, matchTag} from '../core/tag-utils';
+import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
@@ -103,6 +103,24 @@ function isTagPermitted(tag: string, allowedTags: string[]): boolean {
 	const normalized = normalizeTag(tag);
 	if (normalized === null) return false;
 	return allowedTags.some((pattern) => matchTag(normalized, pattern));
+}
+
+/**
+ * Returns true when a search glob could potentially match at least one allowed tag.
+ *
+ * For each allowed pattern we create a representative tag and test it against
+ * the query regex. If none could match, the client has no permission for any
+ * tag the glob could return → FORBIDDEN rather than misleading empty results.
+ */
+function canGlobMatchAllowedTag(queryRegex: RegExp, allowedTags: string[]): boolean {
+	return allowedTags.some((pattern) => {
+		// Create a representative tag that would be matched by this pattern.
+		// Wildcard 'foo/*' → '#foo/_rep'; exact 'foo' → '#foo'
+		const representative = isWildcardTag(pattern)
+			? `#${pattern.slice(0, -1)}_rep`  // 'foo/*' → '#foo/_rep'
+			: `#${pattern}`;
+		return queryRegex.test(representative);
+	});
 }
 
 function requireQuery(request: CoreSearchRequest, operation: string): CoreError | null {
@@ -258,6 +276,11 @@ function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreErr
 
 	if (isGlobQuery(query)) {
 		const re = globQueryToRegExp(query, true);
+		// Pre-check: can the glob structurally match any allowed tag?
+		// If not, the client has no permission for tags in this namespace.
+		if (allowed !== undefined && !canGlobMatchAllowedTag(re, allowed)) {
+			return {code: 'FORBIDDEN', message: 'Access denied'};
+		}
 		return app.vault.getMarkdownFiles().filter((f) => {
 			const cache = app.metadataCache.getFileCache(f);
 			const tags = cache?.tags?.filter((t) => re.test(t.tag)) ?? [];
