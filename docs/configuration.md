@@ -85,6 +85,20 @@ Each data type has four permission flags: **C**reate, **R**ead, **U**pdate, **D*
 
 <!-- TODO: Add screenshot of permission matrix -->
 
+### Path Patterns
+
+Paths in the security scope use glob-style patterns:
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `**` | **Full vault** — every file and folder | Grant an API key access to the entire vault |
+| `Calendar` | Everything inside `Calendar/` and its subfolders | Equivalent to `Calendar/**` |
+| `Atlas/202*` | Folders/files in `Atlas/` starting with `202` | `Atlas/202 Notes`, `Atlas/2024 Archive` |
+
+The folder picker includes a `** (Full vault)` entry at the top for convenience. You can also type patterns manually in the text input.
+
+**Note:** The `/` character is not a valid path pattern (Obsidian uses relative paths). To grant access to the entire vault, use `**`. If you have an older configuration with `/` as a path, Kado automatically upgrades it to `**` on load.
+
 **Tip**: When you add a path using the folder picker, just select the folder name (e.g. "Calendar"). The plugin automatically matches all files inside that folder and its subfolders.
 
 ### Example: Global Security Tab
