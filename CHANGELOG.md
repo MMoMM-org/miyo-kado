@@ -1,3 +1,23 @@
+# [0.2.0](https://github.com/MMoMM-org/miyo-kado/compare/0.1.6...0.2.0) (2026-04-12)
+
+
+### Bug Fixes
+
+* **test:** add missing debugLogging to makeBarePathConfig ([eaa6292](https://github.com/MMoMM-org/miyo-kado/commit/eaa6292152bb72a0584e9c4caa29b9609a5fa298))
+* **test:** narrow adapter.search results in listDir test block ([2b52e5d](https://github.com/MMoMM-org/miyo-kado/commit/2b52e5d205979e9c35a863a64d4b5e8439b0612a))
+* **test:** resolve pre-existing TypeScript strict-mode errors ([10c60c7](https://github.com/MMoMM-org/miyo-kado/commit/10c60c7d5e9541f9c0ff5854fc9aac65d318d3c8))
+* **test:** use public .description accessor on Zod schemas ([ecadc2e](https://github.com/MMoMM-org/miyo-kado/commit/ecadc2e911176fb77c39e54630b88ae0ed2a4bd4))
+
+
+### Features
+
+* **mcp:** depth validation and root marker in mapSearchRequest ([d1ec1bd](https://github.com/MMoMM-org/miyo-kado/commit/d1ec1bd405e88d355d152942c17cb471dbe1426a))
+* **mcp:** document depth, type, folder behaviors in kado-search schema ([08d3dfb](https://github.com/MMoMM-org/miyo-kado/commit/08d3dfbc55b727b7843a139e8d7090dcd4e74f56))
+* **mcp:** folder-aware scope filter in tools-layer filterResultsByScope ([c6f47b3](https://github.com/MMoMM-org/miyo-kado/commit/c6f47b319cde83d12a1592b13af5c8fa40404319))
+* **search:** folder-aware scope filter in walk and filterItemsByScope ([cb3c69e](https://github.com/MMoMM-org/miyo-kado/commit/cb3c69e2ee2dcefe057731b753f2f922d2ba5d48))
+* **search:** replace listDir with TFolder walk and depth control ([3f6709e](https://github.com/MMoMM-org/miyo-kado/commit/3f6709e79d6bb349f78a5b67a9d201691230a087))
+* **types:** add depth, type, childCount fields to canonical types ([82de612](https://github.com/MMoMM-org/miyo-kado/commit/82de6128bd3513dbad5593ce64d01182c50dcc71))
+
 ## [0.1.6](https://github.com/MMoMM-org/miyo-kado/compare/0.1.5...0.1.6) (2026-04-08)
 
 
