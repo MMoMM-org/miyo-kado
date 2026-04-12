@@ -738,19 +738,19 @@ describe('computeAllowedTags()', () => {
 		};
 	}
 
-	it('returns undefined when both global and key tags are empty (tags not configured = no restriction)', () => {
+	it('returns empty when both global and key tags are empty (whitelist: no access)', () => {
 		const result = computeAllowedTags('key-1', makeTagConfig([], []));
-		expect(result).toBeUndefined();
+		expect(result).toEqual([]);
 	});
 
-	it('returns key tags when global tags are empty', () => {
+	it('returns empty when global tags are empty (empty whitelist blocks)', () => {
 		const result = computeAllowedTags('key-1', makeTagConfig([], ['project', 'active']));
-		expect(result).toEqual(['project', 'active']);
+		expect(result).toEqual([]);
 	});
 
-	it('returns global tags when key tags are empty', () => {
+	it('returns empty when key tags are empty (empty whitelist blocks)', () => {
 		const result = computeAllowedTags('key-1', makeTagConfig(['project', 'active'], []));
-		expect(result).toEqual(['project', 'active']);
+		expect(result).toEqual([]);
 	});
 
 	it('returns intersection when both have tags', () => {
@@ -766,6 +766,16 @@ describe('computeAllowedTags()', () => {
 	it('returns empty for unknown key', () => {
 		const result = computeAllowedTags('unknown', makeTagConfig(['project'], ['project']));
 		expect(result).toEqual([]);
+	});
+
+	it('global * permits all key tags', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig(['*'], ['project', 'active']));
+		expect(result).toEqual(['project', 'active']);
+	});
+
+	it('global bare name permits key sub-tags via matchTag', () => {
+		const result = computeAllowedTags('key-1', makeTagConfig(['MiYo-Tomo'], ['MiYo-Tomo/proposed']));
+		expect(result).toEqual(['MiYo-Tomo/proposed']);
 	});
 });
 

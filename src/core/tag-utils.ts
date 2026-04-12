@@ -25,14 +25,16 @@ export function isWildcardTag(pattern: string): boolean {
 
 /**
  * Match a tag against a pattern.
- * - Exact match: 'project' matches 'project'.
+ * - Global wildcard: '*' matches any tag.
  * - Wildcard: 'project/*' matches 'project/a', 'project/b/c' but NOT 'project' itself.
+ * - Bare name: 'project' matches 'project' exactly AND sub-tags like 'project/sub'.
  */
 export function matchTag(tag: string, pattern: string): boolean {
-	if (!isWildcardTag(pattern)) {
-		return tag === pattern;
+	if (pattern === '*') return true;
+	if (isWildcardTag(pattern)) {
+		const prefix = pattern.slice(0, -1); // remove trailing '*', keep '/'
+		return tag.startsWith(prefix);
 	}
-	// Wildcard: 'project/*' → prefix 'project/'
-	const prefix = pattern.slice(0, -1); // remove trailing '*', keep '/'
-	return tag.startsWith(prefix);
+	// Bare name: exact match OR sub-tag match
+	return tag === pattern || tag.startsWith(pattern + '/');
 }

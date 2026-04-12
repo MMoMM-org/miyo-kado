@@ -76,6 +76,34 @@ describe('matchTag', () => {
 		});
 	});
 
+	describe('global wildcard *', () => {
+		it('matches any tag', () => {
+			expect(matchTag('anything', '*')).toBe(true);
+		});
+
+		it('matches nested tag', () => {
+			expect(matchTag('project/sub/deep', '*')).toBe(true);
+		});
+	});
+
+	describe('bare name expansion', () => {
+		it('matches sub-tag', () => {
+			expect(matchTag('MiYo-Tomo/proposed', 'MiYo-Tomo')).toBe(true);
+		});
+
+		it('matches deeply nested sub-tag', () => {
+			expect(matchTag('MiYo-Tomo/proposed/v2', 'MiYo-Tomo')).toBe(true);
+		});
+
+		it('still matches exact', () => {
+			expect(matchTag('MiYo-Tomo', 'MiYo-Tomo')).toBe(true);
+		});
+
+		it('does not match partial prefix', () => {
+			expect(matchTag('MiYo-Tomos/x', 'MiYo-Tomo')).toBe(false);
+		});
+	});
+
 	describe('wildcard matching', () => {
 		it('matches direct child', () => {
 			expect(matchTag('project/a', 'project/*')).toBe(true);

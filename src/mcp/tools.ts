@@ -31,6 +31,7 @@ import type {
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
 import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
+import {matchTag} from '../core/tag-utils';
 
 // ============================================================
 // Public types
@@ -179,16 +180,14 @@ export function computeAllowedTags(keyId: string, config: KadoConfig): string[] 
 	const globalTags = config.security.tags ?? [];
 	const keyTags = key.tags ?? [];
 
-	// Both empty → tags not configured at all; no restriction
-	if (globalTags.length === 0 && keyTags.length === 0) return undefined;
+	// Whitelist semantics: empty list = no access (not unrestricted)
+	if (globalTags.length === 0 && keyTags.length === 0) return [];
+	if (globalTags.length === 0) return [];
+	if (keyTags.length === 0) return [];
 
-	// If one is empty, the other is the effective set
-	if (globalTags.length === 0) return keyTags;
-	if (keyTags.length === 0) return globalTags;
-
-	// Both non-empty → intersection (key tag must be permitted by global)
+	// Both non-empty → intersection (key tag must be permitted by at least one global pattern)
 	return keyTags.filter((kt) =>
-		globalTags.some((gt) => kt === gt),
+		globalTags.some((gt) => matchTag(kt, gt)),
 	);
 }
 
