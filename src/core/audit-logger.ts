@@ -26,6 +26,7 @@ export interface AuditEntry {
 	operation: string;
 	dataType?: string;
 	path?: string;
+	query?: string;
 	decision: 'allowed' | 'denied';
 	gate?: string;
 	durationMs?: number;

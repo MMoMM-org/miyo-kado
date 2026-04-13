@@ -128,6 +128,27 @@ function canGlobMatchAllowedTag(queryRegex: RegExp, allowedTags: string[]): bool
 	});
 }
 
+/**
+ * Merges inline tags (`cache.tags`) and frontmatter tags (`cache.frontmatter?.tags`)
+ * into a single deduplicated list of '#'-prefixed tag strings.
+ */
+function getFileTags(cache: {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null): string[] {
+	if (!cache) return [];
+	const seen = new Set<string>();
+	if (cache.tags) {
+		for (const {tag} of cache.tags) seen.add(tag);
+	}
+	const fmTags = cache.frontmatter?.tags;
+	if (Array.isArray(fmTags)) {
+		for (const raw of fmTags) {
+			if (typeof raw !== 'string') continue;
+			const tag = raw.startsWith('#') ? raw : `#${raw}`;
+			seen.add(tag);
+		}
+	}
+	return Array.from(seen);
+}
+
 function requireQuery(request: CoreSearchRequest, operation: string): CoreError | null {
 	if (!request.query || request.query.trim() === '') {
 		return {code: 'VALIDATION_ERROR', message: `${operation} requires a non-empty query`};
@@ -288,17 +309,16 @@ function byTag(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreErr
 		}
 		return app.vault.getMarkdownFiles().filter((f) => {
 			const cache = app.metadataCache.getFileCache(f);
-			const tags = cache?.tags?.filter((t) => re.test(t.tag)) ?? [];
-			// If allowed tags are set, further restrict to permitted tags
+			const tags = getFileTags(cache).filter((t) => re.test(t));
 			if (allowed !== undefined) {
-				return tags.some((t) => isTagPermitted(t.tag, allowed));
+				return tags.some((t) => isTagPermitted(t, allowed));
 			}
 			return tags.length > 0;
 		}).map(mapFileToItem);
 	}
 	return app.vault.getMarkdownFiles().filter((f) => {
 		const cache = app.metadataCache.getFileCache(f);
-		return cache?.tags?.some((t) => t.tag === query) ?? false;
+		return getFileTags(cache).some((t) => t === query);
 	}).map(mapFileToItem);
 }
 
@@ -361,8 +381,9 @@ function listTags(app: App, scopePatterns?: string[], allowedTags?: string[]): C
 			if (scopePatterns.length === 0 || !fileInScope(file, scopePatterns)) continue;
 		}
 		const cache = app.metadataCache.getFileCache(file);
-		if (!cache?.tags) continue;
-		for (const {tag} of cache.tags) {
+		const tags = getFileTags(cache);
+		if (tags.length === 0) continue;
+		for (const tag of tags) {
 			if (allowedTags !== undefined && !isTagPermitted(tag, allowedTags)) continue;
 			counts.set(tag, (counts.get(tag) ?? 0) + 1);
 		}

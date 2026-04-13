@@ -52,3 +52,7 @@ _outbox/
 claude-docker/
 claude-docker-home/
 begin-code.sh
+/claude-docker/
+/claude-docker-home/
+/begin-code.sh
+/generated-images/
