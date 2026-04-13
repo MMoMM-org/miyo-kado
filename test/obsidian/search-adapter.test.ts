@@ -1981,6 +1981,77 @@ describe('SearchAdapter — tag permissions', () => {
 		expect(tagNames).toContain('#MiYo-Tomo/proposed');
 	});
 
+	it('byTag finds tags in YAML frontmatter (not just inline)', async () => {
+		const file = makeTFile({path: 'notes/fm.md', name: 'fm.md'});
+		const cacheMap = new Map([[file, {
+			frontmatter: {tags: ['MiYo-Tomo/proposed']},
+		}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#MiYo-Tomo/proposed',
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+		expect(items[0]!.path).toBe('notes/fm.md');
+	});
+
+	it('byTag deduplicates tags appearing in both inline and frontmatter', async () => {
+		const file = makeTFile({path: 'notes/both.md', name: 'both.md'});
+		const cacheMap = new Map([[file, {
+			tags: [{tag: '#project'}],
+			frontmatter: {tags: ['project']},
+		}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#project',
+		}));
+
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+	});
+
+	it('listTags includes frontmatter-only tags', async () => {
+		const file = makeTFile({path: 'notes/fm.md', name: 'fm.md'});
+		const cacheMap = new Map([[file, {
+			frontmatter: {tags: ['MiYo-Tomo/confirmed']},
+		}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'listTags',
+		}));
+
+		expect(result).toHaveProperty('items');
+		const items = (result as {items: {name: string}[]}).items;
+		expect(items.map((i) => i.name)).toContain('#MiYo-Tomo/confirmed');
+	});
+
+	it('byTag with glob matches frontmatter tags', async () => {
+		const file = makeTFile({path: 'notes/fm.md', name: 'fm.md'});
+		const cacheMap = new Map([[file, {
+			frontmatter: {tags: ['MiYo-Tomo/applied']},
+		}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#MiYo-Tomo/*',
+		}));
+
+		const items = (result as {items: {path: string}[]}).items;
+		expect(items).toHaveLength(1);
+	});
+
 	it('byTag with glob and * allowedTag permits any tag', async () => {
 		const file = makeTFile({path: 'notes/a.md', name: 'a.md'});
 		const cacheMap = new Map([[file, {tags: [{tag: '#anything/deep'}]}]]);

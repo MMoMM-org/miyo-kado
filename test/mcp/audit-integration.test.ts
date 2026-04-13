@@ -217,6 +217,18 @@ describe('audit integration — allowed kado-search call', () => {
 		expect(entries[0].decision).toBe('allowed');
 		expect(entries[0].apiKeyId).toBe('kado_searche...');
 	});
+
+	it('logs the query field for search operations', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeSearchResult());
+		const handler = getHandler('kado-search', makeDeps({router, auditLogger: logger}));
+
+		await handler({operation: 'byTag', query: '#MiYo-Tomo/proposed'}, makeExtra('kado_searcher'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].query).toBe('#MiYo-Tomo/proposed');
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -275,6 +287,21 @@ describe('audit integration — denied kado-search call', () => {
 		expect(entries).toHaveLength(1);
 		expect(entries[0].decision).toBe('denied');
 		expect(entries[0].gate).toBe('authenticate');
+	});
+
+	it('logs the query field on denied search', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const denyError: CoreError = {code: 'UNAUTHORIZED', message: 'Bad key', gate: 'authenticate'};
+		const handler = getHandler(
+			'kado-search',
+			makeDeps({gates: [makeDenyGate(denyError)], auditLogger: logger}),
+		);
+
+		await handler({operation: 'byTag', query: '#secret-tag'}, makeExtra());
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].query).toBe('#secret-tag');
 	});
 });
 

@@ -486,11 +486,11 @@ The `filterResultsByScope` function then filters these against area glob pattern
 
 **Workaround in tests**: the test checks `total > 0` as a fallback.
 
-### byTag / listTags only check inline tags
+### ~~byTag / listTags only check inline tags~~ (fixed)
 
-The search adapter checks `cache.tags` (inline `#tag` occurrences in the note body)
-but not `cache.frontmatter.tags` (YAML frontmatter `tags:` array). Notes must include
-inline `#tag` in addition to frontmatter tags to be found by `byTag`.
+Fixed: the search adapter now merges both inline `cache.tags` and YAML
+`cache.frontmatter.tags` via `getFileTags()`. Frontmatter-only tags are found by
+`byTag` and `listTags` without requiring inline `#tag` duplicates.
 
 ### Obsidian file cache timing
 
