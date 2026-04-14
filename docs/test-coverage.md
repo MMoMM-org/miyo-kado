@@ -13,7 +13,7 @@ Kado's security promise rests on a multi-gate permission chain: **authenticate �
 
 ### Key1 — Allowed Operations
 
-Key1 has full CRUD on `allowed/**` (minus note.delete) and limited access on `maybe-allowed/**`. These tests prove the positive case — operations the key is allowed to perform actually succeed.
+Key1 has full CRUD on `allowed/**` and limited access on `maybe-allowed/**` (read-only for notes, no delete for frontmatter). These tests prove the positive case — operations the key is allowed to perform actually succeed.
 
 | Test ID | Tool | Operation | Path | Assertion |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@ Key1 has full CRUD on `allowed/**` (minus note.delete) and limited access on `ma
 
 ### Key1 — Denied Operations
 
-Key1 has specific deny cases: no note.delete anywhere, restricted write in `maybe-allowed/**`, no access to `nope/` or root. These tests prove the permission chain correctly denies unauthorized operations.
+Key1 has specific deny cases: restricted write in `maybe-allowed/**` (no note.create/update, no frontmatter.create/delete, no dv.create/update), no access to `nope/` or root, no delete in `maybe-allowed/**`. These tests prove the permission chain correctly denies unauthorized operations.
 
 | Test ID | Tool | Operation | Path | Expected |
 |---|---|---|---|---|
