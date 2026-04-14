@@ -362,8 +362,33 @@ function byFrontmatter(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 		const fm = app.metadataCache.getFileCache(f)?.frontmatter;
 		if (!fm || !(key in fm)) return false;
 		if (value === null) return true;
-		return String(fm[key]).toLowerCase() === value;
+		return frontmatterValueMatches(fm[key], value);
 	}).map(mapFileToItem);
+}
+
+/**
+ * Match a frontmatter value (which may be scalar, array, or comma-separated string)
+ * against a case-insensitive lowercase query value.
+ *
+ * Obsidian's metadataCache preserves the YAML representation:
+ * - `tags: [a, b]` → string[] (inline array)
+ * - `tags:\n  - a\n  - b` → string[] (list form)
+ * - `tags: a, b` → string (comma-separated, per https://obsidian.md/help/tags)
+ * - `status: active` → string (scalar)
+ *
+ * All three forms must match array-membership queries like `tags=finance`.
+ */
+function frontmatterValueMatches(fmValue: unknown, query: string): boolean {
+	if (Array.isArray(fmValue)) {
+		return fmValue.some((el) => String(el).toLowerCase() === query);
+	}
+	const str = String(fmValue).toLowerCase();
+	if (str === query) return true;
+	// Comma-separated fallback (Obsidian accepts `tags: a, b` as shorthand)
+	if (str.includes(',')) {
+		return str.split(',').some((part) => part.trim() === query);
+	}
+	return false;
 }
 
 /**

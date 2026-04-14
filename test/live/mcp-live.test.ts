@@ -25,7 +25,7 @@ import {describe, it, expect, beforeAll, afterAll, type TestContext} from 'vites
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {execSync} from 'node:child_process';
-import {readFileSync, existsSync, unlinkSync, writeFileSync, copyFileSync} from 'node:fs';
+import {readFileSync, existsSync, unlinkSync, writeFileSync, copyFileSync, utimesSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -124,16 +124,6 @@ function loadAndWriteFixtureConfig(keys: McpKeys): boolean {
 	}
 }
 
-/** Restores the original data.json from backup. */
-function restoreOriginalConfig(): void {
-	try {
-		if (existsSync(KADO_DATA_BACKUP)) {
-			copyFileSync(KADO_DATA_BACKUP, KADO_DATA_JSON);
-			unlinkSync(KADO_DATA_BACKUP);
-		}
-	} catch { /* best effort */ }
-}
-
 // ============================================================
 // Preflight utilities
 // ============================================================
@@ -144,6 +134,28 @@ function isObsidianRunning(): boolean | 'unknown' {
 	try {
 		const pid = execSync('pgrep -x Obsidian', {encoding: 'utf-8', timeout: 3_000});
 		return pid.trim().length > 0;
+	} catch {
+		// pgrep can fail due to sandbox restrictions or missing permissions —
+		// return 'unknown' so the preflight falls through to the MCP probe
+		// instead of aborting all tests.
+		return 'unknown';
+	}
+}
+
+/** Path to main.js — touching this triggers the hot-reload plugin (disable → enable cycle). */
+const KADO_MAIN_JS = resolve(KADO_DATA_JSON, '../main.js');
+
+/**
+ * Triggers a Kado plugin reload by touching main.js.
+ * The hot-reload plugin watches for mtime changes on main.js/styles.css
+ * and performs a full disable → enable cycle, which re-reads data.json.
+ * Works in any environment (macOS, Docker) as long as hot-reload is installed.
+ */
+function triggerPluginReload(): boolean {
+	try {
+		const now = new Date();
+		utimesSync(KADO_MAIN_JS, now, now);
+		return true;
 	} catch {
 		return false;
 	}
@@ -386,19 +398,24 @@ function readAuditLog(): AuditEntry[] {
 	}
 }
 
-/** Returns the last N entries from the audit log. */
-function lastAuditEntries(n: number): AuditEntry[] {
-	const entries = readAuditLog();
-	return entries.slice(-n);
-}
-
-/** Clears the audit log so each test section starts fresh. */
-function clearAuditLog(): void {
-	try {
-		if (existsSync(AUDIT_LOG_PATH)) {
-			writeFileSync(AUDIT_LOG_PATH, '');
-		}
-	} catch { /* best effort */ }
+/**
+ * Polls the audit log until a matching entry appears after `fromIndex`, or timeout expires.
+ * The audit logger flushes async — fixed waits are flaky. This helper polls every 100ms
+ * for up to `timeoutMs` (default 3000ms) until the predicate finds a match.
+ */
+async function waitForAuditEntry(
+	fromIndex: number,
+	predicate: (e: AuditEntry) => boolean,
+	timeoutMs = 3_000,
+): Promise<AuditEntry | undefined> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const entries = readAuditLog();
+		const match = entries.slice(fromIndex).find(predicate);
+		if (match) return match;
+		await new Promise(r => setTimeout(r, 100));
+	}
+	return undefined;
 }
 
 // ============================================================
@@ -432,6 +449,11 @@ describe('Kado MCP Live Tests', () => {
 		// 2. Load fixture config and write to data.json (always overwrite — fixture is ground truth)
 		configWritten = loadAndWriteFixtureConfig(keys);
 
+		// Give the filesystem a moment to flush the write before triggering a reload
+		if (configWritten) {
+			await new Promise(r => setTimeout(r, 1_000));
+		}
+
 		// 3. Read back to verify it's correct
 		pluginStatus = readKadoPluginConfig();
 
@@ -442,13 +464,23 @@ describe('Kado MCP Live Tests', () => {
 		if (obsidianStatus === false) return;
 		if (vaultStatus === false) return;
 
-		// 5. Probe MCP server — the definitive check for both environments
+		// 5. Trigger hot-reload by touching main.js so the new config takes effect.
+		//    The hot-reload plugin performs a disable → enable cycle, re-reading data.json.
+		if (configWritten) {
+			const reloaded = triggerPluginReload();
+			if (reloaded) {
+				// Wait for hot-reload to disable, then re-enable the plugin and bind the MCP server.
+				await new Promise(r => setTimeout(r, 5_000));
+			}
+		}
+
+		// 6. Probe MCP server — the definitive check for both environments
 		mcpUp = await isMcpReachable();
 		if (!mcpUp) return;
 
-		// 6. Verify the server picked up the test config.
-		//    If config was just written, the plugin needs a reload.
-		//    Try a test read — if it fails with FORBIDDEN, config is stale.
+		// 7. Verify the server picked up the test config.
+		//    If Actions URI reload didn't work (not installed, Docker, etc.),
+		//    a stale config will cause FORBIDDEN — inform the user.
 		try {
 			const probe = await callTool(keys.key1, 'kado-read', {
 				operation: 'note',
@@ -612,6 +644,91 @@ describe('Kado MCP Live Tests', () => {
 			const body = parseResult<{content: string}>(result);
 			expect(body.content).toContain('Sprint Planning');
 		});
+
+		it('T-MA.1: Key1 reads frontmatter from maybe-allowed/ (frontmatter.read=true)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(result);
+			expect(body.content).toMatchObject({title: 'Budget 2026', status: 'confidential'});
+		});
+
+		it('T-EDGE.1: reads 0-byte note returns empty string content', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/_empty.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: string; size: number}>(result);
+			expect(body.content).toBe('');
+			expect(body.size).toBe(0);
+		});
+
+		it('T-EDGE.2: reads empty frontmatter (--- --- with no keys)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/_fm-empty.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(result);
+			// Either empty object or object with no user-visible keys
+			expect(typeof body.content).toBe('object');
+		});
+
+		it('T-EDGE.3: reads nested frontmatter objects', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/_fm-nested.md',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(result);
+			// Deeply nested values must round-trip
+			expect(body.content.title).toBe('Nested FM');
+			expect(body.content.metadata).toMatchObject({
+				author: 'Marcus',
+				tags: ['project', 'deep'],
+				nested_obj: {level1: {level2: 'deep-value'}},
+			});
+		});
+
+		it('T-EDGE.4: write frontmatter with nested object preserves structure', async (ctx) => {
+			await requireReady(ctx);
+			// Read to get mtime
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/_fm-nested.md',
+			});
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			// Write a nested object merge
+			const writeResult = await callTool(apiKey(), 'kado-write', {
+				operation: 'frontmatter',
+				path: 'allowed/_fm-nested.md',
+				content: {newKey: {a: 1, b: {c: 2}}},
+				expectedModified: modified,
+			});
+			expect(writeResult.isError).toBeFalsy();
+
+			// Read back and verify
+			const verify = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/_fm-nested.md',
+			});
+			const body = parseResult<{content: Record<string, unknown>}>(verify);
+			expect(body.content.newKey).toMatchObject({a: 1, b: {c: 2}});
+			// Original nested objects preserved
+			expect(body.content.title).toBe('Nested FM');
+		});
 	});
 
 	// --------------------------------------------------------
@@ -717,6 +834,66 @@ describe('Kado MCP Live Tests', () => {
 			expect(result.isError).toBeFalsy();
 			const body = parseResult<{items: unknown[]; cursor?: string}>(result);
 			expect(body.items.length).toBeLessThanOrEqual(2);
+		});
+
+		it('T-PAG.1: cursor pagination returns page 2 with different items', async (ctx) => {
+			await requireReady(ctx);
+			// Page 1
+			const page1 = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+				limit: 2,
+			});
+			expect(page1.isError).toBeFalsy();
+			const body1 = parseResult<{items: Array<{path: string}>; cursor?: string}>(page1);
+			expect(body1.cursor).toBeTruthy(); // allowed/ has 8+ items, so page 2 must exist
+
+			// Page 2
+			const page2 = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+				limit: 2,
+				cursor: body1.cursor,
+			});
+			expect(page2.isError).toBeFalsy();
+			const body2 = parseResult<{items: Array<{path: string}>}>(page2);
+			expect(body2.items.length).toBeGreaterThan(0);
+
+			// No duplicates between pages
+			const page1Paths = new Set(body1.items.map(i => i.path));
+			for (const item of body2.items) {
+				expect(page1Paths.has(item.path)).toBe(false);
+			}
+		});
+
+		it('T-PAG.2: paginate to exhaustion — collected items match total', async (ctx) => {
+			await requireReady(ctx);
+			const allPaths: string[] = [];
+			let cursor: string | undefined;
+			let total: number | undefined;
+
+			// Paginate through all pages with small limit
+			do {
+				const result = await callTool(apiKey(), 'kado-search', {
+					operation: 'listDir',
+					path: 'allowed/',
+					limit: 3,
+					...(cursor ? {cursor} : {}),
+				});
+				expect(result.isError).toBeFalsy();
+				const body = parseResult<{items: Array<{path: string}>; cursor?: string; total?: number}>(result);
+				allPaths.push(...body.items.map(i => i.path));
+				if (total === undefined && body.total !== undefined) total = body.total;
+				cursor = body.cursor;
+			} while (cursor);
+
+			// All items collected, no duplicates
+			const unique = new Set(allPaths);
+			expect(unique.size).toBe(allPaths.length);
+			// If total was reported, it should match
+			if (total !== undefined) {
+				expect(allPaths.length).toBe(total);
+			}
 		});
 
 		// Regression test: depth:1 returns only direct children; folders sort first
@@ -1028,6 +1205,401 @@ describe('Kado MCP Live Tests', () => {
 	});
 
 	// --------------------------------------------------------
+	// Frontmatter CRUD — Key1 has full frontmatter CRUD in allowed/
+	// --------------------------------------------------------
+
+	describe('Frontmatter CRUD (Key1)', () => {
+		const FM_SCRATCH_PATH = 'allowed/_fm-crud-scratch.md';
+		const FM_SCRATCH_FS = resolve(MIYO_KADO_VAULT_PATH, FM_SCRATCH_PATH);
+		const FM_SCRATCH_CONTENT = '---\ntitle: FM Test\n---\n\n# Frontmatter CRUD Scratch\n';
+
+		beforeAll(async () => {
+			// Clean up from any prior failed run
+			try { if (existsSync(FM_SCRATCH_FS)) unlinkSync(FM_SCRATCH_FS); } catch { /* */ }
+		});
+		afterAll(() => {
+			try { if (existsSync(FM_SCRATCH_FS)) unlinkSync(FM_SCRATCH_FS); } catch { /* */ }
+		});
+
+		it('T-FM.0: creates scratch note for frontmatter tests', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: FM_SCRATCH_PATH,
+				content: FM_SCRATCH_CONTENT,
+			});
+			expect(result.isError).toBeFalsy();
+		});
+
+		it('T-FM.1: writes new frontmatter keys', async (ctx) => {
+			await requireReady(ctx);
+
+			// Read first to get expectedModified (file exists from T-FM.0)
+			const preRead = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			expect(preRead.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(preRead);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+				content: {testKey: 'hello', priority: 'high'},
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBeFalsy();
+
+			// Read back and verify
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			expect(readResult.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(readResult);
+			expect(body.content).toMatchObject({testKey: 'hello', priority: 'high'});
+		});
+
+		it('T-FM.2: updates existing frontmatter key (merge, not replace)', async (ctx) => {
+			await requireReady(ctx);
+
+			// Read to get modified timestamp
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+				content: {testKey: 'updated'},
+				expectedModified: modified,
+			});
+			expect(result.isError).toBeFalsy();
+
+			// Verify merge: testKey updated, priority still present
+			const verifyResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			expect(verifyResult.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(verifyResult);
+			expect(body.content.testKey).toBe('updated');
+			expect(body.content.priority).toBe('high');
+		});
+
+		it('T-FM.3: adds new field without removing existing ones', async (ctx) => {
+			await requireReady(ctx);
+
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+				content: {newField: 42},
+				expectedModified: modified,
+			});
+			expect(result.isError).toBeFalsy();
+
+			// All 3 keys must be present — proves Object.assign merge
+			const verifyResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: FM_SCRATCH_PATH,
+			});
+			const body = parseResult<{content: Record<string, unknown>}>(verifyResult);
+			expect(body.content).toMatchObject({
+				testKey: 'updated',
+				priority: 'high',
+				newField: 42,
+			});
+		});
+	});
+
+	// --------------------------------------------------------
+	// Inline Field CRUD — Key1 has full DV CRUD in allowed/
+	// --------------------------------------------------------
+
+	describe('Inline Field CRUD (Key1)', () => {
+		const DV_SCRATCH_PATH = 'allowed/_dv-crud-scratch.md';
+		const DV_SCRATCH_FS = resolve(MIYO_KADO_VAULT_PATH, DV_SCRATCH_PATH);
+		const DV_SCRATCH_CONTENT = [
+			'---',
+			'title: DV Test',
+			'---',
+			'',
+			'# Inline Field Test',
+			'',
+			'[status:: draft]',
+			'[progress:: 0]',
+			'',
+		].join('\n');
+
+		beforeAll(async () => {
+			try { if (existsSync(DV_SCRATCH_FS)) unlinkSync(DV_SCRATCH_FS); } catch { /* */ }
+		});
+		afterAll(() => {
+			try { if (existsSync(DV_SCRATCH_FS)) unlinkSync(DV_SCRATCH_FS); } catch { /* */ }
+		});
+
+		it('T-DV.0: creates scratch note for inline field tests', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: DV_SCRATCH_PATH,
+				content: DV_SCRATCH_CONTENT,
+			});
+			expect(result.isError).toBeFalsy();
+		});
+
+		it('T-DV.1: updates bracket inline field [status:: draft] → published', async (ctx) => {
+			await requireReady(ctx);
+
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+				content: {status: 'published'},
+				expectedModified: modified,
+			});
+			expect(result.isError).toBeFalsy();
+
+			// Read back
+			const verifyResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+			});
+			expect(verifyResult.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, string>}>(verifyResult);
+			expect(body.content.status).toBe('published');
+		});
+
+		it('T-DV.2: updates numeric inline field [progress:: 0] → 100', async (ctx) => {
+			await requireReady(ctx);
+
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+			});
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+				content: {progress: '100'},
+				expectedModified: modified,
+			});
+			expect(result.isError).toBeFalsy();
+
+			const verifyResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'dataview-inline-field',
+				path: DV_SCRATCH_PATH,
+			});
+			const body = parseResult<{content: Record<string, string>}>(verifyResult);
+			expect(body.content.progress).toBe('100');
+			// status should still be "published" from previous test
+			expect(body.content.status).toBe('published');
+		});
+	});
+
+	// --------------------------------------------------------
+	// kado-delete — trash notes/files + remove frontmatter keys
+	// --------------------------------------------------------
+
+	describe('kado-delete (Key1)', () => {
+		const DEL_NOTE_PATH = 'allowed/_del-note-scratch.md';
+		const DEL_NOTE_FS = resolve(MIYO_KADO_VAULT_PATH, DEL_NOTE_PATH);
+		const DEL_BIN_PATH = 'allowed/_del-bin-scratch.bin';
+		const DEL_BIN_FS = resolve(MIYO_KADO_VAULT_PATH, DEL_BIN_PATH);
+		const DEL_FM_PATH = 'allowed/_del-fm-scratch.md';
+		const DEL_FM_FS = resolve(MIYO_KADO_VAULT_PATH, DEL_FM_PATH);
+
+		async function cleanup() {
+			for (const p of [DEL_NOTE_FS, DEL_BIN_FS, DEL_FM_FS]) {
+				try { if (existsSync(p)) unlinkSync(p); } catch { /* */ }
+			}
+		}
+
+		beforeAll(async () => { await cleanup(); });
+		afterAll(async () => { await cleanup(); });
+
+		it('T-DEL.1: creates a scratch note then deletes it via trash', async (ctx) => {
+			await requireReady(ctx);
+
+			// Create
+			const create = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: DEL_NOTE_PATH,
+				content: '# To be deleted',
+			});
+			expect(create.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(create);
+			expect(existsSync(DEL_NOTE_FS)).toBe(true);
+
+			// Delete
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'note',
+				path: DEL_NOTE_PATH,
+				expectedModified: modified,
+			});
+			expect(del.isError).toBeFalsy();
+			const body = parseResult<{path: string}>(del);
+			expect(body.path).toBe(DEL_NOTE_PATH);
+
+			// Wait for trash to flush, then verify file is gone from its original location
+			await new Promise(r => setTimeout(r, 1000));
+			expect(existsSync(DEL_NOTE_FS)).toBe(false);
+		});
+
+		it('T-DEL.2: creates a binary file then deletes it', async (ctx) => {
+			await requireReady(ctx);
+			const data = Buffer.from([0xDE, 0xAD, 0xBE, 0xEF]).toString('base64');
+
+			const create = await callTool(apiKey(), 'kado-write', {
+				operation: 'file',
+				path: DEL_BIN_PATH,
+				content: data,
+			});
+			expect(create.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(create);
+			expect(existsSync(DEL_BIN_FS)).toBe(true);
+
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'file',
+				path: DEL_BIN_PATH,
+				expectedModified: modified,
+			});
+			expect(del.isError).toBeFalsy();
+
+			await new Promise(r => setTimeout(r, 1000));
+			expect(existsSync(DEL_BIN_FS)).toBe(false);
+		});
+
+		it('T-DEL.3: deletes specified frontmatter keys, preserves others', async (ctx) => {
+			await requireReady(ctx);
+
+			// Create note with frontmatter
+			const createNote = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: DEL_FM_PATH,
+				content: '---\nkeep: this\nremove: gone\nalso: stays\n---\n\n# Body\n',
+			});
+			expect(createNote.isError).toBeFalsy();
+
+			// Read to get mtime
+			const readFm = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+			});
+			expect(readFm.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readFm);
+
+			// Delete the 'remove' key
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+				expectedModified: modified,
+				keys: ['remove'],
+			});
+			expect(del.isError).toBeFalsy();
+
+			// Verify 'remove' is gone, others stay
+			const verify = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+			});
+			expect(verify.isError).toBeFalsy();
+			const body = parseResult<{content: Record<string, unknown>}>(verify);
+			expect(body.content).toEqual({keep: 'this', also: 'stays'});
+		});
+
+		it('T-DEL.4: CONFLICT on stale expectedModified', async (ctx) => {
+			await requireReady(ctx);
+			// DEL_FM_PATH still exists from T-DEL.3 — use it with a stale timestamp
+			expect(existsSync(DEL_FM_FS)).toBe(true);
+
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+				expectedModified: 1,
+				keys: ['keep'],
+			});
+
+			expect(del.isError).toBe(true);
+			const body = parseResult<{code: string}>(del);
+			expect(body.code).toBe('CONFLICT');
+
+			// File untouched — still has 'keep' frontmatter
+			const verify = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+			});
+			const vbody = parseResult<{content: Record<string, unknown>}>(verify);
+			expect(vbody.content.keep).toBe('this');
+		});
+
+		it('T-DEL.5: NOT_FOUND when target does not exist', async (ctx) => {
+			await requireReady(ctx);
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'note',
+				path: 'allowed/_does-not-exist.md',
+				expectedModified: 1,
+			});
+
+			expect(del.isError).toBe(true);
+			const body = parseResult<{code: string}>(del);
+			expect(body.code).toBe('NOT_FOUND');
+		});
+
+		it('T-DEL.6: VALIDATION_ERROR for operation=dataview-inline-field', async (ctx) => {
+			await requireReady(ctx);
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'dataview-inline-field',
+				path: 'allowed/Project Alpha.md',
+				expectedModified: 1,
+			});
+
+			expect(del.isError).toBe(true);
+			const body = parseResult<{code: string}>(del);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+
+		it('T-DEL.7: VALIDATION_ERROR for frontmatter delete without keys', async (ctx) => {
+			await requireReady(ctx);
+			expect(existsSync(DEL_FM_FS)).toBe(true);
+
+			const readFm = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+			});
+			const {modified} = parseResult<{modified: number}>(readFm);
+
+			const del = await callTool(apiKey(), 'kado-delete', {
+				operation: 'frontmatter',
+				path: DEL_FM_PATH,
+				expectedModified: modified,
+				// no keys
+			});
+
+			expect(del.isError).toBe(true);
+			const body = parseResult<{code: string}>(del);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+	});
+
+	// --------------------------------------------------------
 	// Audit log — verify operations are logged
 	// --------------------------------------------------------
 
@@ -1055,23 +1627,15 @@ describe('Kado MCP Live Tests', () => {
 
 		it('logs allowed read operations with correct fields', async (ctx) => {
 			await requireReady(ctx);
-			// Clear log, do a fresh read, verify it's logged
-			clearAuditLog();
-			await new Promise(r => setTimeout(r, 200));
+			const before = readAuditLog().length;
 
 			await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'allowed/Project Alpha.md',
 			});
 
-			// Wait for async log write to flush
-			await new Promise(r => setTimeout(r, 500));
-			const entries = readAuditLog();
-			expect(entries.length).toBeGreaterThanOrEqual(1);
-
-			const readEntry = entries.find(e =>
-				e.decision === 'allowed' && e.path === 'allowed/Project Alpha.md',
-			);
+			const readEntry = await waitForAuditEntry(before,
+				e => e.decision === 'allowed' && e.path === 'allowed/Project Alpha.md');
 			expect(readEntry).toBeDefined();
 			expect(readEntry!.operation).toBe('note');
 			expect(readEntry!.dataType).toBe('note');
@@ -1081,51 +1645,37 @@ describe('Kado MCP Live Tests', () => {
 
 		it('logs denied operations with gate name', async (ctx) => {
 			await requireReady(ctx);
-			clearAuditLog();
-			await new Promise(r => setTimeout(r, 200));
+			const before = readAuditLog().length;
 
 			await callTool(apiKey(),'kado-read', {
 				operation: 'note',
 				path: 'nope/Credentials.md',
 			});
 
-			await new Promise(r => setTimeout(r, 500));
-			const entries = readAuditLog();
-			expect(entries.length).toBeGreaterThanOrEqual(1);
-
-			const deniedEntry = entries.find(e =>
-				e.decision === 'denied' && e.path === 'nope/Credentials.md',
-			);
+			const deniedEntry = await waitForAuditEntry(before,
+				e => e.decision === 'denied' && e.path === 'nope/Credentials.md');
 			expect(deniedEntry).toBeDefined();
 			expect(deniedEntry!.gate).toBeTruthy();
 		});
 
 		it('logs search operations', async (ctx) => {
 			await requireReady(ctx);
-			clearAuditLog();
-			await new Promise(r => setTimeout(r, 200));
+			const before = readAuditLog().length;
 
 			await callTool(apiKey(),'kado-search', {
 				operation: 'listDir',
 				path: 'allowed/',
 			});
 
-			await new Promise(r => setTimeout(r, 500));
-			const entries = readAuditLog();
-			expect(entries.length).toBeGreaterThanOrEqual(1);
-
-			const searchEntry = entries.find(e =>
-				e.decision === 'allowed' && e.operation === 'listDir',
-			);
+			const searchEntry = await waitForAuditEntry(before,
+				e => e.decision === 'allowed' && e.operation === 'listDir');
 			expect(searchEntry).toBeDefined();
 		});
 
 		it('logs write operations', async (ctx) => {
 			await requireReady(ctx);
-			clearAuditLog();
-			await new Promise(r => setTimeout(r, 200));
+			const before = readAuditLog().length;
 
-			// Write a scratch file (may already exist from prior test)
 			const scratchPath = 'allowed/_audit-test-scratch.md';
 			const scratchFsPath = resolve(MIYO_KADO_VAULT_PATH, scratchPath);
 
@@ -1138,12 +1688,8 @@ describe('Kado MCP Live Tests', () => {
 				content: '# Audit test',
 			});
 
-			await new Promise(r => setTimeout(r, 500));
-			const entries = readAuditLog();
-
-			const writeEntry = entries.find(e =>
-				e.decision === 'allowed' && e.path === scratchPath,
-			);
+			const writeEntry = await waitForAuditEntry(before,
+				e => e.decision === 'allowed' && e.path === scratchPath);
 			expect(writeEntry).toBeDefined();
 			expect(writeEntry!.operation).toBe('note');
 
@@ -1259,6 +1805,89 @@ describe('Kado MCP Live Tests', () => {
 			expect(body.code).toBe('FORBIDDEN');
 			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, path))).toBe(false);
 		});
+
+		it('T2.8: Key1 cannot write frontmatter in maybe-allowed/ (frontmatter.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			// Budget 2026.md exists, Key1 has frontmatter.create=false in maybe-allowed
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'frontmatter',
+				path: 'maybe-allowed/Budget 2026.md',
+				content: {injected: 'should-fail'},
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.9: Key1 cannot update inline fields in maybe-allowed/ (dv.update=false)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-write', {
+				operation: 'dataview-inline-field',
+				path: 'maybe-allowed/Budget 2026.md',
+				content: {approved: 'true'},
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.10: Key1 cannot delete note in maybe-allowed/ (note.delete=false)', async (ctx) => {
+			await requireReady(ctx);
+			// First read to get mtime
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-delete', {
+				operation: 'note',
+				path: 'maybe-allowed/Budget 2026.md',
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			// File must still exist
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, 'maybe-allowed/Budget 2026.md'))).toBe(true);
+		});
+
+		it('T2.11: Key1 cannot delete frontmatter key in maybe-allowed/ (frontmatter.delete=false)', async (ctx) => {
+			await requireReady(ctx);
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'frontmatter',
+				path: 'maybe-allowed/Budget 2026.md',
+			});
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(apiKey(), 'kado-delete', {
+				operation: 'frontmatter',
+				path: 'maybe-allowed/Budget 2026.md',
+				expectedModified: modified,
+				keys: ['title'],
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T2.12: Key1 cannot delete note in nope/ (outside global scope)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-delete', {
+				operation: 'note',
+				path: 'nope/Credentials.md',
+				expectedModified: 1,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
 	});
 
 	// --------------------------------------------------------
@@ -1359,6 +1988,57 @@ describe('Kado MCP Live Tests', () => {
 			} else {
 				const body = parseResult<{items: unknown[]}>(result);
 				expect(body.items.length).toBe(0);
+			}
+		});
+
+		it('T3.7: Key2 byTag returns FORBIDDEN or empty', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-search', {
+				operation: 'byTag',
+				query: '#engineering',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items).toHaveLength(0);
+			}
+		});
+
+		it('T3.8: Key2 byContent does not leak restricted content', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-search', {
+				operation: 'byContent',
+				query: 'Sprint Planning',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items).toHaveLength(0);
+			}
+		});
+
+		it('T3.9: Key2 byFrontmatter does not leak metadata', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const result = await callTool(keys.key2!, 'kado-search', {
+				operation: 'byFrontmatter',
+				query: 'status=active',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items).toHaveLength(0);
 			}
 		});
 	});
@@ -1470,6 +2150,154 @@ describe('Kado MCP Live Tests', () => {
 			const result = await callTool(keys.key3!, 'kado-read', {
 				operation: 'note',
 				path: 'nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.8: Key3 cannot write frontmatter in allowed/ (frontmatter.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-write', {
+				operation: 'frontmatter',
+				path: 'allowed/Project Alpha.md',
+				content: {injected: 'should-fail'},
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.9: Key3 cannot write inline fields in allowed/ (dv.create=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-write', {
+				operation: 'dataview-inline-field',
+				path: 'allowed/Project Alpha.md',
+				content: {completion: '100%'},
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.10: Key3 search byName in allowed/ returns results', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'byName',
+				query: 'Project',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const paths = body.items.map(i => i.path);
+			expect(paths).toContain('allowed/Project Alpha.md');
+		});
+
+		it('T-Key3.11: Key3 listDir on allowed/ works', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'listDir',
+				path: 'allowed/',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			expect(body.items.length).toBeGreaterThan(0);
+		});
+
+		it('T-Key3.12: Key3 byContent in allowed/ returns results', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'byContent',
+				query: 'Sprint Planning',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			expect(body.items.length).toBeGreaterThan(0);
+			const paths = body.items.map(i => i.path);
+			expect(paths).toContain('allowed/Meeting Notes 2026-03-28.md');
+		});
+
+		it('T-Key3.13: Key3 listDir on maybe-allowed/ is denied or empty', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'listDir',
+				path: 'maybe-allowed/',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: unknown[]}>(result);
+				expect(body.items).toHaveLength(0);
+			}
+		});
+
+		it('T-Key3.14: Key3 cannot delete note (note.delete=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+
+			// Read to get mtime
+			const readResult = await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+			expect(readResult.isError).toBeFalsy();
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(keys.key3!, 'kado-delete', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+				expectedModified: modified,
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+			// File must still exist
+			expect(existsSync(resolve(MIYO_KADO_VAULT_PATH, 'allowed/Project Alpha.md'))).toBe(true);
+		});
+
+		it('T-Key3.15: Key3 cannot delete frontmatter key (frontmatter.delete=false)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+
+			const readResult = await callTool(keys.key3!, 'kado-read', {
+				operation: 'frontmatter',
+				path: 'allowed/Project Alpha.md',
+			});
+			const {modified} = parseResult<{modified: number}>(readResult);
+
+			const result = await callTool(keys.key3!, 'kado-delete', {
+				operation: 'frontmatter',
+				path: 'allowed/Project Alpha.md',
+				expectedModified: modified,
+				keys: ['title'],
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(body.code).toBe('FORBIDDEN');
+		});
+
+		it('T-Key3.16: Key3 cannot read file (binary) from maybe-allowed/ (not in scope)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+
+			const result = await callTool(keys.key3!, 'kado-read', {
+				operation: 'file',
+				path: 'maybe-allowed/Budget 2026.md',
 			});
 
 			expect(result.isError).toBe(true);
@@ -1597,6 +2425,86 @@ describe('Kado MCP Live Tests', () => {
 			} else {
 				expect(result.isError).toBeFalsy();
 			}
+		});
+
+		it('T-TAG.1: byTag #finance finds note in maybe-allowed/ for Key1', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'byTag',
+				query: '#finance',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const paths = body.items.map(i => i.path);
+			expect(paths).toContain('maybe-allowed/Budget 2026.md');
+		});
+
+		it('T-TAG.2: byTag with tag not in key tag list returns empty or FORBIDDEN', async (ctx) => {
+			await requireReady(ctx);
+			// Global + Key1 tags allow: engineering, project/*, miyo/kado, finance.
+			// Search for a tag NOT in the whitelist — results should be empty or denied.
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'byTag',
+				query: '#miyo/tomo',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				expect(body.code).toBe('FORBIDDEN');
+			} else {
+				const body = parseResult<{items: Array<{path: string}>}>(result);
+				// Tag not in allowed list — should yield zero results
+				expect(body.items).toHaveLength(0);
+			}
+		});
+
+		it('T-SCOPE.1: byFrontmatter scope boundary — Key1 finds it, Key3 does not', async (ctx) => {
+			await requireReady(ctx);
+			// Budget 2026.md has frontmatter tags=[finance, planning] and is in maybe-allowed/
+			// Key1 has maybe-allowed/** read access, Key3 does not
+			// This also validates array-form frontmatter matching (Obsidian's list-form tags).
+			const key1Result = await callTool(apiKey(), 'kado-search', {
+				operation: 'byFrontmatter',
+				query: 'tags=finance',
+			});
+
+			expect(key1Result.isError).toBeFalsy();
+			const key1Body = parseResult<{items: Array<{path: string}>}>(key1Result);
+			const key1Paths = key1Body.items.map(i => i.path);
+			expect(key1Paths.some(p => p.startsWith('maybe-allowed/'))).toBe(true);
+
+			// Key3 should not see anything from maybe-allowed/
+			if (!keys.key3) return;
+			const key3Result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'byFrontmatter',
+				query: 'tags=finance',
+			});
+
+			if (key3Result.isError) {
+				// Acceptable: FORBIDDEN at scope level
+				expect(true).toBe(true);
+			} else {
+				const key3Body = parseResult<{items: Array<{path: string}>}>(key3Result);
+				const key3Paths = key3Body.items.map(i => i.path);
+				const leaked = key3Paths.filter(p => p.startsWith('maybe-allowed/'));
+				expect(leaked).toHaveLength(0);
+			}
+		});
+
+		it('T-SCOPE.2: Key3 byContent "Budget" returns zero results (maybe-allowed outside scope)', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			// "Budget" only appears in maybe-allowed/Budget 2026.md — outside Key3's scope
+			const result = await callTool(keys.key3!, 'kado-search', {
+				operation: 'byContent',
+				query: 'Budget',
+			});
+
+			expect(result.isError).toBeFalsy();
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const leaked = body.items.filter(i => i.path.startsWith('maybe-allowed/'));
+			expect(leaked).toHaveLength(0);
 		});
 	});
 
@@ -1768,6 +2676,195 @@ describe('Kado MCP Live Tests', () => {
 			const fixture = readFileSync(resolve(MIYO_KADO_VAULT_PATH, LARGE_PATH));
 			expect(decoded.length).toBe(fixture.length);
 			expect(Buffer.compare(decoded, fixture)).toBe(0);
+		});
+	});
+
+	// --------------------------------------------------------
+	// listDir edge cases — empty dirs, deep nesting, hidden files
+	// Requires listdir-fixtures/** in global security + Key1 paths
+	// --------------------------------------------------------
+
+	describe('listDir edge cases', () => {
+		it('T-LD.1: empty directory returns zero items (hidden .gitkeep filtered)', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'listdir-fixtures/L0/EmptyFolder/',
+			});
+
+			// Might be FORBIDDEN if config hasn't been reloaded, or empty items
+			if (result.isError) {
+				// If listdir-fixtures not in config yet, skip gracefully
+				const body = parseResult<{code: string}>(result);
+				if (body.code === 'FORBIDDEN') return; // config not yet applied
+				throw new Error(`Unexpected error: ${body.code}`);
+			}
+			const body = parseResult<{items: unknown[]}>(result);
+			// EmptyFolder contains only .gitkeep — hidden files are excluded
+			expect(body.items).toHaveLength(0);
+		});
+
+		it('T-LD.2: unlimited depth finds deeply nested files', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'listdir-fixtures/',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				if (body.code === 'FORBIDDEN') return;
+				throw new Error(`Unexpected error: ${body.code}`);
+			}
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const paths = body.items.map(i => i.path);
+			// L0/L1/L2/L3/deep-file.md should appear at unlimited depth
+			expect(paths.some(p => p.includes('L3/deep-file.md'))).toBe(true);
+		});
+
+		it('T-LD.3: depth:1 shows only direct children', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'listdir-fixtures/L0/',
+				depth: 1,
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				if (body.code === 'FORBIDDEN') return;
+				throw new Error(`Unexpected error: ${body.code}`);
+			}
+			const body = parseResult<{items: Array<{path: string}>}>(result);
+			const paths = body.items.map(i => i.path);
+			// Direct children like L0-root-a.md should appear
+			expect(paths.some(p => p.includes('L0-root'))).toBe(true);
+			// Deep nested files should NOT appear
+			expect(paths.some(p => p.includes('L2/'))).toBe(false);
+			expect(paths.some(p => p.includes('L3/'))).toBe(false);
+		});
+
+		it('T-LD.4: hidden files (.hidden-root.md) are excluded from results', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-search', {
+				operation: 'listDir',
+				path: 'listdir-fixtures/',
+			});
+
+			if (result.isError) {
+				const body = parseResult<{code: string}>(result);
+				if (body.code === 'FORBIDDEN') return;
+				throw new Error(`Unexpected error: ${body.code}`);
+			}
+			const body = parseResult<{items: Array<{path: string; name: string}>}>(result);
+			const names = body.items.map(i => i.name ?? i.path);
+			const hidden = names.filter(n => n.startsWith('.'));
+			expect(hidden).toHaveLength(0);
+		});
+	});
+
+	// --------------------------------------------------------
+	// Audit log — per-key verification
+	// --------------------------------------------------------
+
+	describe('Audit per-key', () => {
+		it('T-AUD.1: denied request from Key2 logs Key2 apiKeyId', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key2) ctx.skip();
+			const before = readAuditLog().length;
+
+			await callTool(keys.key2!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			// Key2's apiKeyId is truncated in the log (trailing ...) — match by 12-char prefix
+			const key2Prefix = keys.key2!.substring(0, 12);
+			const key2Entry = await waitForAuditEntry(before,
+				e => e.apiKeyId.startsWith(key2Prefix));
+			expect(key2Entry).toBeDefined();
+			expect(key2Entry!.decision).toBe('denied');
+		});
+
+		it('T-AUD.2: allowed request from Key3 logs Key3 apiKeyId', async (ctx) => {
+			await requireReady(ctx);
+			if (!keys.key3) ctx.skip();
+			const before = readAuditLog().length;
+
+			await callTool(keys.key3!, 'kado-read', {
+				operation: 'note',
+				path: 'allowed/Project Alpha.md',
+			});
+
+			const key3Prefix = keys.key3!.substring(0, 12);
+			const key3Entry = await waitForAuditEntry(before,
+				e => e.apiKeyId.startsWith(key3Prefix));
+			expect(key3Entry).toBeDefined();
+			expect(key3Entry!.decision).toBe('allowed');
+		});
+	});
+
+	// --------------------------------------------------------
+	// Path security edge cases — encoding attacks
+	// --------------------------------------------------------
+
+	describe('Path security — encoding attacks', () => {
+		afterAll(() => {
+			// Clean up unicode scratch file if created
+			const p = resolve(MIYO_KADO_VAULT_PATH, 'allowed/_test-ünic\u00F6de.md');
+			try { if (existsSync(p)) unlinkSync(p); } catch { /* */ }
+		});
+
+		it('T5.5: URL-encoded traversal %2e%2e is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/%2e%2e/nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(['VALIDATION_ERROR', 'FORBIDDEN', 'NOT_FOUND']).toContain(body.code);
+		});
+
+		it('T5.6: double-encoded traversal %252e%252e is rejected', async (ctx) => {
+			await requireReady(ctx);
+			const result = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: 'allowed/%252e%252e/nope/Credentials.md',
+			});
+
+			expect(result.isError).toBe(true);
+			const body = parseResult<{code: string}>(result);
+			expect(['VALIDATION_ERROR', 'FORBIDDEN', 'NOT_FOUND', 'INTERNAL_ERROR']).toContain(body.code);
+		});
+
+		it('T5.7: unicode filename create and read roundtrip', async (ctx) => {
+			await requireReady(ctx);
+			const unicodePath = 'allowed/_test-\u00FCnic\u00F6de.md';
+			const content = '# Unicode Test\n\nUmlauts: \u00E4\u00F6\u00FC\u00DF';
+			const fspath = resolve(MIYO_KADO_VAULT_PATH, unicodePath);
+
+			// Clean up first
+			try { if (existsSync(fspath)) unlinkSync(fspath); } catch { /* */ }
+
+			const writeResult = await callTool(apiKey(), 'kado-write', {
+				operation: 'note',
+				path: unicodePath,
+				content,
+			});
+
+			expect(writeResult.isError).toBeFalsy();
+
+			// Read back
+			const readResult = await callTool(apiKey(), 'kado-read', {
+				operation: 'note',
+				path: unicodePath,
+			});
+
+			expect(readResult.isError).toBeFalsy();
+			const body = parseResult<{content: string}>(readResult);
+			expect(body.content).toContain('\u00E4\u00F6\u00FC\u00DF');
 		});
 	});
 

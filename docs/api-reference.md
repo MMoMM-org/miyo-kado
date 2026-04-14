@@ -1,6 +1,6 @@
 # Kado API Reference
 
-Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Three tools are available: `kado-read`, `kado-write`, and `kado-search`.
+Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Four tools are available: `kado-read`, `kado-write`, `kado-delete`, and `kado-search`.
 
 ---
 
@@ -303,6 +303,158 @@ Kado uses the `expectedModified` parameter to distinguish creates from updates a
   "message": "expectedModified is required when updating an existing file. Read the file first to get the current modified timestamp."
 }
 ```
+
+---
+
+## Tool: kado-delete
+
+Remove content from the Obsidian vault. Notes and files are moved to the user's configured trash (respects the Obsidian "Deleted files" setting — system trash, `.trash/` folder, or permanent). Frontmatter delete removes specific keys from YAML metadata using the JavaScript `delete` operator (removes the property, not set-to-null). `expectedModified` is always required for optimistic concurrency — deletes are irreversible, so a stale state guard is non-optional.
+
+### Operations
+
+| Operation | Behavior |
+|---|---|
+| `note` | Trash the markdown file via `fileManager.trashFile` |
+| `file` | Trash the binary file via `fileManager.trashFile` |
+| `frontmatter` | Remove specified keys from YAML frontmatter (requires `keys` array) |
+| `dataview-inline-field` | **Not supported** — returns `VALIDATION_ERROR`. Regex-based line removal is too risky for a destructive operation; use `kado-write` with the field removed instead. |
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `operation` | `"note" \| "file" \| "frontmatter" \| "dataview-inline-field"` | Yes | What to delete. `dataview-inline-field` is rejected with `VALIDATION_ERROR`. |
+| `path` | `string` | Yes | Vault-relative path |
+| `expectedModified` | `number` | **Yes (always)** | The `modified` timestamp from a prior read. CONFLICT if the file has changed since. |
+| `keys` | `string[]` | Conditional | Required and non-empty when `operation: "frontmatter"`. Array of frontmatter keys to remove. Ignored for `note` and `file`. |
+
+### Response Format
+
+| Field | Type | When set | Description |
+|---|---|---|---|
+| `path` | `string` | Always | Vault-relative path of the deleted target |
+| `modified` | `number` | Only for `frontmatter` | New `modified` timestamp of the file after key removal. Omitted for `note`/`file` deletes (file no longer exists). |
+
+### Delete Flow
+
+1. Call `kado-read` to get the current `modified` timestamp.
+2. Call `kado-delete` with `expectedModified` set to that value.
+3. On `CONFLICT`, re-read and retry (the file was modified between your read and delete).
+4. On `NOT_FOUND`, the target doesn't exist — nothing to delete.
+
+### Examples
+
+**Delete a note:**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "path": "100 Inbox/stale-draft.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "path": "100 Inbox/stale-draft.md"
+}
+```
+
+**Delete a binary file:**
+
+```json
+// Request arguments
+{
+  "operation": "file",
+  "path": "Attachments/old-screenshot.png",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "path": "Attachments/old-screenshot.png"
+}
+```
+
+**Delete frontmatter keys (other keys preserved):**
+
+```json
+// Request arguments
+{
+  "operation": "frontmatter",
+  "path": "Projects/kado.md",
+  "expectedModified": 1743379500000,
+  "keys": ["draft", "obsolete-field"]
+}
+
+// Response content
+{
+  "path": "Projects/kado.md",
+  "modified": 1743380200000
+}
+```
+
+**VALIDATION_ERROR — dataview-inline-field not supported:**
+
+```json
+// Request arguments
+{
+  "operation": "dataview-inline-field",
+  "path": "Tasks/review.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapDeleteRequest: operation must be one of note|frontmatter|file (got 'dataview-inline-field')"
+}
+```
+
+**VALIDATION_ERROR — frontmatter delete without keys:**
+
+```json
+// Request arguments
+{
+  "operation": "frontmatter",
+  "path": "Projects/kado.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapDeleteRequest: frontmatter delete requires a non-empty \"keys\" array"
+}
+```
+
+**CONFLICT — stale expectedModified:**
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "File was updated in the background. Re-read before deleting."
+}
+```
+
+**NOT_FOUND — target does not exist:**
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "File not found: 100 Inbox/already-deleted.md"
+}
+```
+
+### Trash Behavior
+
+Delete uses `app.fileManager.trashFile()`, which respects the user's Obsidian setting **Settings → Files and Links → Deleted files**:
+
+- **Move to system trash** (default on desktop) — file goes to OS trash (`~/.Trash` on macOS, Recycle Bin on Windows)
+- **Move to Obsidian trash** — file goes to `.trash/` at the vault root
+- **Permanently delete** — file is unrecoverable
+
+This gives the user — not the AI — final control over deletion recoverability.
 
 ---
 

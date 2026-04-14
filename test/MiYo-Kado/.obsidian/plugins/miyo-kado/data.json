@@ -65,10 +65,42 @@
             "delete": true
           }
         }
+      },
+      {
+        "path": "listdir-fixtures/**",
+        "permissions": {
+          "note": {
+            "create": false,
+            "read": true,
+            "update": false,
+            "delete": false
+          },
+          "frontmatter": {
+            "create": false,
+            "read": true,
+            "update": false,
+            "delete": false
+          },
+          "file": {
+            "create": false,
+            "read": true,
+            "update": false,
+            "delete": false
+          },
+          "dataviewInlineField": {
+            "create": false,
+            "read": true,
+            "update": false,
+            "delete": false
+          }
+        }
       }
     ],
     "tags": [
-      "inlinetag/yes"
+      "engineering",
+      "project/*",
+      "miyo/kado",
+      "finance"
     ]
   },
   "apiKeys": [
@@ -86,7 +118,7 @@
               "create": true,
               "read": true,
               "update": true,
-              "delete": false
+              "delete": true
             },
             "frontmatter": {
               "create": true,
@@ -136,10 +168,42 @@
               "delete": false
             }
           }
+        },
+        {
+          "path": "listdir-fixtures/**",
+          "permissions": {
+            "note": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "frontmatter": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "file": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            },
+            "dataviewInlineField": {
+              "create": false,
+              "read": true,
+              "update": false,
+              "delete": false
+            }
+          }
         }
       ],
       "tags": [
-        "inlinetag/yes"
+        "engineering",
+        "project/*",
+        "miyo/kado",
+        "finance"
       ]
     },
     {
@@ -189,7 +253,7 @@
         }
       ],
       "tags": [
-        "inlinetag/yes"
+        "engineering"
       ]
     }
   ],

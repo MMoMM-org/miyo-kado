@@ -1338,6 +1338,68 @@ describe('SearchAdapter — byFrontmatter', () => {
 
 		expect(result.items).toEqual([]);
 	});
+
+	it('matches array-form values (tags: [finance, planning])', async () => {
+		// YAML inline array `tags: [finance, planning]` parses to a real array
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {tags: ['finance', 'planning']}}],
+			[fileB, {frontmatter: {tags: ['engineering']}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=finance'})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('matches array member at non-first position (tags=planning)', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tags: ['finance', 'planning']}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=planning'})));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('matches comma-separated string values (tags: finance, planning)', async () => {
+		// Obsidian accepts `tags: finance, planning` — metadataCache may return it as string
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tags: 'finance, planning'}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=planning'})));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('array matching is case-insensitive', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tags: ['Finance', 'Planning']}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=finance'})));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('array non-member query returns empty', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tags: ['finance', 'planning']}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=nope'})));
+
+		expect(result.items).toEqual([]);
+	});
 });
 
 // ---------------------------------------------------------------------------

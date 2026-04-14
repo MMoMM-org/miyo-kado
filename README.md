@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through three tools: `kado-read`, `kado-write`, and `kado-search`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through four tools: `kado-read`, `kado-write`, `kado-delete`, and `kado-search`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
@@ -17,7 +17,7 @@ Letting an AI assistant talk to your vault sounds great until you realize most i
 - **Audit trail.** Every allowed and denied request is logged so you can see exactly what an assistant touched.
 - **Local-first.** The MCP server runs inside Obsidian on `127.0.0.1` by default. No cloud, no telemetry, no third party.
 
-If you've ever wanted to say "this assistant can read my project notes but not my journal, and definitely cannot delete anything", Kado is for you.
+If you've ever wanted to say "this assistant can read my project notes but not my journal, and can delete drafts but never touch archived material", Kado is for you. Delete is a separate permission flag alongside create/read/update — you decide which keys are allowed to remove content, and all deletions go through the trash (respecting your Obsidian "Deleted files" setting).
 
 ## Features
 

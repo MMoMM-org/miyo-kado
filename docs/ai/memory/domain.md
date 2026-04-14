@@ -1,7 +1,17 @@
 # Domain — Kado
-<!-- Business rules, data models, entities, domain language. Updated: 2026-03-30 -->
+<!-- Business rules, data models, entities, domain language. Updated: 2026-04-14 -->
 <!-- What goes here: what X means in this codebase, business rules that drive code decisions -->
 <!-- Entries that appear frequently may be promotable → run /memory-promote -->
+
+<!-- 2026-04-14 -->
+## kado-delete semantics
+`kado-delete` is the fourth MCP tool (alongside read/write/search). It supports 3 data types: `note`, `file`, `frontmatter`. Inline fields are intentionally excluded (regex-based line removal too risky).
+- `note` / `file` → `app.fileManager.trashFile()` — respects user's Obsidian "Deleted files" setting (system trash / `.trash/` folder / permanent).
+- `frontmatter` → `app.fileManager.processFrontMatter()` with JS `delete fm[key]` for each key in the `keys` array. Removes the property, not sets to null.
+- `expectedModified` is always required (no optional form — prevents deleting stale state).
+- `keys` is required when `operation='frontmatter'` (non-empty string array).
+- Permission gate uses `delete: true/false` from CrudFlags — same mechanism as read/write/update.
+- Router discriminates via explicit `kind: 'delete'` marker on CoreDeleteRequest (other request types don't have a `kind` field).
 
 <!-- 2026-04-08 -->
 ## Access mode is per-key, not inherited from global

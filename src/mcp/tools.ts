@@ -19,12 +19,13 @@ import type {PermissionGate, CoreRequest, CoreError, DataType} from '../types/ca
 import {isCoreSearchRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {validateConcurrency} from '../core/concurrency-guard';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from './response-mapper';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest} from './request-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError} from './response-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
+	CoreDeleteResult,
 	CoreSearchItem,
 	KadoConfig,
 } from '../types/canonical';
@@ -37,7 +38,7 @@ import {matchTag} from '../core/tag-utils';
 // Public types
 // ============================================================
 
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreError;
+type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
 
 /** Dependencies injected into the MCP tool handlers. */
 export interface ToolDependencies {
@@ -64,6 +65,15 @@ const kadoWriteShape = {
 	path: z.string().describe('Vault-relative path e.g. "100 Inbox/new-note.md"'),
 	content: z.unknown().describe('The content to write. String for note/file, JSON object for frontmatter/dataview-inline-field'),
 	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file.'),
+};
+
+const kadoDeleteShape = {
+	// Accept all 4 DataType values at the SDK boundary; mapDeleteRequest rejects
+	// 'dataview-inline-field' with a canonical VALIDATION_ERROR the client can parse.
+	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to delete: note (trash markdown file), file (trash binary file), frontmatter (remove specific keys from YAML). dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
+	path: z.string().describe('Vault-relative path.'),
+	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
+	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
 };
 
 export const kadoSearchShape = {
@@ -249,6 +259,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	registerReadTool(server, deps);
 	registerWriteTool(server, deps);
 	registerSearchTool(server, deps);
+	registerDeleteTool(server, deps);
 }
 
 // ============================================================
@@ -301,6 +312,44 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			await logAllowed(deps.auditLogger, keyId, request, startMs);
 			return mapWriteResult(result as CoreWriteResult);
 		} catch (err: unknown) {
+			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+		}
+	});
+}
+
+function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
+	server.registerTool('kado-delete', {description: 'Delete from the Obsidian vault. operation=note|file moves the file to the user\'s configured trash (respects Obsidian settings). operation=frontmatter removes specific keys via the "keys" array. Always requires expectedModified — read the file first and pass the "modified" timestamp. Returns CONFLICT if the file changed since your read, NOT_FOUND if missing.', inputSchema: kadoDeleteShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+		const keyId = extractKeyId(extra);
+		if (!keyId) return missingAuthError();
+
+		let request;
+		try {
+			request = mapDeleteRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
+
+		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
+		if (!perm.allowed) {
+			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			return mapError(perm.error);
+		}
+
+		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
+		if (!concurrency.allowed) return mapError(concurrency.error);
+
+		const startMs = performance.now();
+		try {
+			const result = await deps.router(request);
+			if (isCoreError(result)) return mapError(result);
+			await logAllowed(deps.auditLogger, keyId, request, startMs);
+			return mapDeleteResult(result as CoreDeleteResult);
+		} catch (err: unknown) {
+			// Adapters throw DeleteAdapterError with a `code` field — propagate it as the canonical error
+			const asError = err as {code?: string; message?: string};
+			if (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
+				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
 	});

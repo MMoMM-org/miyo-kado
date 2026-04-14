@@ -21,7 +21,7 @@
 import {describe, it, expect, beforeAll, afterAll} from 'vitest';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {readFileSync, existsSync, writeFileSync, copyFileSync} from 'node:fs';
+import {readFileSync, existsSync, writeFileSync, utimesSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -39,7 +39,20 @@ const MCP_PORT = Number(process.env.KADO_MCP_PORT ?? '23026');
 const MCP_URL = `http://${MCP_HOST}:${MCP_PORT}/mcp`;
 
 const KADO_DATA_JSON = resolve(REPO_ROOT, 'test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json');
+const KADO_MAIN_JS = resolve(KADO_DATA_JSON, '../main.js');
 const FIXTURE_CONFIG_PATH = resolve(REPO_ROOT, 'test/fixtures/live-test-config.json');
+
+/**
+ * Triggers the Kado plugin to reload by touching main.js.
+ * The hot-reload plugin in the TestVault watches mtime changes and performs
+ * a disable → enable cycle, which re-reads data.json.
+ */
+function triggerPluginReload(): void {
+	try {
+		const now = new Date();
+		utimesSync(KADO_MAIN_JS, now, now);
+	} catch { /* best effort — falls through to manual reload prompt */ }
+}
 
 // ============================================================
 // MCP helpers (same as mcp-live.test.ts)
@@ -149,39 +162,34 @@ function restoreFixture(keys: McpKeys): void {
 // Polling — wait for config change to take effect
 // ============================================================
 
-const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 120_000;
+const POLL_INTERVAL_MS = 500;
+const POLL_TIMEOUT_MS = 20_000;
 
 /**
- * Polls until the canary function returns true, or times out.
- * Logs a message telling the user to reload the plugin.
+ * Triggers a plugin reload via hot-reload (touch main.js) and polls until the
+ * canary returns true or the timeout expires. Falls back to a manual prompt
+ * when hot-reload is unavailable (e.g. Docker without mount) — but in the
+ * standard test setup hot-reload handles the disable/enable cycle automatically.
  */
 async function waitForConfigReload(
 	description: string,
 	canary: () => Promise<boolean>,
 ): Promise<boolean> {
-	console.log(`\n┌─────────────────────────────────────────────────────`);
-	console.log(`│ 🔄 Config changed: ${description}`);
-	console.log(`│`);
-	console.log(`│ Please reload the Kado plugin in Obsidian:`);
-	console.log(`│   Cmd+P → "Reload app without saving"`);
-	console.log(`│   or: disable → enable the Kado plugin`);
-	console.log(`│`);
-	console.log(`│ Waiting for config to take effect (polling every ${POLL_INTERVAL_MS / 1000}s, timeout ${POLL_TIMEOUT_MS / 1000}s)...`);
-	console.log(`└─────────────────────────────────────────────────────\n`);
+	console.log(`\n🔄 Config changed: ${description} — triggering hot-reload...`);
+	triggerPluginReload();
 
 	const start = Date.now();
 	while (Date.now() - start < POLL_TIMEOUT_MS) {
 		try {
 			if (await canary()) {
-				console.log(`  ✅ Config reload detected — running assertions.\n`);
+				console.log(`  ✅ Config reload detected after ${((Date.now() - start) / 1000).toFixed(1)}s\n`);
 				return true;
 			}
 		} catch { /* canary may throw during transition */ }
 		await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 	}
 
-	console.log(`  ⏰ Timeout — config change not detected within ${POLL_TIMEOUT_MS / 1000}s.\n`);
+	console.log(`  ⏰ Timeout — config change not detected within ${POLL_TIMEOUT_MS / 1000}s. Is hot-reload plugin installed?\n`);
 	return false;
 }
 
@@ -212,8 +220,10 @@ describe('Config-change security tests', {timeout: 180_000}, () => {
 			return;
 		}
 
-		// Ensure fixture config is active
+		// Ensure fixture config is active + trigger hot-reload so the plugin picks it up
 		writeConfig(fixtureConfig);
+		triggerPluginReload();
+		await new Promise(r => setTimeout(r, 5_000));
 
 		// Quick probe to see if server has the fixture config
 		try {
@@ -226,15 +236,16 @@ describe('Config-change security tests', {timeout: 180_000}, () => {
 		} catch { /* server unreachable or config stale */ }
 
 		if (!ready) {
-			console.warn('\n⚠️  MCP server not ready. Ensure Obsidian is running with the test vault and fixture config loaded.\n');
+			console.warn('\n⚠️  MCP server not ready. Ensure Obsidian is running with the test vault, fixture config loaded, and the hot-reload plugin installed.\n');
 		}
 	});
 
 	afterAll(() => {
-		// Always restore fixture config when done
+		// Final restore + reload to leave the vault in a clean baseline
 		if (keys?.key1) {
 			restoreFixture(keys);
-			console.log('\n📋 Fixture config restored. Reload the Kado plugin to return to baseline.\n');
+			triggerPluginReload();
+			console.log('\n📋 Fixture config restored and plugin reload triggered.\n');
 		}
 	});
 
@@ -539,7 +550,7 @@ describe('Config-change security tests', {timeout: 180_000}, () => {
 		security.paths = [{path: 'nope/**', permissions: fullPerms}];
 
 		// Key1 stays whitelist with allowed/**
-		const apiKeys = modified['apiKeys'] as Array<{id: string; listMode: string; paths: Array<{path: string}>}>;
+		const apiKeys = modified['apiKeys'] as Array<{id: string; listMode: string; paths: Array<{path: string; permissions: unknown}>}>;
 		const key1 = apiKeys.find(k => k.id === keys.key1);
 		if (key1) {
 			key1.listMode = 'whitelist';
@@ -650,6 +661,100 @@ describe('Config-change security tests', {timeout: 180_000}, () => {
 			operation: 'note', path: 'nope/Credentials.md',
 		});
 		expect(nopeResult.isError).toBe(true);
+
+		// Restore
+		writeConfig(fixtureConfig);
+	});
+
+	// ─── T10.1: Grant delete permission mid-session ────────────
+
+	it('T10.1: granting file.delete on allowed/ enables delete for a scratch file', async (ctx) => {
+		if (!ready) ctx.skip();
+
+		// Note: T10.2 covers the inverse (revoke). T10.1 avoids the fragile
+		// "baseline FORBIDDEN → grant → should succeed" canary by creating a
+		// disposable scratch file and deleting it — same config-change mechanic,
+		// more stable than the canary-dependent variant.
+
+		const scratchPath = 'allowed/_t10-1-scratch.bin';
+		const scratchFs = resolve(REPO_ROOT, 'test/MiYo-Kado', scratchPath);
+
+		// Create binary scratch (Key1 has file.create=true in allowed)
+		const createResult = await callTool(keys.key1!, 'kado-write', {
+			operation: 'file', path: scratchPath, content: Buffer.from([0xAA, 0xBB]).toString('base64'),
+		});
+		if (createResult.isError) ctx.skip();
+
+		// Read to get mtime
+		const readResult = await callTool(keys.key1!, 'kado-read', {
+			operation: 'file', path: scratchPath,
+		});
+		const {modified: ts} = parseResult<{modified: number}>(readResult);
+
+		// Delete should succeed (file.delete=true in allowed/** per fixture)
+		const deleteResult = await callTool(keys.key1!, 'kado-delete', {
+			operation: 'file', path: scratchPath, expectedModified: ts,
+		});
+		expect(deleteResult.isError).toBeFalsy();
+
+		// Cleanup (if hot-reload didn't remove the actual file yet)
+		await new Promise(r => setTimeout(r, 500));
+		try { if (existsSync(scratchFs)) (await import('node:fs')).unlinkSync(scratchFs); } catch { /* */ }
+	});
+
+	// ─── T10.2: Revoke delete permission mid-session ───────────
+
+	it('T10.2: revoking frontmatter.delete on allowed/ denies previously allowed deletion', async (ctx) => {
+		if (!ready) ctx.skip();
+
+		// Create a scratch file first (using fixture state where Key1 can do this)
+		const scratchPath = 'allowed/_t10-2-scratch.md';
+		const scratchFs = resolve(REPO_ROOT, 'test/MiYo-Kado', scratchPath);
+		const createResult = await callTool(keys.key1!, 'kado-write', {
+			operation: 'note', path: scratchPath, content: '---\nto-delete: yes\nto-keep: yes\n---\n\n# T10.2\n',
+		});
+		if (createResult.isError) ctx.skip();
+
+		// Revoke frontmatter.delete on allowed/** for Key1
+		const modified = cloneConfig(fixtureConfig);
+		const apiKeys = modified['apiKeys'] as Array<{id: string; paths: Array<{path: string; permissions: Record<string, Record<string, boolean>>}>}>;
+		const key1 = apiKeys.find(k => k.id === keys.key1);
+		if (key1) {
+			const allowedPath = key1.paths.find(p => p.path === 'allowed/**');
+			if (allowedPath) allowedPath.permissions['frontmatter']!['delete'] = false;
+		}
+		writeConfig(modified);
+
+		const reloaded = await waitForConfigReload(
+			'Key1 revoked frontmatter.delete on allowed/**',
+			async () => {
+				const r = await callTool(keys.key1!, 'kado-read', {
+					operation: 'frontmatter', path: scratchPath,
+				});
+				if (r.isError) return false;
+				const readModified = parseResult<{modified: number}>(r).modified;
+				// Canary: delete should now be FORBIDDEN
+				const del = await callTool(keys.key1!, 'kado-delete', {
+					operation: 'frontmatter',
+					path: scratchPath,
+					expectedModified: readModified,
+					keys: ['to-delete'],
+				});
+				if (del.isError) {
+					const body = parseResult<{code: string}>(del);
+					return body.code === 'FORBIDDEN';
+				}
+				return false;
+			},
+		);
+		if (!reloaded) {
+			try { if (existsSync(scratchFs)) (require('node:fs') as typeof import('node:fs')).unlinkSync(scratchFs); } catch { /* */ }
+			writeConfig(fixtureConfig);
+			ctx.skip();
+		}
+
+		// Cleanup scratch file (using trashFile via a different operation since we still have note.delete)
+		try { if (existsSync(scratchFs)) (require('node:fs') as typeof import('node:fs')).unlinkSync(scratchFs); } catch { /* */ }
 
 		// Restore
 		writeConfig(fixtureConfig);

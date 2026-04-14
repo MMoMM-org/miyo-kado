@@ -15,7 +15,9 @@
 /** The four data types Kado can read/write through the vault. */
 export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field';
 
-/** 'delete' is reserved for a future kado-delete tool. */
+/** Data types supported by kado-delete. Inline fields are intentionally excluded. */
+export type DeleteDataType = 'note' | 'frontmatter' | 'file';
+
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
 /** Supported search operation identifiers for CoreSearchRequest. */
@@ -62,8 +64,33 @@ export interface CoreSearchRequest {
 	resolvedKey?: ApiKeyConfig;
 }
 
+/**
+ * Request to delete a vault item (trash note/file) or remove frontmatter keys.
+ * `expectedModified` is always required for optimistic concurrency.
+ * `keys` is required when `operation='frontmatter'`.
+ */
+export interface CoreDeleteRequest {
+	/** Explicit discriminator — CoreDeleteRequest shares DataType with read, so a marker is needed. */
+	kind: 'delete';
+	apiKeyId: string;
+	operation: DeleteDataType;
+	path: string;
+	expectedModified: number;
+	/** Frontmatter keys to remove (via `delete fm[key]`). Required for operation='frontmatter'. */
+	keys?: string[];
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
+}
+
+/** Result of a delete operation. `modified` only set for frontmatter (file still exists). */
+export interface CoreDeleteResult {
+	path: string;
+	/** New mtime after frontmatter key removal. Omitted for note/file trash (file gone). */
+	modified?: number;
+}
+
 /** Union of all core request types flowing through the permission chain. */
-export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest;
+export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest;
 
 // ============================================================
 // Core Results
@@ -284,11 +311,12 @@ export function createDefaultConfig(): KadoConfig {
 
 /**
  * Returns true when `req` is a CoreReadRequest.
- * Discriminates by the absence of `content` (write marker) and
- * the absence of SearchOperation values on `operation`.
+ * Excludes write (has `content`), delete (has `kind`), and search (SearchOperation).
  */
 export function isCoreReadRequest(req: CoreRequest): req is CoreReadRequest {
-	return !('content' in req) && isDataType((req as CoreReadRequest).operation);
+	return !('content' in req)
+		&& !('kind' in req)
+		&& isDataType((req as CoreReadRequest).operation);
 }
 
 /**
@@ -305,6 +333,14 @@ export function isCoreWriteRequest(req: CoreRequest): req is CoreWriteRequest {
  */
 export function isCoreSearchRequest(req: CoreRequest): req is CoreSearchRequest {
 	return !('content' in req) && isSearchOperation((req as CoreSearchRequest).operation);
+}
+
+/**
+ * Returns true when `req` is a CoreDeleteRequest.
+ * Discriminated by the explicit `kind: 'delete'` marker.
+ */
+export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest {
+	return 'kind' in req && req.kind === 'delete';
 }
 
 // ============================================================

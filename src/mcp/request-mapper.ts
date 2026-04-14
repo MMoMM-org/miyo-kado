@@ -13,6 +13,8 @@ import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
+	CoreDeleteRequest,
+	DeleteDataType,
 } from '../types/canonical';
 
 type Args = Record<string, unknown>;
@@ -90,6 +92,50 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 function normalizeDirPath(path: string, operation: string): string {
 	if (operation !== 'listDir') return path;
 	return path.endsWith('/') ? path : path + '/';
+}
+
+/** Allowed operation values for kado-delete (inline fields excluded). */
+const DELETE_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file']);
+
+/**
+ * Maps raw MCP tool arguments into a CoreDeleteRequest.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if required fields (operation, path, expectedModified) are missing
+ *   or invalid (e.g. operation='dataview-inline-field', missing keys for frontmatter).
+ */
+export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
+	const operation = requireString(args, 'operation', 'mapDeleteRequest');
+	if (!DELETE_DATA_TYPES.has(operation)) {
+		throw new Error(`mapDeleteRequest: operation must be one of note|frontmatter|file (got '${operation}')`);
+	}
+	const path = requireString(args, 'path', 'mapDeleteRequest');
+
+	const rawExpected = requirePresent(args, 'expectedModified', 'mapDeleteRequest');
+	if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
+		throw new Error('mapDeleteRequest: expectedModified must be a number');
+	}
+
+	const result: CoreDeleteRequest = {
+		kind: 'delete',
+		apiKeyId: keyId,
+		operation: operation as DeleteDataType,
+		path,
+		expectedModified: rawExpected,
+	};
+
+	if (operation === 'frontmatter') {
+		const keys = args['keys'];
+		if (!Array.isArray(keys) || keys.length === 0) {
+			throw new Error('mapDeleteRequest: frontmatter delete requires a non-empty "keys" array');
+		}
+		if (!keys.every((k) => typeof k === 'string' && k.length > 0)) {
+			throw new Error('mapDeleteRequest: all items in "keys" must be non-empty strings');
+		}
+		result.keys = keys as string[];
+	}
+
+	return result;
 }
 
 /**

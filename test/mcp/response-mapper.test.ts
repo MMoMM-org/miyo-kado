@@ -11,6 +11,7 @@ import {
 	mapFileResult,
 	mapWriteResult,
 	mapSearchResult,
+	mapDeleteResult,
 	mapError,
 } from '../../src/mcp/response-mapper';
 import type {
@@ -18,6 +19,7 @@ import type {
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreSearchItem,
+	CoreDeleteResult,
 	CoreError,
 } from '../../src/types/canonical';
 
@@ -246,5 +248,47 @@ describe('mapError()', () => {
 
 		expect(result.isError).toBe(true);
 		expect(result.content[0].text).toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapDeleteResult
+// ---------------------------------------------------------------------------
+
+describe('mapDeleteResult()', () => {
+	it('returns {path} for note/file delete (no modified timestamp)', () => {
+		const result: CoreDeleteResult = {path: 'notes/a.md'};
+		const mapped = mapDeleteResult(result);
+
+		expect(mapped.content).toHaveLength(1);
+		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		expect(body).toEqual({path: 'notes/a.md'});
+		expect('modified' in body).toBe(false);
+	});
+
+	it('returns {path, modified} for frontmatter delete (file still exists)', () => {
+		const result: CoreDeleteResult = {path: 'notes/a.md', modified: 5000};
+		const mapped = mapDeleteResult(result);
+
+		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		expect(body).toEqual({path: 'notes/a.md', modified: 5000});
+	});
+
+	it('omits modified when explicitly undefined', () => {
+		const result: CoreDeleteResult = {path: 'notes/a.md', modified: undefined};
+		const mapped = mapDeleteResult(result);
+
+		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		expect(body).toEqual({path: 'notes/a.md'});
+	});
+
+	it('result has content type "text"', () => {
+		const mapped = mapDeleteResult({path: 'a.md'});
+		expect(mapped.content[0].type).toBe('text');
+	});
+
+	it('is not flagged as error', () => {
+		const mapped = mapDeleteResult({path: 'a.md'});
+		expect(mapped.isError).toBeUndefined();
 	});
 });

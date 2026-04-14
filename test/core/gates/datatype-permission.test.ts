@@ -12,10 +12,12 @@ import {describe, it, expect} from 'vitest';
 import {dataTypePermissionGate} from '../../../src/core/gates/datatype-permission';
 import type {
 	ApiKeyConfig,
+	CoreDeleteRequest,
 	CoreReadRequest,
 	CoreSearchRequest,
 	CoreWriteRequest,
 	DataTypePermissions,
+	DeleteDataType,
 	KadoConfig,
 	PathPermission,
 	SecurityConfig,
@@ -98,6 +100,21 @@ function makeWriteRequest(
 
 function makeSearchRequest(): CoreSearchRequest {
 	return {apiKeyId: 'kado_test-key', operation: 'byTag'};
+}
+
+function makeDeleteRequest(
+	path: string,
+	operation: DeleteDataType = 'note',
+	keys?: string[],
+): CoreDeleteRequest {
+	return {
+		kind: 'delete',
+		apiKeyId: 'kado_test-key',
+		operation,
+		path,
+		expectedModified: 1700000000000,
+		...(keys ? {keys} : {}),
+	};
 }
 
 /** Returns a config where both global and key scope whitelist 'projects/**' with full permissions. */
@@ -394,5 +411,70 @@ describe('dataTypePermissionGate.evaluate() — blacklist permission inversion',
 			makeConfig(security, [key]),
 		);
 		expect(result.allowed).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Delete requests — action inference and permission check
+// ---------------------------------------------------------------------------
+
+describe('dataTypePermissionGate.evaluate() — delete requests', () => {
+	it('allows delete when both scopes grant note.delete=true', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeDeleteRequest('projects/note.md', 'note'),
+			makeStandardWhitelistConfig(),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies delete when key scope has note.delete=false', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: true, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeDeleteRequest('projects/note.md', 'note'),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+			expect(result.error.message).toContain('delete');
+		}
+	});
+
+	it('denies delete when global scope has frontmatter.delete=false', () => {
+		const globalPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			frontmatter: {create: true, read: true, update: true, delete: false},
+		};
+		const security = makeSecurityConfig({
+			paths: [makePathPermission('projects/**', globalPerms)],
+		});
+		const key = makeApiKey('kado_test-key', {
+			paths: [makePathPermission('projects/**')],
+		});
+		const result = dataTypePermissionGate.evaluate(
+			makeDeleteRequest('projects/note.md', 'frontmatter', ['k1']),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+	});
+
+	it('allows file delete when both scopes grant file.delete=true', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeDeleteRequest('projects/image.png', 'file'),
+			makeStandardWhitelistConfig(),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies delete when path is outside all scopes', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeDeleteRequest('elsewhere/note.md', 'note'),
+			makeStandardWhitelistConfig(),
+		);
+		expect(result.allowed).toBe(false);
 	});
 });
