@@ -1,3 +1,15 @@
+# [0.4.0](https://github.com/MMoMM-org/miyo-kado/compare/0.3.2...0.4.0) (2026-04-14)
+
+
+### Bug Fixes
+
+* **search:** byFrontmatter matches array values ([ca89e4a](https://github.com/MMoMM-org/miyo-kado/commit/ca89e4a415f29a4711a488861d00038b18cb42cd))
+
+
+### Features
+
+* **delete:** add kado-delete MCP tool ([b85faec](https://github.com/MMoMM-org/miyo-kado/commit/b85faec5979e8d908439911266d72200b048a5ac))
+
 ## [0.3.2](https://github.com/MMoMM-org/miyo-kado/compare/0.3.1...0.3.2) (2026-04-13)
 
 
