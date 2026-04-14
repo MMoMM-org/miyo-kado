@@ -12,9 +12,12 @@ import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
+	CoreDeleteRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
+	CoreDeleteResult,
+	DeleteDataType,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -31,6 +34,20 @@ function makeWriteRequest(operation: CoreWriteRequest['operation']): CoreWriteRe
 
 function makeSearchRequest(operation: CoreSearchRequest['operation']): CoreSearchRequest {
 	return {apiKeyId: 'kado_test-key', operation, query: 'test'};
+}
+
+function makeDeleteRequest(
+	operation: DeleteDataType,
+	overrides?: Partial<CoreDeleteRequest>,
+): CoreDeleteRequest {
+	return {
+		kind: 'delete',
+		apiKeyId: 'kado_test-key',
+		operation,
+		path: 'notes/test.md',
+		expectedModified: 2000,
+		...overrides,
+	};
 }
 
 function makeFileResult(path = 'notes/test.md'): CoreFileResult {
@@ -62,6 +79,12 @@ function makeSearchAdapter() {
 	};
 }
 
+function makeDeleteAdapter() {
+	return {
+		delete: vi.fn(),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Test setup
 // ---------------------------------------------------------------------------
@@ -71,6 +94,9 @@ let frontmatterAdapter: ReturnType<typeof makeReadWriteAdapter>;
 let fileAdapter: ReturnType<typeof makeReadWriteAdapter>;
 let inlineFieldAdapter: ReturnType<typeof makeReadWriteAdapter>;
 let searchAdapter: ReturnType<typeof makeSearchAdapter>;
+let noteDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
+let fileDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
+let frontmatterDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 
 beforeEach(() => {
 	noteAdapter = makeReadWriteAdapter();
@@ -78,6 +104,9 @@ beforeEach(() => {
 	fileAdapter = makeReadWriteAdapter();
 	inlineFieldAdapter = makeReadWriteAdapter();
 	searchAdapter = makeSearchAdapter();
+	noteDeleteAdapter = makeDeleteAdapter();
+	fileDeleteAdapter = makeDeleteAdapter();
+	frontmatterDeleteAdapter = makeDeleteAdapter();
 });
 
 function makeRouter() {
@@ -87,6 +116,11 @@ function makeRouter() {
 		file: fileAdapter,
 		'dataview-inline-field': inlineFieldAdapter,
 		search: searchAdapter,
+		deleteAdapters: {
+			note: noteDeleteAdapter,
+			file: fileDeleteAdapter,
+			frontmatter: frontmatterDeleteAdapter,
+		},
 	});
 }
 
@@ -275,6 +309,60 @@ describe('createOperationRouter() — adapter isolation', () => {
 // ---------------------------------------------------------------------------
 // Error — unknown/invalid operation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Delete routing
+// ---------------------------------------------------------------------------
+
+function makeDeleteResult(path = 'notes/test.md'): CoreDeleteResult {
+	return {path};
+}
+
+describe('createOperationRouter() — delete routing', () => {
+	it('routes delete "note" to note delete adapter and returns its result', async () => {
+		const expected = makeDeleteResult();
+		noteDeleteAdapter.delete.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeDeleteRequest('note'));
+
+		expect(noteDeleteAdapter.delete).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('routes delete "file" to file delete adapter', async () => {
+		const expected = makeDeleteResult('image.png');
+		fileDeleteAdapter.delete.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeDeleteRequest('file', {path: 'image.png'}));
+
+		expect(fileDeleteAdapter.delete).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('routes delete "frontmatter" to frontmatter delete adapter', async () => {
+		const expected = {path: 'notes/test.md', modified: 3000};
+		frontmatterDeleteAdapter.delete.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeDeleteRequest('frontmatter', {keys: ['k1']}));
+
+		expect(frontmatterDeleteAdapter.delete).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('does not call read/write/search adapters when routing a delete', async () => {
+		noteDeleteAdapter.delete.mockResolvedValue(makeDeleteResult());
+
+		const route = makeRouter();
+		await route(makeDeleteRequest('note'));
+
+		expect(noteAdapter.read).not.toHaveBeenCalled();
+		expect(noteAdapter.write).not.toHaveBeenCalled();
+		expect(searchAdapter.search).not.toHaveBeenCalled();
+	});
+});
 
 describe('createOperationRouter() — invalid operation', () => {
 	it('returns a CoreError with VALIDATION_ERROR for an unrecognised operation', async () => {

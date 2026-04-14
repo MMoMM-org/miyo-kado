@@ -17,6 +17,7 @@
 import {
 	isCoreWriteRequest,
 	isCoreSearchRequest,
+	isCoreDeleteRequest,
 } from '../../types/canonical';
 import type {
 	CoreRequest,
@@ -39,6 +40,7 @@ function forbidden(message: string): GateResult {
 
 /** Infers the CRUD action from the request type. */
 function inferCrudAction(request: CoreRequest): CrudOperation {
+	if (isCoreDeleteRequest(request)) return 'delete';
 	if (isCoreWriteRequest(request)) {
 		return request.expectedModified !== undefined ? 'update' : 'create';
 	}

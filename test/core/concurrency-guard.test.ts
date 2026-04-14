@@ -40,6 +40,16 @@ function makeSearchRequest(): CoreRequest {
 	};
 }
 
+function makeDeleteRequest(expectedModified: number): CoreRequest {
+	return {
+		kind: 'delete',
+		apiKeyId: 'kado_test-key',
+		operation: 'note',
+		path: 'notes/example.md',
+		expectedModified,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Write requests with expectedModified
 // ---------------------------------------------------------------------------
@@ -111,6 +121,34 @@ describe('validateConcurrency — search request bypass', () => {
 	it('returns allowed for a search request without checking timestamps', () => {
 		const request = makeSearchRequest();
 		const result = validateConcurrency(request, 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Delete requests
+// ---------------------------------------------------------------------------
+
+describe('validateConcurrency — delete request', () => {
+	it('returns allowed when expectedModified matches currentMtime', () => {
+		const request = makeDeleteRequest(1700000000000);
+		const result = validateConcurrency(request, 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns CONFLICT when expectedModified does not match', () => {
+		const request = makeDeleteRequest(1700000000000);
+		const result = validateConcurrency(request, 1800000000000);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('CONFLICT');
+			expect(result.error.message).toContain('deleting');
+		}
+	});
+
+	it('returns allowed when file does not exist (currentMtime undefined) — adapter will emit NOT_FOUND', () => {
+		const request = makeDeleteRequest(1700000000000);
+		const result = validateConcurrency(request, undefined);
 		expect(result).toEqual({allowed: true});
 	});
 });

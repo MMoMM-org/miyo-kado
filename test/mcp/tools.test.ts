@@ -181,10 +181,16 @@ function getFirstText(result: {content: {type: string; text?: string}[]}): strin
 // ---------------------------------------------------------------------------
 
 describe('registerTools()', () => {
-	it('registers exactly 3 tools on the server', () => {
+	it('registers exactly 4 tools on the server', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
-		expect(server.tools).toHaveLength(3);
+		expect(server.tools).toHaveLength(4);
+	});
+
+	it('registers a tool named kado-delete', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
+		expect(server.tools.map((t) => t.name)).toContain('kado-delete');
 	});
 
 	it('registers a tool named kado-read', () => {

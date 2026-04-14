@@ -13,11 +13,13 @@ import {
 	mapReadRequest,
 	mapWriteRequest,
 	mapSearchRequest,
+	mapDeleteRequest,
 } from '../../src/mcp/request-mapper';
 import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
+	CoreDeleteRequest,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -272,5 +274,123 @@ describe('mapSearchRequest — path handling (/ and empty)', () => {
 		const result = mapSearchRequest({operation: 'byContent', path: '/'}, KEY_ID) as CoreSearchRequest;
 
 		expect(result.path).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapDeleteRequest
+// ---------------------------------------------------------------------------
+
+function makeDeleteArgs(overrides?: Record<string, unknown>): Record<string, unknown> {
+	return {operation: 'note', path: 'a.md', expectedModified: 12345, ...overrides};
+}
+
+describe('mapDeleteRequest()', () => {
+	it('maps a valid note delete request', () => {
+		const result = mapDeleteRequest(makeDeleteArgs(), KEY_ID) as CoreDeleteRequest;
+
+		expect(result).toMatchObject({
+			kind: 'delete',
+			apiKeyId: KEY_ID,
+			operation: 'note',
+			path: 'a.md',
+			expectedModified: 12345,
+		});
+		expect(result.keys).toBeUndefined();
+	});
+
+	it('maps a valid file delete request', () => {
+		const result = mapDeleteRequest(
+			makeDeleteArgs({operation: 'file', path: 'img.png'}),
+			KEY_ID,
+		) as CoreDeleteRequest;
+
+		expect(result.operation).toBe('file');
+		expect(result.path).toBe('img.png');
+	});
+
+	it('maps a valid frontmatter delete request with keys array', () => {
+		const result = mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter', keys: ['tag1', 'status']}),
+			KEY_ID,
+		) as CoreDeleteRequest;
+
+		expect(result.operation).toBe('frontmatter');
+		expect(result.keys).toEqual(['tag1', 'status']);
+	});
+
+	it('rejects operation="dataview-inline-field" with VALIDATION_ERROR', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'dataview-inline-field'}),
+			KEY_ID,
+		)).toThrow(/operation must be one of/);
+	});
+
+	it('rejects operation="unknown" with VALIDATION_ERROR', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'unknown'}),
+			KEY_ID,
+		)).toThrow(/operation must be one of/);
+	});
+
+	it('rejects missing operation', () => {
+		expect(() => mapDeleteRequest({path: 'a.md', expectedModified: 1}, KEY_ID))
+			.toThrow(/missing required field "operation"/);
+	});
+
+	it('rejects missing path', () => {
+		expect(() => mapDeleteRequest({operation: 'note', expectedModified: 1}, KEY_ID))
+			.toThrow(/missing required field "path"/);
+	});
+
+	it('rejects missing expectedModified', () => {
+		expect(() => mapDeleteRequest({operation: 'note', path: 'a.md'}, KEY_ID))
+			.toThrow(/missing required field "expectedModified"/);
+	});
+
+	it('rejects non-numeric expectedModified', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({expectedModified: 'not-a-number'}),
+			KEY_ID,
+		)).toThrow(/expectedModified must be a number/);
+	});
+
+	it('rejects frontmatter delete without keys', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter'}),
+			KEY_ID,
+		)).toThrow(/non-empty "keys" array/);
+	});
+
+	it('rejects frontmatter delete with empty keys array', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter', keys: []}),
+			KEY_ID,
+		)).toThrow(/non-empty "keys" array/);
+	});
+
+	it('rejects frontmatter delete with non-string keys', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter', keys: [123, 'valid']}),
+			KEY_ID,
+		)).toThrow(/all items in "keys"/);
+	});
+
+	it('rejects frontmatter delete with empty-string key', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter', keys: ['', 'valid']}),
+			KEY_ID,
+		)).toThrow(/all items in "keys"/);
+	});
+
+	it('ignores keys field when operation is note', () => {
+		const result = mapDeleteRequest(
+			makeDeleteArgs({keys: ['ignored']}),
+			KEY_ID,
+		) as CoreDeleteRequest;
+
+		expect(result.operation).toBe('note');
+		// keys field is only validated/attached for frontmatter; for note it's not required
+		// (implementation may pass through or omit — test just ensures no error)
 	});
 });

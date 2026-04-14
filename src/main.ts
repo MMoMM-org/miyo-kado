@@ -18,6 +18,11 @@ import {createFrontmatterAdapter} from './obsidian/frontmatter-adapter';
 import {createFileAdapter} from './obsidian/file-adapter';
 import {createInlineFieldAdapter} from './obsidian/inline-field-adapter';
 import {createSearchAdapter} from './obsidian/search-adapter';
+import {
+	createNoteDeleteAdapter,
+	createFileDeleteAdapter,
+	createFrontmatterDeleteAdapter,
+} from './obsidian/delete-adapter';
 import {AuditLogger} from './core/audit-logger';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
@@ -58,6 +63,11 @@ export default class KadoPlugin extends Plugin {
 			file: createFileAdapter(this.app),
 			'dataview-inline-field': createInlineFieldAdapter(this.app),
 			search: createSearchAdapter(this.app),
+			deleteAdapters: {
+				note: createNoteDeleteAdapter(this.app),
+				file: createFileDeleteAdapter(this.app),
+				frontmatter: createFrontmatterDeleteAdapter(this.app),
+			},
 		};
 
 		const router = createOperationRouter(registry);

@@ -12,13 +12,21 @@ import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
+	CoreDeleteRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
+	CoreDeleteResult,
 	CoreError,
 	DataType,
+	DeleteDataType,
 } from '../types/canonical';
-import {isCoreReadRequest, isCoreWriteRequest, isCoreSearchRequest} from '../types/canonical';
+import {
+	isCoreReadRequest,
+	isCoreWriteRequest,
+	isCoreSearchRequest,
+	isCoreDeleteRequest,
+} from '../types/canonical';
 
 // ============================================================
 // Adapter interfaces
@@ -35,20 +43,27 @@ export interface SearchAdapter {
 	search(request: CoreSearchRequest): Promise<CoreSearchResult | CoreError>;
 }
 
-/** Registry of all adapters keyed by data type, plus a search adapter. */
+/** Adapter that handles delete operations for a single DeleteDataType (note, frontmatter, file). */
+export interface DeleteAdapter {
+	delete(request: CoreDeleteRequest): Promise<CoreDeleteResult>;
+}
+
+/** Registry of all adapters keyed by data type, plus search and delete adapters. */
 export interface AdapterRegistry {
 	note: ReadWriteAdapter;
 	frontmatter: ReadWriteAdapter;
 	file: ReadWriteAdapter;
 	'dataview-inline-field': ReadWriteAdapter;
 	search: SearchAdapter;
+	/** Delete adapters — inline fields deliberately excluded. */
+	deleteAdapters: Record<DeleteDataType, DeleteAdapter>;
 }
 
 // ============================================================
 // Router
 // ============================================================
 
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreError;
+type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
 
 function validationError(message: string): CoreError {
 	return {code: 'VALIDATION_ERROR', message};
@@ -76,6 +91,15 @@ export function createOperationRouter(
 	adapters: AdapterRegistry,
 ): (request: CoreRequest) => Promise<RouteResult> {
 	return async function route(request: CoreRequest): Promise<RouteResult> {
+		// Delete first — cleanest discriminator (explicit `kind` marker)
+		if (isCoreDeleteRequest(request)) {
+			const deleteAdapter = adapters.deleteAdapters[request.operation];
+			if (!deleteAdapter) {
+				return validationError(`Unknown delete operation: ${request.operation}`);
+			}
+			return deleteAdapter.delete(request);
+		}
+
 		if (isCoreWriteRequest(request)) {
 			const adapter = resolveReadWriteAdapter(request.operation, adapters);
 			if (!adapter) {
