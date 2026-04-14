@@ -19,6 +19,10 @@ on:
   schedule:
     - cron: '25 7 * * 4'
 
+# Least-privilege default at workflow level; analyze job overrides as needed.
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
