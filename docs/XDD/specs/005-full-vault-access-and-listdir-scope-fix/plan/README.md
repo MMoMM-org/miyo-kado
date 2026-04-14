@@ -1,6 +1,6 @@
 ---
 title: "Full Vault Access & listDir Scope Fix"
-status: draft
+status: completed
 version: "1.0"
 ---
 

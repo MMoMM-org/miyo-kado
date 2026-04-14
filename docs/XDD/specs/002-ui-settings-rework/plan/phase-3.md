@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Settings Tabs"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---

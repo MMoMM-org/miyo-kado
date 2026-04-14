@@ -1,6 +1,6 @@
 ---
 title: "UI Settings Rework"
-status: draft
+status: completed
 version: "1.0"
 ---
 

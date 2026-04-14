@@ -128,12 +128,24 @@ Kado is part of **MiYo**, a small family of Obsidian-adjacent tools focused on g
 
 ## Roadmap
 
-A few things I plan to address in upcoming releases. None of these are blockers for v0.1.x:
+A few things I plan to address in upcoming releases. None of these are blockers for v0.1.x.
+
+### Planned enhancements
 
 - **Tag permissions beyond read-only.** Today tags are read-filters only. I want to add a Deny permission so you can use tags to *exclude* matching items even from otherwise-allowed paths.
 - **Granular whitelist / blacklist toggle.** The mode flip currently applies to paths and tags together. A per-section toggle would allow mixed strategies.
 - **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
-- **Settings tab hot-reload.** After a plugin update the settings tab still shows the old layout until disable/re-enable. Tracked in `docs/ai/memory/troubleshooting.md`.
+- **Real-time permission testing.** A "try this request" dry-run in the settings UI so you can verify permissions without wiring up an MCP client.
+- **Settings import / export.** Backup/restore for the whole config (paths, keys, rules).
+
+### Known issues
+
+Tracked as GitHub Issues, linked in `docs/ai/memory/troubleshooting.md`:
+
+- [#8](https://github.com/MMoMM-org/miyo-kado/issues/8) Blacklist permission-flag semantics inconsistent across CRUD actions
+- [#9](https://github.com/MMoMM-org/miyo-kado/issues/9) Settings tab stale after plugin reload
+- [#10](https://github.com/MMoMM-org/miyo-kado/issues/10) Transient file truncation after `vault.adapter.write()` (Obsidian-internal)
+- [#11](https://github.com/MMoMM-org/miyo-kado/issues/11) MCP SDK does not handle 429 `Retry-After` (upstream SDK gap, Kado mitigated)
 
 ## Support
 

@@ -284,23 +284,28 @@ Config changes (e.g. granting/revoking a key) must take effect after a plugin re
 
 ## Remaining Gaps
 
-Items not yet covered by live tests. All high-priority items from the original gap analysis have been implemented.
+Local test-coverage todo list. Known bugs are tracked as GitHub Issues (see `docs/ai/memory/troubleshooting.md` for links). Roadmap features are in the main README.
 
-### Medium Priority — Still Open
+### Still Open
 
-| Category | Scenario | Why |
+| Category | Scenario | Why it matters |
 |---|---|---|
-| Concurrency | Parallel writes to same file | Optimistic locking under contention |
-| Auth | Disabled API key (enabled=false) | Only tested in unit tests, not live |
-| Audit | Audit log rotation (maxSizeBytes) | Config exists but rotation not triggered |
-| Edge cases | Empty file read (0-byte .md) | No empty fixture file yet |
-| Edge cases | Very long path names | Path near filesystem limits |
-| Edge cases | Frontmatter edge cases | Empty frontmatter, invalid YAML, nested objects |
-| Read | Key1 frontmatter read from maybe-allowed | Allowed but not exercised |
-
-### Low Priority — Still Open
-
-| Category | Scenario | Why |
-|---|---|---|
+| Concurrency | Parallel writes to same file | Optimistic locking under contention — CONFLICT path not exercised under load |
+| Audit | Audit log rotation triggered by maxSizeBytes | Config option exists but rotation path never executes in tests |
+| Edge cases | Very long path names | Path near filesystem limits — no coverage |
 | Binary | File size limits (>1 MB) | No large fixture beyond 150 KB |
-| Read | Key3 file read from maybe-allowed | FORBIDDEN expected, not verified |
+
+### Closed During Latest Session
+
+These were on the gap list and have since been covered:
+
+- ✅ Empty file read (0-byte) — T-EDGE.1
+- ✅ Frontmatter edge cases (empty/nested/merge) — T-EDGE.2/3/4
+- ✅ Key1 frontmatter read from maybe-allowed — T-MA.1
+- ✅ Key3 file read from maybe-allowed → FORBIDDEN — T-Key3.16
+- ✅ Disabled API key live test — T8.4 in config-change
+- ✅ Unicode filename roundtrip — T5.7
+
+### Known Bugs (not test gaps)
+
+See GitHub Issues [#8](https://github.com/MMoMM-org/miyo-kado/issues/8) [#9](https://github.com/MMoMM-org/miyo-kado/issues/9) [#10](https://github.com/MMoMM-org/miyo-kado/issues/10) [#11](https://github.com/MMoMM-org/miyo-kado/issues/11).
