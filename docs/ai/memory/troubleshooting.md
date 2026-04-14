@@ -32,3 +32,18 @@
 **Suspected cause**: Settings tab is constructed once and not re-rendered on plugin reload; references to the previous plugin instance leak into the DOM.
 **Workaround**: Disable + re-enable the plugin to force a fresh settings tab construction.
 **TODO**: Ensure settings tab is cleanly torn down and rebuilt on plugin lifecycle events; verify no stale closures hold old `this.plugin` references.
+
+<!-- 2026-04-14 -->
+## T9.3 blacklist permission semantic inconsistency — Status: open
+**Problem**: The `mcp-config-change.test.ts` test T9.3 fails reproducibly. Config: Global=blacklist(nope/**), Key1=blacklist(maybe-allowed/** with `note: {create: false, read: true, update: true, delete: true}`). The test expects reading `maybe-allowed/Budget 2026.md` to succeed (because only note.create is blocked), but the permission gate returns FORBIDDEN for the read as well.
+**Impact**: Blacklist-mode permission flags are inconsistently interpreted — the distinction between "listed as blocked" (true) and "not listed" (false) isn't applied uniformly per CRUD action. Breaks the documented blacklist semantics.
+**Suspected cause**: `datatype-permission.ts` intersectPermissions or resolveScope treats whitelist and blacklist symmetrically when computing effective permissions. Blacklist likely needs to invert the flag check per action.
+**Workaround**: None — feature bug. Tests skip or fail visibly.
+**TODO**: Audit `src/core/gates/scope-resolver.ts` and `datatype-permission.ts` for blacklist-inversion logic. Add unit tests with all 16 combinations of (whitelist/blacklist × CRUD flag true/false).
+
+## Live test state isolation — Status: known
+**Problem**: Config-change tests mutate `data.json` + plugin in-memory state. A test failure before `writeConfig(fixtureConfig)` leaks the broken config into subsequent tests. Adding `beforeEach` to restore fixture + trigger reload is fragile: the hot-reload timing varies (some tests need >5s reload-settle, causing 3s waits to miss), and restore-then-reload without waiting for the MCP probe can race with the next test's early calls.
+**Observed**: T9.3 (pre-existing bug) leaked into T10.1, which then skipped. Adding beforeEach with 3s wait broke T9.1 and T9.2 instead (cascading).
+**Workaround**: Keep one-shot `afterAll` restore + accept that pre-existing failures (T9.3) leave state for the next test. Each test should self-restore after its own assertions. Pre-run manual touch on `main.js` if tests were previously interrupted mid-config-change.
+**Root cause**: Live tests against a stateful external system (Obsidian) cannot be fully isolated without an MCP probe + bounded-wait "ready" check between every test, which would add 5s × N tests overhead.
+**TODO**: If flakiness recurs, consider a `waitForMcpProbe(canary, timeoutMs)` utility that runs after every state-changing test and polls until the fixture baseline is verified.
