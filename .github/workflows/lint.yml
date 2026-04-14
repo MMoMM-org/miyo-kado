@@ -6,6 +6,10 @@ on:
     pull_request:
         branches: ["**"]
 
+# Least-privilege: this workflow only needs to read the checkout
+permissions:
+    contents: read
+
 jobs:
     build:
         runs-on: ubuntu-latest
