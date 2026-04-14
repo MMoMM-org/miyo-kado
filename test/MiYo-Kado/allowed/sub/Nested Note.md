@@ -18,4 +18,4 @@ The glob pattern `allowed/**` should match this path: `allowed/sub/Nested Note.m
 [depth:: 2]
 [scope:: sub-task]
 
-#inlinetag/yes #nested
+#inlinetag/yes #nested #project/alpha
