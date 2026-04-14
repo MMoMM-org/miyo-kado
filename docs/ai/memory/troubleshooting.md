@@ -1,7 +1,16 @@
 # Troubleshooting — Kado
-<!-- Known issues and proven fixes. Updated: 2026-04-08 -->
+<!-- Known issues and proven fixes. Updated: 2026-04-14 -->
 <!-- Format: ## [Issue title] — Status: open/resolved — [fix description] -->
 <!-- Resolved entries are archived by /memory-cleanup, not deleted -->
+
+<!-- 2026-04-14 -->
+## byFrontmatter does not match against array values — Status: resolved
+**Problem**: `kado-search byFrontmatter query=<key>=<value>` did only a scalar string comparison. When the value was an array (`tags: [finance, planning]` or list-form), queries like `tags=finance` returned no results — failing for the most common Obsidian tag formats documented at https://obsidian.md/help/tags.
+**Fix (2026-04-14)**: Added `frontmatterValueMatches()` in `src/obsidian/search-adapter.ts` that supports all three valid Obsidian frontmatter tag formats:
+  - Arrays (from list-form or inline `[a, b]`) → case-insensitive element membership
+  - Comma-separated strings (`tags: a, b`) → case-insensitive element check after split/trim
+  - Scalars → case-insensitive equality (unchanged)
+**Tests**: 5 new unit tests in `test/obsidian/search-adapter.test.ts` cover array/list/comma/case-insensitive/non-member. Live test `T-SCOPE.1` in `test/live/mcp-live.test.ts` validates end-to-end with `tags=finance`.
 
 ## MCP SDK has no 429 rate-limit handling — Status: open
 **Problem**: `@modelcontextprotocol/sdk` `StreamableHTTPClientTransport` throws a plain `StreamableHTTPError` on 429 responses. It does not read `Retry-After` headers or implement automatic backoff. This is an SDK-level gap, not Kado-specific — all MCP servers returning 429 are affected.
