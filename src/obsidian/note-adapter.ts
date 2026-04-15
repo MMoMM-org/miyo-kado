@@ -138,36 +138,46 @@ function findOpenMarkdownView(app: App, path: string): MarkdownView | null {
 }
 
 /**
- * If the target file is open in an editor with unsaved changes, save those
- * changes first so the user's in-progress work is committed to disk (and
- * survives in Obsidian's undo stack) before our write overwrites it.
- * Returns true when the editor was dirty and we actually saved it.
+ * Detects whether the target file is open in an editor with unsaved changes.
+ * Compares the live editor buffer (`getViewData()`) against the last value
+ * Obsidian has read from disk (`vault.read()` — direct fs.readFile, no
+ * internal cache). Differences mean the user is mid-typing and a write now
+ * would race against the editor's debounce flush.
  */
-async function flushDirtyEditor(app: App, file: TFile): Promise<boolean> {
+async function isFileOpenAndDirty(app: App, file: TFile): Promise<boolean> {
 	const view = findOpenMarkdownView(app, file.path);
 	if (!view) return false;
 	const editorContent = view.getViewData();
-	const diskContent = await app.vault.cachedRead(file);
-	if (editorContent === diskContent) return false;
-	await view.save();
-	return true;
+	const diskContent = await app.vault.read(file);
+	return editorContent !== diskContent;
+}
+
+function conflictEditorError(path: string): NoteAdapterError {
+	return new NoteAdapterError({
+		code: 'CONFLICT',
+		message: `File ${path} is open in the editor with unsaved changes. Re-read it and retry — the next read will include the user's latest edits once Obsidian auto-saves (≈2 s after the last keystroke).`,
+	});
 }
 
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	const newContent = request.content as string;
 
-	// Coordinate with an open editor: commit its dirty buffer to disk first
-	// so the user's keystrokes are in the undo history, then overwrite.
-	// Fire a Notice when we had to displace real in-progress edits so the
-	// user can see that an assistant just rewrote the note they were typing in.
-	const wasDirty = await flushDirtyEditor(app, file);
-	await app.vault.process(file, () => newContent);
-	if (wasDirty) {
-		new Notice(`Kado updated ${file.basename}`);
+	// When the user is actively editing the same file, their in-progress
+	// keystrokes must not be silently overwritten. Surface a CONFLICT so the
+	// MCP client re-reads (picking up the user's latest edits after the ~2 s
+	// Obsidian autosave debounce settles) and retries its write on top of
+	// the merged state — never blowing away typing.
+	if (await isFileOpenAndDirty(app, file)) {
+		// Tell the user an assistant tried to change the note they are
+		// editing, so they can pause (or keep typing) deliberately. The
+		// MCP client sees CONFLICT and will retry after re-reading.
+		new Notice(`Kado wanted to modify ${file.basename} — pause typing to let the assistant through, or keep going and it will retry`, 8000);
+		throw conflictEditorError(request.path);
 	}
 
+	const newContent = request.content as string;
+	await app.vault.process(file, () => newContent);
 	const refreshed = app.vault.getFileByPath(request.path);
 	const stat = refreshed?.stat ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};

@@ -146,7 +146,7 @@ A few things I plan to address in upcoming releases. None of these are blockers 
 ### Known edge cases
 
 - **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago — Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
-- **Write while the same note is open and dirty.** If the AI writes to a note you are currently editing with unsaved changes, Kado first saves your in-progress edits, then applies the AI's update on top, and shows a Notice so you can see the swap. Your keystrokes remain in Obsidian's undo history.
+- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *<note>* …"). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (≈2 s Obsidian autosave) and it retries, its write is applied on top of your latest edits.
 
 ### Open tracking
 
