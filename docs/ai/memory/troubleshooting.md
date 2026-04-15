@@ -12,11 +12,13 @@
   - Scalars → case-insensitive equality (unchanged)
 **Tests**: 5 new unit tests in `test/obsidian/search-adapter.test.ts` cover array/list/comma/case-insensitive/non-member. Live test `T-SCOPE.1` in `test/live/mcp-live.test.ts` validates end-to-end with `tags=finance`.
 
-## MCP SDK has no 429 rate-limit handling — Status: open ([#11](https://github.com/MMoMM-org/miyo-kado/issues/11))
-**Problem**: `@modelcontextprotocol/sdk` `StreamableHTTPClientTransport` throws a plain `StreamableHTTPError` on 429 responses. It does not read `Retry-After` headers or implement automatic backoff. This is an SDK-level gap, not Kado-specific — all MCP servers returning 429 are affected.
-**Impact**: MCP clients (Claude, custom agents) that don't add their own retry logic will crash or fail-fast on rate limits instead of waiting and retrying.
-**Kado mitigation**: Server sends `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` on every response + `Retry-After` on 429. Clients must read these headers themselves. Reference implementation in `test/live/mcp-live.test.ts` (`probeRetryAfter()` + `callTool()` retry loop).
-**Future**: Consider raising/making rate limit configurable, or contributing 429 handling upstream to `@modelcontextprotocol/sdk`.
+## MCP SDK has no 429 rate-limit handling — Status: upstream-tracked (closed in Kado)
+**Problem**: `@modelcontextprotocol/sdk` `StreamableHTTPClientTransport` surfaces a plain `SdkError` (formerly `StreamableHTTPError`) on 429 responses. It does not read `Retry-After` or `RateLimit-*` headers and does not implement automatic backoff. This is an SDK-level gap, not Kado-specific — every MCP server returning 429 is affected.
+**Impact**: MCP clients (Claude, custom agents) that don't add their own retry logic fail-fast on rate limits instead of waiting and retrying.
+**Kado server-side**: emits `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` on every response and `Retry-After` on 429 — all headers the SDK would need are already there.
+**Client workaround**: `test/live/mcp-live.test.ts` (`probeRetryAfter()` + `callTool()` retry loop) is the reference implementation users can copy until the SDK ships this natively.
+**Upstream**: filed 2026-04-15 as [modelcontextprotocol/typescript-sdk#1892](https://github.com/modelcontextprotocol/typescript-sdk/issues/1892). Verified beforehand: no existing upstream issue or PR on the topic, and the transport-spec files (2024-11-05 → draft) don't mention rate limiting at all.
+**Kado tracking**: [#11](https://github.com/MMoMM-org/miyo-kado/issues/11) closed — nothing else actionable on our side until upstream moves. If #11 reappears downstream, reference the upstream issue first.
 
 ## Obsidian transient disk truncation after adapter.write() — Status: RETRACTED ([#10](https://github.com/MMoMM-org/miyo-kado/issues/10))
 **2026-04-15 retraction**: the "transient truncation" was a misdiagnosis on our side. It does not exist in current Obsidian.
