@@ -202,7 +202,10 @@ export function computeAllowedTags(keyId: string, config: KadoConfig): string[] 
 }
 
 function extractDataType(request: CoreRequest): DataType {
-	return isCoreSearchRequest(request) ? 'note' : request.operation;
+	if (isCoreSearchRequest(request)) return 'note';
+	// 'tags' read operation is audited as a note read (it reads the note body).
+	if (request.operation === 'tags') return 'note';
+	return request.operation;
 }
 
 function truncateKeyId(keyId: string): string {

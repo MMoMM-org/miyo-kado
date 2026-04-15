@@ -30,6 +30,10 @@ test/MiYo-Kado/.obsidian/plugins/miyo-kado/manifest.json
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/styles.css
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/audit.log
 test/MiYo-Kado/logs/
+test/MiYo-Kado/.obsidian/workspace.json
+
+# Temporary session plans
+PLAN.tmp.md
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

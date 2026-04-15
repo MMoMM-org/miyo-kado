@@ -109,6 +109,11 @@ export function createOperationRouter(
 		}
 
 		if (isCoreReadRequest(request)) {
+			// 'tags' reads the note body (frontmatter + inline) and is handled
+			// by the note adapter, which returns a JSON payload.
+			if (request.operation === 'tags') {
+				return adapters.note.read(request);
+			}
 			const adapter = resolveReadWriteAdapter(request.operation, adapters);
 			if (!adapter) {
 				return validationError(`Unknown read operation: ${request.operation}`);
