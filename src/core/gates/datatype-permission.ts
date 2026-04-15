@@ -22,11 +22,11 @@ import {
 import type {
 	CoreRequest,
 	CrudOperation,
-	DataType,
 	DataTypePermissions,
 	GateResult,
 	KadoConfig,
 	PermissionGate,
+	ReadDataType,
 } from '../../types/canonical';
 import {resolveScope, createAllPermissions, intersectPermissions} from './scope-resolver';
 
@@ -51,9 +51,13 @@ function inferCrudAction(request: CoreRequest): CrudOperation {
  * Maps a DataType value to the corresponding key in DataTypePermissions.
  * The only non-trivial mapping is 'dataview-inline-field' → 'dataviewInlineField'.
  */
-function dataTypeToPermissionsKey(dataType: DataType): keyof DataTypePermissions {
+function dataTypeToPermissionsKey(dataType: ReadDataType): keyof DataTypePermissions {
 	if (dataType === 'dataview-inline-field') {
 		return 'dataviewInlineField';
+	}
+	// 'tags' is a read-only derivative of note body + frontmatter → gated by note permission.
+	if (dataType === 'tags') {
+		return 'note';
 	}
 	return dataType;
 }
@@ -100,7 +104,7 @@ export const dataTypePermissionGate: PermissionGate = {
 		}
 
 		const path = (request as {path: string}).path;
-		const dataType = (request as {operation: DataType}).operation;
+		const dataType = (request as {operation: ReadDataType}).operation;
 		return evaluatePathPermission(path, dataType, action, request.apiKeyId, config, key);
 	},
 };
@@ -160,7 +164,7 @@ function resolveSearchNotePermissions(scope: {listMode: string; paths: {path: st
 /** Evaluates CRUD permission for path-based read/write requests. */
 function evaluatePathPermission(
 	path: string,
-	dataType: DataType,
+	dataType: ReadDataType,
 	action: CrudOperation,
 	keyId: string,
 	config: KadoConfig,

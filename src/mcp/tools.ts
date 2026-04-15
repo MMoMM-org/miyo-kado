@@ -56,7 +56,7 @@ type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 // ============================================================
 
 const kadoReadShape = {
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to read: note (full markdown), frontmatter (YAML metadata as JSON), file (binary as base64), dataview-inline-field (inline fields as JSON)'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']).describe('What to read: note (full markdown), frontmatter (YAML metadata as JSON), file (binary as base64), dataview-inline-field (inline fields as JSON), tags (frontmatter + inline tags as JSON {frontmatter, inline, all})'),
 	path: z.string().describe('Vault-relative path e.g. "Calendar/2026-03-31.md"'),
 };
 
@@ -270,7 +270,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 // ============================================================
 
 function registerReadTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-read', {description: 'Read from the Obsidian vault. Returns content + created/modified/size metadata. Use the "modified" timestamp from the response as expectedModified when writing updates.', inputSchema: kadoReadShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-read', {description: 'Read from the Obsidian vault. Returns content + created/modified/size metadata. Use the "modified" timestamp from the response as expectedModified when writing updates. operation="tags" returns a JSON object {frontmatter: string[], inline: string[], all: string[]} with tags deduplicated and without the leading "#".', inputSchema: kadoReadShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 

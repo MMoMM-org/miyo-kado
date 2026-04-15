@@ -208,6 +208,30 @@ describe('dataTypePermissionGate.evaluate() — read requests', () => {
 		);
 		expect(result.allowed).toBe(false);
 	});
+
+	it('allows a tags read when scope grants note.read', () => {
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'tags'),
+			makeStandardWhitelistConfig(),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies a tags read when key scope has note.read=false', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('projects/note.md', 'tags'),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------
