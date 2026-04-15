@@ -25,13 +25,13 @@
 **Kado approach**: Use `vault.adapter.write()` for disk writes (note-adapter updateNote), `vault.create()` for creates. The transient truncation resolves itself.
 **Related**: obsidian-mcp-tools (jacksteamdev) uses external MCP server → bypasses this entirely.
 
-<!-- 2026-04-08 -->
-## Settings page stale after plugin reload — Status: open ([#9](https://github.com/MMoMM-org/miyo-kado/issues/9))
-**Problem**: After a hot-reload of the plugin (dev rebuild), the Obsidian settings tab continues showing the old UI state and old version number (e.g. `0.0.27`) even though the Community Plugins page correctly shows the new version (`0.0.28`). Observed: new picker placement and other UI changes don't appear until the user fully disables and re-enables the plugin.
-**Impact**: Dev loop is confusing — changes appear to not land when they actually did. Also affects end users after updates.
-**Suspected cause**: Settings tab is constructed once and not re-rendered on plugin reload; references to the previous plugin instance leak into the DOM.
-**Workaround**: Disable + re-enable the plugin to force a fresh settings tab construction.
-**TODO**: Ensure settings tab is cleanly torn down and rebuilt on plugin lifecycle events; verify no stale closures hold old `this.plugin` references.
+<!-- 2026-04-08, updated 2026-04-15 -->
+## Settings page stale after plugin reload — Status: deferred ([#9](https://github.com/MMoMM-org/miyo-kado/issues/9))
+**Problem**: After a hot-reload of the plugin (dev rebuild via `npm run build`), the Obsidian settings tab continues showing the old UI and old version number. The Community Plugins page itself also shows the stale version until the user manually refreshes it; only disable/enable fully refreshes the plugin page.
+**2026-04-15 finding**: This is NOT a Kado bug. Reproduced on 0.5.0, then cross-checked against **BRAT** in the same vault — BRAT behaves correctly. The difference: the **hot-reload** community plugin (used for dev loop) does not drive the same notification path that Obsidian's own "Check for updates" / official plugin-store update uses. Plugin code reloads, but Obsidian's settings & community-plugins views don't invalidate their cached DOM/version.
+**What works**: a `touch data.json` triggers `onExternalSettingsChange`, which correctly re-runs `this.settingsTab.display()` and reflects changes immediately. So our lifecycle wiring is correct — the missing piece is upstream in the hot-reload plugin / Obsidian.
+**Decision**: defer. Revisit after Kado is officially published in the community plugin store and can be validated through the real update path. Close issue as "cannot reproduce via official update path" until then.
+**Workaround**: disable + enable the plugin in the Community Plugins page, or `touch data.json` to force an external-change refresh.
 
 <!-- 2026-04-14 -->
 ## T9.3 blacklist permission semantic inconsistency — Status: open ([#8](https://github.com/MMoMM-org/miyo-kado/issues/8))
