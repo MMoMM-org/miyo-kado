@@ -141,15 +141,11 @@ A few things I plan to address in upcoming releases. None of these are blockers 
 - **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
 - **Real-time permission testing.** A "try this request" dry-run in the settings UI so you can verify permissions without wiring up an MCP client.
 - **Settings import / export.** Backup/restore for the whole config (paths, keys, rules).
+- **Opt-in content truncation on `kado-read`.** For large notes, return only the first ~1000 words plus a hint that more content exists — clients can then decide to pull the rest on demand. Keeps assistant context budgets sane when reading long reference notes. (Feedback from the Tomo team.)
 
-### Known issues
+### Open tracking
 
-Tracked as GitHub Issues, linked in `docs/ai/memory/troubleshooting.md`:
-
-- [#8](https://github.com/MMoMM-org/miyo-kado/issues/8) Blacklist permission-flag semantics inconsistent across CRUD actions
-- [#9](https://github.com/MMoMM-org/miyo-kado/issues/9) Settings tab stale after plugin reload
-- [#10](https://github.com/MMoMM-org/miyo-kado/issues/10) Transient file truncation after `vault.adapter.write()` (Obsidian-internal)
-- [#11](https://github.com/MMoMM-org/miyo-kado/issues/11) MCP SDK does not handle 429 `Retry-After` (upstream SDK gap, Kado mitigated)
+Live issues and upstream references live in [GitHub Issues](https://github.com/MMoMM-org/miyo-kado/issues) and `docs/ai/memory/troubleshooting.md`. No open issues at the time of this release.
 
 ## Support
 
