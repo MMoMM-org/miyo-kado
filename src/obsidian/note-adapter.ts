@@ -129,13 +129,13 @@ async function createNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	// Historical note: uses adapter.write instead of vault.process. The original
-	// rationale (a claimed file-watcher truncation race) was retracted on
-	// 2026-04-15 after Obsidian maintainers could not reproduce it and a live
-	// MCP retest showed no truncation. Follow-up: switch to vault.process to
-	// align with "prefer Vault API" guidance.
-	await app.vault.adapter.write(file.path, request.content as string);
-	const stat = (await app.vault.adapter.stat(file.path)) ?? file.stat;
+	// vault.process() is the atomic read-modify-write API: Obsidian serialises
+	// it against other vault writers and coexists correctly with an open editor
+	// buffer (no debounce flush can overwrite our write after it resolves).
+	const newContent = request.content as string;
+	await app.vault.process(file, () => newContent);
+	const refreshed = app.vault.getFileByPath(request.path);
+	const stat = refreshed?.stat ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};
 }
 
