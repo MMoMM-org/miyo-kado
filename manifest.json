@@ -1,7 +1,7 @@
 {
 	"id": "miyo-kado",
 	"name": "MiYo Kado",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"minAppVersion": "1.5.7",
 	"description": "Security-first MCP gateway with default-deny permissions and audit logging.",
 	"author": "Marcus Breiden <marcus@mmomm.org>",

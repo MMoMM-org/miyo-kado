@@ -1,3 +1,10 @@
+## [0.5.1](https://github.com/MMoMM-org/miyo-kado/compare/0.5.0...0.5.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **gates:** blacklist per-entry CRUD flags are literal ([#8](https://github.com/MMoMM-org/miyo-kado/issues/8), T9.3) ([#18](https://github.com/MMoMM-org/miyo-kado/issues/18)) ([9a25890](https://github.com/MMoMM-org/miyo-kado/commit/9a25890dd728601ae57c179270b141a95295214e))
+
 # [0.5.0](https://github.com/MMoMM-org/miyo-kado/compare/0.4.0...0.5.0) (2026-04-15)
 
 
