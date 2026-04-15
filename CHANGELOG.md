@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/MMoMM-org/miyo-kado/compare/0.4.0...0.5.0) (2026-04-15)
+
+
+### Features
+
+* kado-read operation=tags (frontmatter + inline) ([#17](https://github.com/MMoMM-org/miyo-kado/issues/17)) ([e4fc355](https://github.com/MMoMM-org/miyo-kado/commit/e4fc355332749ecff23bde823d96822e13409f9a)), closes [#tags](https://github.com/MMoMM-org/miyo-kado/issues/tags) [#foo](https://github.com/MMoMM-org/miyo-kado/issues/foo)
+
 # [0.4.0](https://github.com/MMoMM-org/miyo-kado/compare/0.3.2...0.4.0) (2026-04-14)
 
 
