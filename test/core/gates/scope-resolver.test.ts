@@ -261,16 +261,37 @@ describe('resolveScope() — blacklist mode', () => {
 		expect(result).toEqual(createAllPermissions());
 	});
 
-	it('returns inverted permissions when path matches a blacklist entry', () => {
-		const blockedPerms = makeReadOnlyPermissions();
+	it('returns the entry permissions literally when path matches a blacklist entry', () => {
+		// In blacklist mode a matched entry represents a narrower rule that
+		// applies to this subtree. The per-CRUD flags keep their whitelist
+		// meaning: true = allowed, false = blocked. The "blacklist" part is
+		// only about the default for unlisted paths (allow everything).
+		const perms = makeReadOnlyPermissions();
 		const scope = {
 			listMode: 'blacklist' as const,
-			paths: [makePathPermission('private/**', blockedPerms)],
+			paths: [makePathPermission('private/**', perms)],
 		};
 
 		const result = resolveScope(scope, 'private/secret.md');
 
-		expect(result).toEqual(invertPermissions(blockedPerms));
+		expect(result).toEqual(perms);
+	});
+
+	it('mixed CRUD flags on a matched blacklist entry are honoured literally (T9.3 repro)', () => {
+		const perms: DataTypePermissions = {
+			note: {create: false, read: true, update: true, delete: true},
+			frontmatter: {create: true, read: true, update: true, delete: true},
+			file: {create: true, read: true, update: true, delete: true},
+			dataviewInlineField: {create: true, read: true, update: true, delete: true},
+		};
+		const scope = {
+			listMode: 'blacklist' as const,
+			paths: [makePathPermission('maybe-allowed/**', perms)],
+		};
+
+		const result = resolveScope(scope, 'maybe-allowed/Budget 2026.md');
+
+		expect(result?.note).toEqual({create: false, read: true, update: true, delete: true});
 	});
 
 	it('returns all-true when blacklist paths array is empty', () => {

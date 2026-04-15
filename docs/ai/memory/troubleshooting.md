@@ -34,13 +34,16 @@
 **Decision**: defer. Revisit after Kado is officially published in the community plugin store and can be validated through the real update path. Close issue as "cannot reproduce via official update path" until then.
 **Workaround**: disable + enable the plugin in the Community Plugins page, or `touch data.json` to force an external-change refresh.
 
-<!-- 2026-04-14 -->
-## T9.3 blacklist permission semantic inconsistency — Status: open ([#8](https://github.com/MMoMM-org/miyo-kado/issues/8))
-**Problem**: The `mcp-config-change.test.ts` test T9.3 fails reproducibly. Config: Global=blacklist(nope/**), Key1=blacklist(maybe-allowed/** with `note: {create: false, read: true, update: true, delete: true}`). The test expects reading `maybe-allowed/Budget 2026.md` to succeed (because only note.create is blocked), but the permission gate returns FORBIDDEN for the read as well.
-**Impact**: Blacklist-mode permission flags are inconsistently interpreted — the distinction between "listed as blocked" (true) and "not listed" (false) isn't applied uniformly per CRUD action. Breaks the documented blacklist semantics.
-**Suspected cause**: `datatype-permission.ts` intersectPermissions or resolveScope treats whitelist and blacklist symmetrically when computing effective permissions. Blacklist likely needs to invert the flag check per action.
-**Workaround**: None — feature bug. Tests skip or fail visibly.
-**TODO**: Audit `src/core/gates/scope-resolver.ts` and `datatype-permission.ts` for blacklist-inversion logic. Add unit tests with all 16 combinations of (whitelist/blacklist × CRUD flag true/false).
+<!-- 2026-04-14, resolved 2026-04-15 -->
+## T9.3 blacklist permission semantic inconsistency — Status: resolved ([#8](https://github.com/MMoMM-org/miyo-kado/issues/8))
+**Problem**: With Key in blacklist mode and entry `maybe-allowed/** → {note: {create: false, read: true, update: true, delete: true}}`, reads were denied even though `note.read: true` should allow them.
+**Root cause**: `resolveScope()` called `invertPermissions(match.permissions)` on any matched blacklist entry. That meant a flag of `true` was interpreted as "blocked" (design said "flags represent what is BLOCKED"). The UI and config mental model is the opposite: `true` = allowed, same as whitelist. So the inversion was the bug.
+**Fix (2026-04-15)**: `resolveScope` now returns the matched entry's permissions literally for both modes. The only difference between modes is the default for unlisted paths: whitelist → null (no access), blacklist → `createAllPermissions()` (full access).
+**Verification**: live MCP test with the T9.3 config (key in blacklist, maybe-allowed/** with `note.create=false, note.read=true`):
+- read `maybe-allowed/Budget 2026.md` → ALLOWED ✓
+- create `maybe-allowed/new-file.md` → FORBIDDEN with `Key does not have 'create' permission for data type 'note'` ✓
+**Unit tests**: `test/core/gates/scope-resolver.test.ts` and `test/core/gates/datatype-permission.test.ts` rewritten for the literal semantic; added a direct T9.3 repro + literal-flag-per-CRUD coverage.
+**Note for future**: `invertPermissions` is still exported from `scope-resolver.ts` as an unused utility; remove in a later cleanup.
 
 ## Live test state isolation — Status: known
 **Problem**: Config-change tests mutate `data.json` + plugin in-memory state. A test failure before `writeConfig(fixtureConfig)` leaks the broken config into subsequent tests. Adding `beforeEach` to restore fixture + trigger reload is fragile: the hot-reload timing varies (some tests need >5s reload-settle, causing 3s waits to miss), and restore-then-reload without waiting for the MCP probe can race with the next test's early calls.

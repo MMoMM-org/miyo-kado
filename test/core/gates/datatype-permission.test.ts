@@ -243,14 +243,15 @@ describe('dataTypePermissionGate.evaluate() — read requests', () => {
 		}
 	});
 
-	it('denies a tags read under blacklist mode when the path is blacklisted', () => {
+	it('denies a tags read under blacklist mode when the matched entry blocks all CRUD', () => {
+		const blocked = makeAllFalsePermissions();
 		const security = makeSecurityConfig({
 			listMode: 'blacklist',
-			paths: [makePathPermission('secret/**')],
+			paths: [makePathPermission('secret/**', blocked)],
 		});
 		const key = makeApiKey('kado_test-key', {
 			listMode: 'blacklist',
-			paths: [makePathPermission('secret/**')],
+			paths: [makePathPermission('secret/**', blocked)],
 		});
 		const request = makeReadRequest('secret/vault.md', 'tags');
 		const result = dataTypePermissionGate.evaluate(request, makeConfig(security, [key]));
@@ -444,31 +445,62 @@ describe('dataTypePermissionGate.evaluate() — scope exclusion', () => {
 // Blacklist interaction with permissions
 // ---------------------------------------------------------------------------
 
-describe('dataTypePermissionGate.evaluate() — blacklist permission inversion', () => {
-	it('blocks read on a blacklisted path when entry permission has note.read=true (inverted to false)', () => {
-		// Global blacklists 'private/**' with note.read=true → inverted = note.read=false
-		const blockPerms: DataTypePermissions = {
-			...makeAllFalsePermissions(),
-			note: {create: false, read: true, update: false, delete: false},
+describe('dataTypePermissionGate.evaluate() — blacklist per-entry flags are literal', () => {
+	it('blocks read on a matched blacklist entry that explicitly sets note.read=false', () => {
+		const entryPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: true},
 		};
 		const security = makeSecurityConfig({
 			listMode: 'blacklist',
-			paths: [makePathPermission('private/**', blockPerms)],
+			paths: [makePathPermission('private/**', entryPerms)],
 		});
-		// Key has full blacklist (no paths = full access from key side)
 		const key = makeApiKey('kado_test-key', {listMode: 'blacklist', paths: []});
 		const result = dataTypePermissionGate.evaluate(
 			makeReadRequest('private/note.md', 'note'),
 			makeConfig(security, [key]),
 		);
-		// global inverted: note.read = false → effective note.read = false
 		expect(result.allowed).toBe(false);
 	});
 
-	it('allows read on a non-blacklisted path when blacklist has other paths', () => {
+	it('allows read on a matched blacklist entry whose flags keep note.read=true (T9.3 repro)', () => {
+		const entryPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: false, read: true, update: true, delete: true},
+		};
+		const security = makeSecurityConfig({listMode: 'whitelist', paths: [makePathPermission('maybe-allowed/**')]});
+		const key = makeApiKey('kado_test-key', {
+			listMode: 'blacklist',
+			paths: [makePathPermission('maybe-allowed/**', entryPerms)],
+		});
+		const result = dataTypePermissionGate.evaluate(
+			makeReadRequest('maybe-allowed/Budget 2026.md', 'note'),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies create on the same T9.3 config because note.create=false is honoured literally', () => {
+		const entryPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: false, read: true, update: true, delete: true},
+		};
+		const security = makeSecurityConfig({listMode: 'whitelist', paths: [makePathPermission('maybe-allowed/**')]});
+		const key = makeApiKey('kado_test-key', {
+			listMode: 'blacklist',
+			paths: [makePathPermission('maybe-allowed/**', entryPerms)],
+		});
+		const result = dataTypePermissionGate.evaluate(
+			makeWriteRequest('maybe-allowed/new.md', 'note'),
+			makeConfig(security, [key]),
+		);
+		expect(result.allowed).toBe(false);
+	});
+
+	it('allows read on a non-blacklisted path (blacklist default is full access)', () => {
 		const security = makeSecurityConfig({
 			listMode: 'blacklist',
-			paths: [makePathPermission('private/**')],
+			paths: [makePathPermission('private/**', makeAllFalsePermissions())],
 		});
 		const key = makeApiKey('kado_test-key', {listMode: 'blacklist', paths: []});
 		const result = dataTypePermissionGate.evaluate(
