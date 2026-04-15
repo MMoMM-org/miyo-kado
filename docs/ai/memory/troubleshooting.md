@@ -18,12 +18,13 @@
 **Kado mitigation**: Server sends `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` on every response + `Retry-After` on 429. Clients must read these headers themselves. Reference implementation in `test/live/mcp-live.test.ts` (`probeRetryAfter()` + `callTool()` retry loop).
 **Future**: Consider raising/making rate limit configurable, or contributing 429 handling upstream to `@modelcontextprotocol/sdk`.
 
-## Obsidian transient disk truncation after adapter.write() — Status: understood ([#10](https://github.com/MMoMM-org/miyo-kado/issues/10))
-**Problem**: After `vault.adapter.write()`, Obsidian's file watcher detects the change and briefly overwrites the file with stale in-memory cache content (truncated to previous file size). Within ~1-2 seconds, it corrects itself by re-reading from disk. This is a **transient** state, not permanent data loss.
-**Diagnosis**: Create "Hello" (5B) → update to "Dies ist ein komischer Test" (27B) → immediate `readFileSync` shows "Dies " (5B, old size) → after 2s delay shows full 27B content. MCP readback (`vault.read()`) is always correct immediately.
-**Workaround**: For filesystem verification in tests, add ~2s delay after writes that increase file size. MCP API consumers are unaffected (they use `vault.read()` which returns correct content instantly).
-**Kado approach**: Use `vault.adapter.write()` for disk writes (note-adapter updateNote), `vault.create()` for creates. The transient truncation resolves itself.
-**Related**: obsidian-mcp-tools (jacksteamdev) uses external MCP server → bypasses this entirely.
+## Obsidian transient disk truncation after adapter.write() — Status: RETRACTED ([#10](https://github.com/MMoMM-org/miyo-kado/issues/10))
+**2026-04-15 retraction**: the "transient truncation" was a misdiagnosis on our side. It does not exist in current Obsidian.
+**Obsidian team response**: `vault.read` == `adapter.read` == direct `fs.promises.readFile` (no cache). The file watcher is a watcher, not a writer. Their clean repro in the dev console showed the on-disk file at the new full length immediately after `adapter.write()`.
+**Our re-verification (2026-04-15, via MCP on the real Kado server in `test/MiYo-Kado`, only `hot-reload` plugin installed, target file not open in editor)**: Create 5B → Update to 36B → disk size 36B at 0 ms / 500 ms / 2 s / 3.5 s. No truncation.
+**Probable original cause**: the test file was open in the Obsidian editor at the time. The ~2 s delay we associated with "self-correction" matches exactly the editor's debounce window — the editor flushed its stale in-memory buffer onto disk, overwriting our write. That is editor behaviour, not a file-watcher race.
+**Current Kado code**: `src/obsidian/note-adapter.ts::updateNote` still uses `adapter.write` as the legacy "workaround". It works correctly but bypasses the Vault API. Follow-up: switch to `vault.process`.
+**Docs**: `docs/upstream-bugs/vault-cache-truncation.md` carries the full retraction notice.
 
 <!-- 2026-04-08, updated 2026-04-15 -->
 ## Settings page stale after plugin reload — Status: deferred ([#9](https://github.com/MMoMM-org/miyo-kado/issues/9))
