@@ -354,13 +354,8 @@ export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest 
 // Internal helpers (not exported)
 // ============================================================
 
-const DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field']);
 const READ_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']);
 const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']);
-
-function isDataType(value: string): boolean {
-	return DATA_TYPES.has(value);
-}
 
 function isReadDataType(value: string): boolean {
 	return READ_DATA_TYPES.has(value);
