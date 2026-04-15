@@ -1,3 +1,10 @@
+## [0.5.2](https://github.com/MMoMM-org/miyo-kado/compare/0.5.1...0.5.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* refuse kado-write on a dirty open editor with CONFLICT ([#19](https://github.com/MMoMM-org/miyo-kado/issues/19)) ([7856e73](https://github.com/MMoMM-org/miyo-kado/commit/7856e735220352203067a7f5e72b123234bedd07))
+
 ## [0.5.1](https://github.com/MMoMM-org/miyo-kado/compare/0.5.0...0.5.1) (2026-04-15)
 
 
