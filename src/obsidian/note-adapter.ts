@@ -8,6 +8,7 @@
 import type {App} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode} from '../types/canonical';
+import {extractInlineTags, normalizeTag} from '../core/tag-utils';
 
 /** Error thrown by vault adapters, wrapping a CoreError with its error code. */
 export class NoteAdapterError extends Error {
@@ -30,10 +31,88 @@ function conflictError(path: string): NoteAdapterError {
 async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
+	if (request.operation === 'tags') return readTags(app, file, request);
 	const content = await app.vault.read(file);
 	return {
 		path: request.path,
 		content,
+		created: file.stat.ctime,
+		modified: file.stat.mtime,
+		size: file.stat.size,
+	};
+}
+
+/** Splits a frontmatter tags string at whitespace or commas and normalizes each token. */
+function parseFrontmatterTagString(raw: string): string[] {
+	return raw
+		.split(/[\s,]+/)
+		.map((t) => normalizeTag(t))
+		.filter((t): t is string => t !== null);
+}
+
+type FileCacheArg = Parameters<App['metadataCache']['getFileCache']>[0];
+
+/** Reads frontmatter tags for a note: accepts string or string[] form, normalizes and dedupes. */
+function readFrontmatterTags(app: App, file: FileCacheArg): string[] {
+	const cache = app.metadataCache.getFileCache(file);
+	const raw: unknown = cache?.frontmatter?.tags;
+	if (raw === undefined || raw === null) return [];
+	const collected: string[] = [];
+	if (typeof raw === 'string') {
+		collected.push(...parseFrontmatterTagString(raw));
+	} else if (Array.isArray(raw)) {
+		for (const entry of raw) {
+			if (typeof entry !== 'string') continue;
+			const tag = normalizeTag(entry);
+			if (tag !== null) collected.push(tag);
+		}
+	}
+	return dedupePreservingOrder(collected);
+}
+
+function dedupePreservingOrder(tags: string[]): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const tag of tags) {
+		if (!seen.has(tag)) {
+			seen.add(tag);
+			out.push(tag);
+		}
+	}
+	return out;
+}
+
+/** Strips a leading YAML frontmatter block so inline-tag scanning does not re-scan it. */
+function stripFrontmatter(content: string): string {
+	if (!content.startsWith('---')) return content;
+	const end = content.indexOf('\n---', 3);
+	if (end === -1) return content;
+	const afterFence = content.indexOf('\n', end + 1);
+	return afterFence === -1 ? '' : content.slice(afterFence + 1);
+}
+
+async function readTags(app: App, file: Parameters<App['vault']['read']>[0], request: CoreReadRequest): Promise<CoreFileResult> {
+	const scope = request.tagsReturnScope ?? 'all';
+	const frontmatter = readFrontmatterTags(app, file);
+
+	if (scope === 'frontmatter-only') {
+		const all = dedupePreservingOrder(frontmatter);
+		return {
+			path: request.path,
+			content: {frontmatter, inline: [], all, returnedTags: 'FrontmatterOnly'},
+			created: file.stat.ctime,
+			modified: file.stat.mtime,
+			size: file.stat.size,
+		};
+	}
+
+	const raw = await app.vault.read(file);
+	const body = stripFrontmatter(raw);
+	const inline = extractInlineTags(body);
+	const all = dedupePreservingOrder([...frontmatter, ...inline]);
+	return {
+		path: request.path,
+		content: {frontmatter, inline, all, returnedTags: 'All'},
 		created: file.stat.ctime,
 		modified: file.stat.mtime,
 		size: file.stat.size,

@@ -148,6 +148,168 @@ describe('NoteAdapter', () => {
 		});
 	});
 
+	describe('read() — operation "tags"', () => {
+		function makeTagsRequest(
+			path = 'notes/tagged.md',
+			scope: 'all' | 'frontmatter-only' = 'all',
+		): CoreReadRequest {
+			return {apiKeyId: 'kado_test-key', operation: 'tags', path, tagsReturnScope: scope};
+		}
+
+		it('returns frontmatter+inline with returnedTags="All" when scope is "all"', async () => {
+			const file = makeTFile({path: 'notes/tagged.md', ctime: 100, mtime: 200, size: 50});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(
+				'---\ntags: [alpha, beta]\n---\nBody text with #beta and #gamma tags.',
+			);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				frontmatter: {tags: ['alpha', 'beta']},
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect(result.path).toBe('notes/tagged.md');
+			expect(result.content).toEqual({
+				frontmatter: ['alpha', 'beta'],
+				inline: ['beta', 'gamma'],
+				all: ['alpha', 'beta', 'gamma'],
+				returnedTags: 'All',
+			});
+			expect(result.modified).toBe(200);
+		});
+
+		it('preserves frontmatter-first order when dedup across frontmatter+inline overlaps', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('---\ntags: [b, a]\n---\nbody #a #c #b');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({frontmatter: {tags: ['b', 'a']}});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect((result.content as Record<string, unknown>).all).toEqual(['b', 'a', 'c']);
+		});
+
+		it('defaults to scope="all" when tagsReturnScope is not set on the request', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('body #x');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+			const request: CoreReadRequest = {apiKeyId: 'k', operation: 'tags', path: 'notes/tagged.md'};
+			const result = await adapter.read(request);
+
+			expect((result.content as Record<string, unknown>).returnedTags).toBe('All');
+		});
+
+		it('returns only frontmatter tags and returnedTags="FrontmatterOnly" when scope restricts', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				frontmatter: {tags: ['alpha', 'beta']},
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest('notes/tagged.md', 'frontmatter-only'));
+
+			expect(result.content).toEqual({
+				frontmatter: ['alpha', 'beta'],
+				inline: [],
+				all: ['alpha', 'beta'],
+				returnedTags: 'FrontmatterOnly',
+			});
+		});
+
+		it('does not read the note body when scope is frontmatter-only', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({frontmatter: {tags: ['a']}});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.read(makeTagsRequest('notes/tagged.md', 'frontmatter-only'));
+
+			expect(app.vault.read).not.toHaveBeenCalled();
+		});
+
+		it('handles frontmatter tags given as a single space-separated string', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('---\ntags: "alpha beta"\n---\n');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				frontmatter: {tags: 'alpha beta'},
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect(result.content).toEqual({
+				frontmatter: ['alpha', 'beta'],
+				inline: [],
+				all: ['alpha', 'beta'],
+				returnedTags: 'All',
+			});
+		});
+
+		it('handles frontmatter tags given as a comma-separated string', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('---\ntags: "alpha, beta, #gamma"\n---\n');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				frontmatter: {tags: 'alpha, beta, #gamma'},
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect(result.content).toEqual({
+				frontmatter: ['alpha', 'beta', 'gamma'],
+				inline: [],
+				all: ['alpha', 'beta', 'gamma'],
+				returnedTags: 'All',
+			});
+		});
+
+		it('returns empty arrays when note has neither frontmatter nor inline tags', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('plain body with no tags');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect(result.content).toEqual({frontmatter: [], inline: [], all: [], returnedTags: 'All'});
+		});
+
+		it('extracts inline tags even when no frontmatter is present', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Just body with #one and #two.');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeTagsRequest());
+
+			expect(result.content).toEqual({
+				frontmatter: [],
+				inline: ['one', 'two'],
+				all: ['one', 'two'],
+				returnedTags: 'All',
+			});
+		});
+
+		it('throws NOT_FOUND when the file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+			const adapter = createNoteAdapter(app);
+			await expect(adapter.read(makeTagsRequest('notes/missing.md'))).rejects.toMatchObject({
+				code: 'NOT_FOUND',
+				message: expect.stringContaining('notes/missing.md'),
+			});
+		});
+	});
+
 	describe('write() — operation "note" with string content', () => {
 		it('handles string content correctly on create', async () => {
 			const createdFile = makeTFile({ctime: 9000, mtime: 9000, size: 5});

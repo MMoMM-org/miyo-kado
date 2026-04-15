@@ -208,6 +208,71 @@ describe('dataTypePermissionGate.evaluate() — read requests', () => {
 		);
 		expect(result.allowed).toBe(false);
 	});
+
+	it('allows a tags read and sets scope="all" when note.read is granted', () => {
+		const request = makeReadRequest('projects/note.md', 'tags');
+		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig());
+		expect(result.allowed).toBe(true);
+		expect(request.tagsReturnScope).toBe('all');
+	});
+
+	it('allows a tags read and sets scope="frontmatter-only" when only frontmatter.read is granted', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+		};
+		const request = makeReadRequest('projects/note.md', 'tags');
+		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig(keyPerms));
+		expect(result.allowed).toBe(true);
+		expect(request.tagsReturnScope).toBe('frontmatter-only');
+	});
+
+	it('denies a tags read when both note.read and frontmatter.read are false', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+			frontmatter: {create: true, read: false, update: true, delete: false},
+		};
+		const request = makeReadRequest('projects/note.md', 'tags');
+		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig(keyPerms));
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+			expect(result.error.message).toMatch(/note\.read.*frontmatter\.read|frontmatter\.read.*note\.read/);
+		}
+	});
+
+	it('denies a tags read under blacklist mode when the path is blacklisted', () => {
+		const security = makeSecurityConfig({
+			listMode: 'blacklist',
+			paths: [makePathPermission('secret/**')],
+		});
+		const key = makeApiKey('kado_test-key', {
+			listMode: 'blacklist',
+			paths: [makePathPermission('secret/**')],
+		});
+		const request = makeReadRequest('secret/vault.md', 'tags');
+		const result = dataTypePermissionGate.evaluate(request, makeConfig(security, [key]));
+		expect(result.allowed).toBe(false);
+	});
+
+	it('denies a tags read when global scope denies both note.read and frontmatter.read', () => {
+		const globalPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+			frontmatter: {create: true, read: false, update: true, delete: false},
+		};
+		const security = makeSecurityConfig({
+			paths: [makePathPermission('projects/**', globalPerms)],
+		});
+		const key = makeApiKey('kado_test-key', {
+			paths: [makePathPermission('projects/**')],
+		});
+		const request = makeReadRequest('projects/note.md', 'tags');
+		const result = dataTypePermissionGate.evaluate(request, makeConfig(security, [key]));
+		expect(result.allowed).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {normalizeTag, isWildcardTag, matchTag} from '../../src/core/tag-utils';
+import {normalizeTag, isWildcardTag, matchTag, extractInlineTags} from '../../src/core/tag-utils';
 
 describe('normalizeTag', () => {
 	it('strips leading # from tag', () => {
@@ -128,5 +128,69 @@ describe('matchTag', () => {
 		it('does not match partial prefix', () => {
 			expect(matchTag('projects/a', 'project/*')).toBe(false);
 		});
+	});
+});
+
+describe('extractInlineTags', () => {
+	it('returns empty array for empty body', () => {
+		expect(extractInlineTags('')).toEqual([]);
+	});
+
+	it('extracts a single simple tag', () => {
+		expect(extractInlineTags('hello #foo world')).toEqual(['foo']);
+	});
+
+	it('extracts hierarchical tags', () => {
+		expect(extractInlineTags('note with #a/b/c tag')).toEqual(['a/b/c']);
+	});
+
+	it('extracts multiple tags in document order', () => {
+		expect(extractInlineTags('#alpha and #beta then #gamma')).toEqual(['alpha', 'beta', 'gamma']);
+	});
+
+	it('deduplicates repeated tags keeping first occurrence', () => {
+		expect(extractInlineTags('#foo and #bar and #foo again')).toEqual(['foo', 'bar']);
+	});
+
+	it('ignores tags inside fenced code blocks', () => {
+		const body = 'before\n```\n#fake\n#also-fake\n```\n#real';
+		expect(extractInlineTags(body)).toEqual(['real']);
+	});
+
+	it('ignores tags inside inline code spans', () => {
+		expect(extractInlineTags('text `#fake` and #real')).toEqual(['real']);
+	});
+
+	it('ignores URL fragment anchors', () => {
+		expect(extractInlineTags('see http://example.com/path#anchor for #real info')).toEqual(['real']);
+	});
+
+	it('ignores markdown link anchors', () => {
+		expect(extractInlineTags('[link](docs/file.md#section) and #real')).toEqual(['real']);
+	});
+
+	it('does not capture tag when # is preceded by a word character', () => {
+		expect(extractInlineTags('no#tag but #yes')).toEqual(['yes']);
+	});
+
+	it('returns empty for body with only code fences', () => {
+		expect(extractInlineTags('```\n#fake\n```')).toEqual([]);
+	});
+
+	it('does not capture a double-hash prefix like ##foo', () => {
+		expect(extractInlineTags('see ##foo in this')).toEqual([]);
+	});
+
+	it('captures a second tag separated from a double-hash', () => {
+		expect(extractInlineTags('##foo and later #bar')).toEqual(['bar']);
+	});
+
+	it('ignores a lone trailing hash', () => {
+		expect(extractInlineTags('line ends with a # ')).toEqual([]);
+	});
+
+	it('handles very long inputs without catastrophic backtracking', () => {
+		const longBody = 'filler '.repeat(5000) + ' #only-tag';
+		expect(extractInlineTags(longBody)).toEqual(['only-tag']);
 	});
 });

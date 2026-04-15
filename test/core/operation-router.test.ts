@@ -173,6 +173,18 @@ describe('createOperationRouter() — read routing', () => {
 		expect(result).toBe(expected);
 	});
 
+	it('routes read "tags" to noteAdapter.read (tags is a note-derived read)', async () => {
+		const expected = makeFileResult();
+		noteAdapter.read.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeReadRequest('tags'));
+
+		expect(noteAdapter.read).toHaveBeenCalledOnce();
+		expect(frontmatterAdapter.read).not.toHaveBeenCalled();
+		expect(result).toBe(expected);
+	});
+
 	it('passes the request object to the adapter unchanged', async () => {
 		const req = makeReadRequest('note');
 		noteAdapter.read.mockResolvedValue(makeFileResult());

@@ -15,6 +15,13 @@
 /** The four data types Kado can read/write through the vault. */
 export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field';
 
+/**
+ * Operations supported by kado-read. Extends DataType with 'tags' — a read-only
+ * operation returning the union of frontmatter + inline body tags for a note.
+ * Writes and deletes never accept 'tags'.
+ */
+export type ReadDataType = DataType | 'tags';
+
 /** Data types supported by kado-delete. Inline fields are intentionally excluded. */
 export type DeleteDataType = 'note' | 'frontmatter' | 'file';
 
@@ -27,13 +34,19 @@ export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags' | 'byC
 // Core Requests
 // ============================================================
 
-/** Request to read a single vault item (note, frontmatter, file, or inline field). */
+/** Request to read a single vault item (note, frontmatter, file, inline field, or tags). */
 export interface CoreReadRequest {
 	apiKeyId: string;
-	operation: DataType;
+	operation: ReadDataType;
 	path: string;
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
+	/**
+	 * Set by DataTypePermissionGate for operation='tags':
+	 * - 'all' when note.read is granted (full frontmatter + inline result)
+	 * - 'frontmatter-only' when only frontmatter.read is granted (inline omitted)
+	 */
+	tagsReturnScope?: 'all' | 'frontmatter-only';
 }
 
 /** Request to create or update a vault item. Includes optional concurrency guard. */
@@ -316,7 +329,7 @@ export function createDefaultConfig(): KadoConfig {
 export function isCoreReadRequest(req: CoreRequest): req is CoreReadRequest {
 	return !('content' in req)
 		&& !('kind' in req)
-		&& isDataType((req as CoreReadRequest).operation);
+		&& isReadDataType((req as CoreReadRequest).operation);
 }
 
 /**
@@ -347,11 +360,11 @@ export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest 
 // Internal helpers (not exported)
 // ============================================================
 
-const DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field']);
+const READ_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']);
 const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']);
 
-function isDataType(value: string): boolean {
-	return DATA_TYPES.has(value);
+function isReadDataType(value: string): boolean {
+	return READ_DATA_TYPES.has(value);
 }
 
 function isSearchOperation(value: string): boolean {

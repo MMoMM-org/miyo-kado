@@ -16,17 +16,18 @@
 
 import {
 	isCoreWriteRequest,
+	isCoreReadRequest,
 	isCoreSearchRequest,
 	isCoreDeleteRequest,
 } from '../../types/canonical';
 import type {
 	CoreRequest,
 	CrudOperation,
-	DataType,
 	DataTypePermissions,
 	GateResult,
 	KadoConfig,
 	PermissionGate,
+	ReadDataType,
 } from '../../types/canonical';
 import {resolveScope, createAllPermissions, intersectPermissions} from './scope-resolver';
 
@@ -51,9 +52,13 @@ function inferCrudAction(request: CoreRequest): CrudOperation {
  * Maps a DataType value to the corresponding key in DataTypePermissions.
  * The only non-trivial mapping is 'dataview-inline-field' → 'dataviewInlineField'.
  */
-function dataTypeToPermissionsKey(dataType: DataType): keyof DataTypePermissions {
+function dataTypeToPermissionsKey(dataType: ReadDataType): keyof DataTypePermissions {
 	if (dataType === 'dataview-inline-field') {
 		return 'dataviewInlineField';
+	}
+	// 'tags' is a read-only derivative of note body + frontmatter → gated by note permission.
+	if (dataType === 'tags') {
+		return 'note';
 	}
 	return dataType;
 }
@@ -99,11 +104,43 @@ export const dataTypePermissionGate: PermissionGate = {
 			return evaluateSearchPermission(request.apiKeyId, action, config, key);
 		}
 
+		// Tags is a read-only derivative: allowed when note.read OR frontmatter.read
+		// is granted. The scope is attached to the request so the adapter can
+		// shape the result accordingly (frontmatter-only vs all).
+		if (isCoreReadRequest(request) && request.operation === 'tags') {
+			return evaluateTagsPermission(request, config, key);
+		}
+
 		const path = (request as {path: string}).path;
-		const dataType = (request as {operation: DataType}).operation;
+		const dataType = (request as {operation: ReadDataType}).operation;
 		return evaluatePathPermission(path, dataType, action, request.apiKeyId, config, key);
 	},
 };
+
+/**
+ * Evaluates a tags read: granted by note.read (full scope) OR frontmatter.read
+ * (frontmatter-only scope). Mutates the request with the resulting scope so the
+ * adapter can honour it. Denies only when both permissions are missing.
+ */
+function evaluateTagsPermission(
+	request: import('../../types/canonical').CoreReadRequest,
+	config: KadoConfig,
+	resolvedKey: KadoConfig['apiKeys'][number],
+): GateResult {
+	const effective = resolveEffectivePermissions(request.path, config, request.apiKeyId, resolvedKey);
+	if (effective === null) {
+		return forbidden('Request path is not within any permitted scope.');
+	}
+	if (effective.note.read) {
+		request.tagsReturnScope = 'all';
+		return {allowed: true};
+	}
+	if (effective.frontmatter.read) {
+		request.tagsReturnScope = 'frontmatter-only';
+		return {allowed: true};
+	}
+	return forbidden("Key lacks 'read' permission for both note.read and frontmatter.read (required for tags).");
+}
 
 /** Evaluates read permission for search requests using note.read from the effective scope. */
 function evaluateSearchPermission(
@@ -160,7 +197,7 @@ function resolveSearchNotePermissions(scope: {listMode: string; paths: {path: st
 /** Evaluates CRUD permission for path-based read/write requests. */
 function evaluatePathPermission(
 	path: string,
-	dataType: DataType,
+	dataType: ReadDataType,
 	action: CrudOperation,
 	keyId: string,
 	config: KadoConfig,
