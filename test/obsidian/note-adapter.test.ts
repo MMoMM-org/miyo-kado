@@ -7,9 +7,16 @@
  */
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {App, TFile} from '../__mocks__/obsidian';
+import {App, TFile, MarkdownView, Notice} from '../__mocks__/obsidian';
 import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import type {CoreReadRequest, CoreWriteRequest} from '../../src/types/canonical';
+
+function makeLeafWithView(file: TFile, editorContent: string): {view: MarkdownView} {
+	const view = new MarkdownView();
+	view.file = file;
+	view.data = editorContent;
+	return {view};
+}
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -332,6 +339,73 @@ describe('NoteAdapter', () => {
 
 			expect(app.vault.create).toHaveBeenCalledWith('notes/test.md', 'hello');
 			expect(result.path).toBe('notes/test.md');
+		});
+	});
+
+	describe('write() — coordination with open editor', () => {
+		beforeEach(() => {
+			Notice._reset();
+		});
+
+		it('saves the editor and shows a Notice when the target file is open with unsaved changes', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user typing in progress');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('old disk content');
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => transform('old disk content'));
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new MCP content', expectedModified: 2000}));
+
+			expect(view.save).toHaveBeenCalledOnce();
+			expect(app.vault.process).toHaveBeenCalledOnce();
+			expect(Notice._instances).toHaveLength(1);
+			expect(Notice._instances[0]!.message).toBe('Kado updated test');
+		});
+
+		it('does not save or notify when the target file is open but the editor is clean', async () => {
+			const file = makeTFile({path: 'notes/test.md'});
+			const {view} = makeLeafWithView(file, 'identical content');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('identical content');
+			vi.mocked(app.vault.process).mockImplementation(async () => {});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(view.save).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(0);
+		});
+
+		it('does not inspect editor state when the target file is not open in any leaf', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.vault.process).mockImplementation(async () => {});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(app.vault.cachedRead).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(0);
+		});
+
+		it('ignores open leaves whose file does not match the target path', async () => {
+			const targetFile = makeTFile({path: 'notes/test.md'});
+			const otherFile = makeTFile({path: 'notes/other.md'});
+			const {view} = makeLeafWithView(otherFile, 'unrelated dirty content');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(targetFile);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.process).mockImplementation(async () => {});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(view.save).not.toHaveBeenCalled();
+			expect(app.vault.cachedRead).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(0);
 		});
 	});
 });

@@ -5,7 +5,8 @@
  * Translates vault results and errors into Core canonical types.
  */
 
-import type {App} from 'obsidian';
+import type {App, TFile} from 'obsidian';
+import {MarkdownView, Notice} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
@@ -126,14 +127,47 @@ async function createNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 	return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
 }
 
+/** Returns the MarkdownView leaf showing `path`, or null if none is open on that file. */
+function findOpenMarkdownView(app: App, path: string): MarkdownView | null {
+	const leaves = app.workspace.getLeavesOfType('markdown');
+	for (const leaf of leaves) {
+		const view = leaf.view;
+		if (view instanceof MarkdownView && view.file?.path === path) return view;
+	}
+	return null;
+}
+
+/**
+ * If the target file is open in an editor with unsaved changes, save those
+ * changes first so the user's in-progress work is committed to disk (and
+ * survives in Obsidian's undo stack) before our write overwrites it.
+ * Returns true when the editor was dirty and we actually saved it.
+ */
+async function flushDirtyEditor(app: App, file: TFile): Promise<boolean> {
+	const view = findOpenMarkdownView(app, file.path);
+	if (!view) return false;
+	const editorContent = view.getViewData();
+	const diskContent = await app.vault.cachedRead(file);
+	if (editorContent === diskContent) return false;
+	await view.save();
+	return true;
+}
+
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	// vault.process() is the atomic read-modify-write API: Obsidian serialises
-	// it against other vault writers and coexists correctly with an open editor
-	// buffer (no debounce flush can overwrite our write after it resolves).
 	const newContent = request.content as string;
+
+	// Coordinate with an open editor: commit its dirty buffer to disk first
+	// so the user's keystrokes are in the undo history, then overwrite.
+	// Fire a Notice when we had to displace real in-progress edits so the
+	// user can see that an assistant just rewrote the note they were typing in.
+	const wasDirty = await flushDirtyEditor(app, file);
 	await app.vault.process(file, () => newContent);
+	if (wasDirty) {
+		new Notice(`Kado updated ${file.basename}`);
+	}
+
 	const refreshed = app.vault.getFileByPath(request.path);
 	const stat = refreshed?.stat ?? file.stat;
 	return {path: request.path, created: stat.ctime, modified: stat.mtime};
