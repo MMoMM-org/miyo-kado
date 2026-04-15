@@ -176,4 +176,21 @@ describe('extractInlineTags', () => {
 	it('returns empty for body with only code fences', () => {
 		expect(extractInlineTags('```\n#fake\n```')).toEqual([]);
 	});
+
+	it('does not capture a double-hash prefix like ##foo', () => {
+		expect(extractInlineTags('see ##foo in this')).toEqual([]);
+	});
+
+	it('captures a second tag separated from a double-hash', () => {
+		expect(extractInlineTags('##foo and later #bar')).toEqual(['bar']);
+	});
+
+	it('ignores a lone trailing hash', () => {
+		expect(extractInlineTags('line ends with a # ')).toEqual([]);
+	});
+
+	it('handles very long inputs without catastrophic backtracking', () => {
+		const longBody = 'filler '.repeat(5000) + ' #only-tag';
+		expect(extractInlineTags(longBody)).toEqual(['only-tag']);
+	});
 });

@@ -20,6 +20,7 @@ import type {
 	CoreError,
 	DataType,
 	DeleteDataType,
+	ReadDataType,
 } from '../types/canonical';
 import {
 	isCoreReadRequest,
@@ -83,6 +84,19 @@ function resolveReadWriteAdapter(
 }
 
 /**
+ * Resolves the adapter for a read operation. 'tags' is a read-only derivative
+ * that delegates to the note adapter; all other operations go through the
+ * regular read/write adapter registry.
+ */
+function resolveReadAdapter(
+	operation: ReadDataType,
+	adapters: AdapterRegistry,
+): ReadWriteAdapter | null {
+	if (operation === 'tags') return adapters.note;
+	return resolveReadWriteAdapter(operation, adapters);
+}
+
+/**
  * Creates a routing function that dispatches CoreRequests to the correct adapter.
  * @param adapters - Registry of read/write and search adapters.
  * @returns An async function that routes a request and returns the adapter result.
@@ -109,12 +123,7 @@ export function createOperationRouter(
 		}
 
 		if (isCoreReadRequest(request)) {
-			// 'tags' reads the note body (frontmatter + inline) and is handled
-			// by the note adapter, which returns a JSON payload.
-			if (request.operation === 'tags') {
-				return adapters.note.read(request);
-			}
-			const adapter = resolveReadWriteAdapter(request.operation, adapters);
+			const adapter = resolveReadAdapter(request.operation, adapters);
 			if (!adapter) {
 				return validationError(`Unknown read operation: ${request.operation}`);
 			}

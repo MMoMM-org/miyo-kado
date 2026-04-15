@@ -31,7 +31,7 @@ function conflictError(path: string): NoteAdapterError {
 async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
-	if (request.operation === 'tags') return readTags(app, file, request.path);
+	if (request.operation === 'tags') return readTags(app, file, request);
 	const content = await app.vault.read(file);
 	return {
 		path: request.path,
@@ -50,9 +50,11 @@ function parseFrontmatterTagString(raw: string): string[] {
 		.filter((t): t is string => t !== null);
 }
 
+type FileCacheArg = Parameters<App['metadataCache']['getFileCache']>[0];
+
 /** Reads frontmatter tags for a note: accepts string or string[] form, normalizes and dedupes. */
-function readFrontmatterTags(app: App, file: {path: string}): string[] {
-	const cache = app.metadataCache.getFileCache(file as Parameters<typeof app.metadataCache.getFileCache>[0]);
+function readFrontmatterTags(app: App, file: FileCacheArg): string[] {
+	const cache = app.metadataCache.getFileCache(file);
 	const raw: unknown = cache?.frontmatter?.tags;
 	if (raw === undefined || raw === null) return [];
 	const collected: string[] = [];
@@ -89,15 +91,28 @@ function stripFrontmatter(content: string): string {
 	return afterFence === -1 ? '' : content.slice(afterFence + 1);
 }
 
-async function readTags(app: App, file: Parameters<App['vault']['read']>[0], path: string): Promise<CoreFileResult> {
+async function readTags(app: App, file: Parameters<App['vault']['read']>[0], request: CoreReadRequest): Promise<CoreFileResult> {
+	const scope = request.tagsReturnScope ?? 'all';
+	const frontmatter = readFrontmatterTags(app, file);
+
+	if (scope === 'frontmatter-only') {
+		const all = dedupePreservingOrder(frontmatter);
+		return {
+			path: request.path,
+			content: {frontmatter, inline: [], all, returnedTags: 'FrontmatterOnly'},
+			created: file.stat.ctime,
+			modified: file.stat.mtime,
+			size: file.stat.size,
+		};
+	}
+
 	const raw = await app.vault.read(file);
-	const frontmatter = readFrontmatterTags(app, file as {path: string});
 	const body = stripFrontmatter(raw);
 	const inline = extractInlineTags(body);
 	const all = dedupePreservingOrder([...frontmatter, ...inline]);
 	return {
-		path,
-		content: {frontmatter, inline, all},
+		path: request.path,
+		content: {frontmatter, inline, all, returnedTags: 'All'},
 		created: file.stat.ctime,
 		modified: file.stat.mtime,
 		size: file.stat.size,

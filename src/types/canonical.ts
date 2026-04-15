@@ -41,6 +41,12 @@ export interface CoreReadRequest {
 	path: string;
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
+	/**
+	 * Set by DataTypePermissionGate for operation='tags':
+	 * - 'all' when note.read is granted (full frontmatter + inline result)
+	 * - 'frontmatter-only' when only frontmatter.read is granted (inline omitted)
+	 */
+	tagsReturnScope?: 'all' | 'frontmatter-only';
 }
 
 /** Request to create or update a vault item. Includes optional concurrency guard. */
