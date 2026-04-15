@@ -40,11 +40,12 @@ export function invertPermissions(p: DataTypePermissions): DataTypePermissions {
 /**
  * Resolves effective permissions for a path within a scope.
  *
- * Whitelist: path must match a listed entry — returns that entry's permissions,
- * or null if no entry matches (path not in scope).
+ * Per-entry CRUD flags always have the SAME meaning across modes:
+ *   true = action allowed on this path, false = action blocked.
  *
- * Blacklist: if no entry matches, full access is granted. If an entry matches,
- * its permissions represent what is BLOCKED, so they are inverted before return.
+ * The two modes differ only in what happens for paths NOT listed:
+ * - Whitelist: unlisted path → null (no access at all).
+ * - Blacklist: unlisted path → full access.
  *
  * Directory paths (ending with '/') also match patterns that would contain files
  * under that directory, e.g. 'allowed/' matches 'allowed/**'.
@@ -60,7 +61,7 @@ export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypeP
 	}
 
 	if (!match) return createAllPermissions();
-	return invertPermissions(match.permissions);
+	return match.permissions;
 }
 
 /**
