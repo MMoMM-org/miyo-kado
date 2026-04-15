@@ -18,6 +18,36 @@ export function normalizeTag(input: string): string | null {
 	return result.length > 0 ? result : null;
 }
 
+/**
+ * Extract inline tags from markdown body in document order, deduplicated.
+ *
+ * Skips tags inside fenced code blocks, inline code spans, URL fragments
+ * (e.g. `http://x#anchor`) and markdown link anchors (e.g. `](path#section)`).
+ * A `#` preceded by a word character (e.g. `no#tag`) is not a tag.
+ * Returned tags have no leading `#`.
+ */
+export function extractInlineTags(body: string): string[] {
+	if (!body) return [];
+
+	let stripped = body.replace(/```[\s\S]*?```/g, ' ');
+	stripped = stripped.replace(/`[^`\n]*`/g, ' ');
+	stripped = stripped.replace(/\]\([^)]*\)/g, ' ');
+	stripped = stripped.replace(/https?:\/\/\S+/gi, ' ');
+
+	const result: string[] = [];
+	const seen = new Set<string>();
+	const re = /(?<![\w#])#([A-Za-z0-9_][A-Za-z0-9_\-/]*)/g;
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(stripped)) !== null) {
+		const tag = match[1];
+		if (tag && !seen.has(tag)) {
+			seen.add(tag);
+			result.push(tag);
+		}
+	}
+	return result;
+}
+
 /** Returns true if the tag pattern ends with '/*'. */
 export function isWildcardTag(pattern: string): boolean {
 	return pattern.endsWith('/*');
