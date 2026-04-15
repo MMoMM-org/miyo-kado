@@ -143,6 +143,11 @@ A few things I plan to address in upcoming releases. None of these are blockers 
 - **Settings import / export.** Backup/restore for the whole config (paths, keys, rules).
 - **Opt-in content truncation on `kado-read`.** For large notes, return only the first ~1000 words plus a hint that more content exists — clients can then decide to pull the rest on demand. Keeps assistant context budgets sane when reading long reference notes. (Feedback from the Tomo team.)
 
+### Known edge cases
+
+- **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago — Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
+- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *<note>* …"). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (≈2 s Obsidian autosave) and it retries, its write is applied on top of your latest edits.
+
 ### Open tracking
 
 Live issues and upstream references live in [GitHub Issues](https://github.com/MMoMM-org/miyo-kado/issues) and `docs/ai/memory/troubleshooting.md`. No open issues at the time of this release.

@@ -315,6 +315,14 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			await logAllowed(deps.auditLogger, keyId, request, startMs);
 			return mapWriteResult(result as CoreWriteResult);
 		} catch (err: unknown) {
+			// Adapters throw NoteAdapterError / FrontmatterAdapterError with a
+			// `code` field (CONFLICT for open-dirty-editor collision, NOT_FOUND
+			// for missing targets, VALIDATION_ERROR for bad inputs). Surface
+			// those codes so MCP clients can retry correctly.
+			const asError = err as {code?: string; message?: string};
+			if (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
+				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
 	});

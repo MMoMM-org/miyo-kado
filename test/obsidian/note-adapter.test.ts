@@ -7,9 +7,16 @@
  */
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {App, TFile} from '../__mocks__/obsidian';
+import {App, TFile, MarkdownView, Notice} from '../__mocks__/obsidian';
 import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import type {CoreReadRequest, CoreWriteRequest} from '../../src/types/canonical';
+
+function makeLeafWithView(file: TFile, editorContent: string): {view: MarkdownView} {
+	const view = new MarkdownView();
+	view.file = file;
+	view.data = editorContent;
+	return {view};
+}
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -332,6 +339,82 @@ describe('NoteAdapter', () => {
 
 			expect(app.vault.create).toHaveBeenCalledWith('notes/test.md', 'hello');
 			expect(result.path).toBe('notes/test.md');
+		});
+	});
+
+	describe('write() — coordination with open editor', () => {
+		beforeEach(() => {
+			Notice._reset();
+		});
+
+		it('returns CONFLICT and shows a Notice when the target file is open with unsaved changes', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user typing in progress');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('old disk content');
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makeWriteRequest({content: 'new MCP content', expectedModified: 2000})),
+			).rejects.toMatchObject({
+				code: 'CONFLICT',
+				message: expect.stringContaining('open in the editor'),
+			});
+			expect(app.vault.process).not.toHaveBeenCalled();
+			expect(view.save).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(1);
+			expect(Notice._instances[0]!.message).toContain('Kado wanted to modify test');
+		});
+
+		it('proceeds with the write and shows no Notice when the target file is open but clean', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'identical content');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('identical content');
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				transform('identical content');
+				file.stat = {ctime: 1000, mtime: 3000, size: 3};
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(app.vault.process).toHaveBeenCalledOnce();
+			expect(view.save).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(0);
+			expect(result.modified).toBe(3000);
+		});
+
+		it('does not inspect editor state when the target file is not open in any leaf', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.vault.process).mockImplementation(async () => {});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(app.vault.read).not.toHaveBeenCalled();
+			expect(app.vault.process).toHaveBeenCalledOnce();
+		});
+
+		it('ignores open leaves whose file does not match the target path', async () => {
+			const targetFile = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const otherFile = makeTFile({path: 'notes/other.md'});
+			const {view} = makeLeafWithView(otherFile, 'unrelated dirty content');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(targetFile);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.process).mockImplementation(async () => {});
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(view.save).not.toHaveBeenCalled();
+			expect(app.vault.read).not.toHaveBeenCalled();
+			expect(app.vault.process).toHaveBeenCalledOnce();
 		});
 	});
 });

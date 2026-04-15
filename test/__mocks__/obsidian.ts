@@ -31,6 +31,7 @@ export class App {
 		getAbstractFileByPath: vi.fn(),
 		getFileByPath: vi.fn(),
 		read: vi.fn(),
+		cachedRead: vi.fn(),
 		create: vi.fn(),
 		modify: vi.fn(),
 		// process: atomic read-modify-write. The transform callback receives the
@@ -113,7 +114,13 @@ export class Modal {
 }
 
 export class Notice {
-	constructor(public message: string, public timeout?: number) {}
+	static _instances: Notice[] = [];
+	constructor(public message: string, public timeout?: number) {
+		Notice._instances.push(this);
+	}
+	static _reset(): void {
+		Notice._instances.length = 0;
+	}
 }
 
 export class Setting {
@@ -374,7 +381,10 @@ export class MarkdownView {
 		setValue: vi.fn(),
 		getSelection: vi.fn(() => ''),
 	};
-	file = null;
+	file: TFile | null = null;
+	data = '';
+	getViewData = vi.fn((): string => this.data);
+	save = vi.fn(async (): Promise<void> => {});
 }
 
 export class Editor {
