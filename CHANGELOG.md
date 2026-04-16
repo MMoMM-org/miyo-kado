@@ -1,3 +1,10 @@
+## [0.5.3](https://github.com/MMoMM-org/miyo-kado/compare/0.5.2...0.5.3) (2026-04-16)
+
+
+### Bug Fixes
+
+* **mcp:** propagate adapter error codes from kado-read ([#20](https://github.com/MMoMM-org/miyo-kado/issues/20)) ([bfcd638](https://github.com/MMoMM-org/miyo-kado/commit/bfcd6380bc014077b316860cc8fa786e1a587979)), closes [#19](https://github.com/MMoMM-org/miyo-kado/issues/19)
+
 ## [0.5.2](https://github.com/MMoMM-org/miyo-kado/compare/0.5.1...0.5.2) (2026-04-15)
 
 
