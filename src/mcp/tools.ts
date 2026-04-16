@@ -288,6 +288,13 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			await logAllowed(deps.auditLogger, keyId, request, startMs);
 			return mapFileResult(result as CoreFileResult);
 		} catch (err: unknown) {
+			// Adapters throw *AdapterError with a `code` field (NOT_FOUND,
+			// CONFLICT, VALIDATION_ERROR). Surface those codes so MCP clients
+			// can distinguish missing files from real internal failures.
+			const asError = err as {code?: string; message?: string};
+			if (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
+				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
 	});
