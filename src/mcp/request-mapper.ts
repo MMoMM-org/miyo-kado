@@ -17,6 +17,7 @@ import type {
 	DeleteDataType,
 	SearchFilter,
 } from '../types/canonical';
+import {validatePath} from '../core/gates/path-access';
 
 type Args = Record<string, unknown>;
 
@@ -176,6 +177,8 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 		const f = rawFilter as Record<string, unknown>;
 		const filter: SearchFilter = {};
 		if (typeof f['path'] === 'string' && f['path'].length > 0) {
+			const pathError = validatePath(f['path']);
+			if (pathError) throw new Error(`mapSearchRequest: filter.path — ${pathError}`);
 			filter.path = f['path'].endsWith('/') ? f['path'] : f['path'] + '/';
 		}
 		if (Array.isArray(f['tags']) && f['tags'].length > 0) {

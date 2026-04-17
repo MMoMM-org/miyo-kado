@@ -424,10 +424,10 @@ function fileTagsMatchPatterns(fileTags: string[], normalizedPatterns: string[])
 	});
 }
 
-/** Strips filter.tags patterns not permitted by allowedTags. Returns [] if all denied. */
+/** Normalizes and validates filter.tags against allowedTags. Returns [] if all denied. */
 function enforceTagPermissions(filterTags: string[], allowedTags: string[] | undefined): string[] {
-	if (allowedTags === undefined) return filterTags;
 	const normalized = normalizeTagPatterns(filterTags);
+	if (allowedTags === undefined) return normalized;
 	return normalized.filter((p) => allowedTags.some((a) => matchTag(p, a)));
 }
 

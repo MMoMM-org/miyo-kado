@@ -353,6 +353,18 @@ describe('mapSearchRequest — filter parsing', () => {
 
 		expect(result.filter).toBeUndefined();
 	});
+
+	it('filter.path with traversal segment → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: '../secret'}}), KEY_ID)).toThrow(/filter\.path.*traversal/);
+	});
+
+	it('filter.path with null byte → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: 'notes/\0hidden'}}), KEY_ID)).toThrow(/filter\.path.*null/);
+	});
+
+	it('filter.path with encoded traversal → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: '%2e%2e/secret'}}), KEY_ID)).toThrow(/filter\.path.*traversal/);
+	});
 });
 
 // ---------------------------------------------------------------------------

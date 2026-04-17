@@ -2387,3 +2387,190 @@ describe('SearchAdapter — combined filters', () => {
 		expect(result.items[0].path).toBe('notes/a.md');
 	});
 });
+
+// ---------------------------------------------------------------------------
+// H5: listTags filter tests
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — listTags with filters', () => {
+	it('filter.path narrows which files contribute tags', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}]}],
+			[fileB, {tags: [{tag: '#archive'}]}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listTags',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('#project');
+	});
+
+	it('filter.tags narrows which files are counted', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}, {tag: '#important'}]}],
+			[fileB, {tags: [{tag: '#personal'}, {tag: '#important'}]}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listTags',
+			filter: {tags: ['project']},
+		})));
+
+		const tagNames = result.items.map((i) => i.path);
+		expect(tagNames).toContain('#project');
+		expect(tagNames).toContain('#important');
+		expect(tagNames).not.toContain('#personal');
+	});
+
+	it('filter.frontmatter narrows which files contribute tags', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}], frontmatter: {status: 'active'}}],
+			[fileB, {tags: [{tag: '#archive'}], frontmatter: {status: 'done'}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listTags',
+			filter: {frontmatter: 'status=active'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('#project');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M4: filter.path without trailing slash at adapter level
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — filter.path edge cases', () => {
+	it('filter.path without trailing slash can false-match similar prefixes', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes-archive/b.md'});
+		const app = makeApp({allFiles: [fileA, fileB]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {path: 'notes'},
+		})));
+
+		expect(result.items).toHaveLength(2);
+	});
+
+	it('filter.path with trailing slash does not false-match', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes-archive/b.md'});
+		const app = makeApp({allFiles: [fileA, fileB]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M6: byContent pre-filter reduces vault.read calls
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — byContent pre-filter verification', () => {
+	it('filter.path prevents vault.read for out-of-scope files', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const app = makeApp({
+			markdownFiles: [fileA, fileB],
+			readFile: new Map([
+				[fileA, 'hello world'],
+				[fileB, 'hello world'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byContent',
+			query: 'hello',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(app.vault.read).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M7: filter.tags with '#'-prefixed patterns
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — filter.tags with # prefix', () => {
+	it('filter.tags with #-prefixed pattern matches correctly', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}]}],
+			[fileB, {tags: [{tag: '#personal'}]}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {tags: ['#project']},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// L4: filter.frontmatter ignored for listDir
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — filter.frontmatter ignored for listDir', () => {
+	it('listDir returns items even with non-matching frontmatter filter', async () => {
+		const folder = new TFolder();
+		folder.path = 'notes';
+		folder.name = 'notes';
+		const file = new TFile();
+		file.path = 'notes/a.md';
+		file.name = 'a.md';
+		folder.children = [file];
+
+		const root = new TFolder();
+		root.path = '/';
+		root.name = '';
+		root.children = [folder];
+
+		const app = makeAppWithTree(root);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'notes/',
+			filter: {frontmatter: 'nonexistent=value'},
+		})));
+
+		expect(result.items.length).toBeGreaterThan(0);
+	});
+});
