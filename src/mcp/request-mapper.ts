@@ -15,6 +15,7 @@ import type {
 	CoreSearchRequest,
 	CoreDeleteRequest,
 	DeleteDataType,
+	SearchFilter,
 } from '../types/canonical';
 
 type Args = Record<string, unknown>;
@@ -161,13 +162,30 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 		result.depth = d;
 	}
 
-	if (typeof args['path'] === 'string') {
+	if (typeof args['path'] === 'string' && operation === 'listDir') {
 		if (args['path'] === '') {
 			throw new Error("mapSearchRequest: path must not be empty. Use '/' to list the vault root.");
 		}
 		if (args['path'] !== '/') {
 			result.path = normalizeDirPath(args['path'], operation);
 		}
+	}
+
+	const rawFilter = args['filter'];
+	if (rawFilter !== undefined && typeof rawFilter === 'object' && rawFilter !== null) {
+		const f = rawFilter as Record<string, unknown>;
+		const filter: SearchFilter = {};
+		if (typeof f['path'] === 'string' && f['path'].length > 0) {
+			filter.path = f['path'].endsWith('/') ? f['path'] : f['path'] + '/';
+		}
+		if (Array.isArray(f['tags']) && f['tags'].length > 0) {
+			filter.tags = f['tags'].filter((t): t is string => typeof t === 'string' && t.length > 0);
+			if (filter.tags.length === 0) delete filter.tags;
+		}
+		if (typeof f['frontmatter'] === 'string' && f['frontmatter'].length > 0) {
+			filter.frontmatter = f['frontmatter'];
+		}
+		if (Object.keys(filter).length > 0) result.filter = filter;
 	}
 
 	return result;

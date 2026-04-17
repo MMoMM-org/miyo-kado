@@ -60,15 +60,27 @@ export interface CoreWriteRequest {
 	resolvedKey?: ApiKeyConfig;
 }
 
+/** Universal cross-operation filter for search requests. */
+export interface SearchFilter {
+	/** Folder prefix — only items whose path starts with this value. */
+	path?: string;
+	/** Tag filter — item must carry at least one matching tag. Glob support (* / ?). */
+	tags?: string[];
+	/** Frontmatter filter — key=value or key-only, same syntax as byFrontmatter query. */
+	frontmatter?: string;
+}
+
 /** Request to search the vault by tag, name, content, frontmatter, or directory listing. */
 export interface CoreSearchRequest {
 	apiKeyId: string;
 	operation: SearchOperation;
 	query?: string;
+	/** Folder path for listDir only. */
 	path?: string;
 	cursor?: string;
 	limit?: number;
 	depth?: number;
+	filter?: SearchFilter;
 	/** Glob patterns for file-level scope filtering (set by tools layer from key config). */
 	scopePatterns?: string[];
 	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */

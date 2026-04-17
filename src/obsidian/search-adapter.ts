@@ -9,7 +9,7 @@
 import {TFile, TFolder} from 'obsidian';
 import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
-import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError} from '../types/canonical';
+import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError, SearchFilter} from '../types/canonical';
 import {matchGlob, dirCouldContainMatches, pathMatchesPatterns} from '../core/glob-match';
 import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
 
@@ -333,9 +333,7 @@ function byName(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 
 async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSearchItem[]> {
 	const query = (request.query ?? '').toLowerCase();
-	const prefix = request.path ?? '';
-	// Apply scope filtering before reading file contents to avoid reading out-of-scope files.
-	// scopePatterns is set by the search handler when the key has whitelist-based scoping.
+	const prefix = request.filter?.path ?? '';
 	const allFiles = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
 	const files = request.scopePatterns !== undefined
 		? allFiles.filter((f) => fileInScope(f, request.scopePatterns!))
@@ -391,23 +389,78 @@ function frontmatterValueMatches(fmValue: unknown, query: string): boolean {
 	return false;
 }
 
+// -----------------------------------------------------------------------
+// Shared filter helpers (H1/H2 — single source of truth for filter logic)
+// -----------------------------------------------------------------------
+
+interface ParsedFrontmatterFilter {
+	key: string;
+	value: string | null;
+}
+
+function parseFrontmatterFilter(query: string): ParsedFrontmatterFilter {
+	const eqIndex = query.indexOf('=');
+	return {
+		key: eqIndex === -1 ? query : query.slice(0, eqIndex),
+		value: eqIndex === -1 ? null : query.slice(eqIndex + 1).toLowerCase(),
+	};
+}
+
+function matchesFrontmatterFilter(fm: Record<string, unknown> | undefined, parsed: ParsedFrontmatterFilter): boolean {
+	if (!fm || !Object.prototype.hasOwnProperty.call(fm, parsed.key)) return false;
+	if (parsed.value === null) return true;
+	return frontmatterValueMatches(fm[parsed.key], parsed.value);
+}
+
+function normalizeTagPatterns(patterns: string[]): string[] {
+	return patterns.map((p) => p.startsWith('#') ? p.slice(1) : p);
+}
+
+function fileTagsMatchPatterns(fileTags: string[], normalizedPatterns: string[]): boolean {
+	return fileTags.some((t) => {
+		const normalized = normalizeTag(t);
+		if (normalized === null) return false;
+		return normalizedPatterns.some((p) => matchTag(normalized, p));
+	});
+}
+
+/** Strips filter.tags patterns not permitted by allowedTags. Returns [] if all denied. */
+function enforceTagPermissions(filterTags: string[], allowedTags: string[] | undefined): string[] {
+	if (allowedTags === undefined) return filterTags;
+	const normalized = normalizeTagPatterns(filterTags);
+	return normalized.filter((p) => allowedTags.some((a) => matchTag(p, a)));
+}
+
+// -----------------------------------------------------------------------
+// listTags
+// -----------------------------------------------------------------------
+
 /**
  * Lists tags, scoped by both file paths and tag permissions.
  * - scopePatterns: only count tags from files whose path matches
  * - allowedTags: only include tags the key has permission for
+ * - filter: universal cross-operation filters (path prefix, tag filter, frontmatter filter)
  */
-function listTags(app: App, scopePatterns?: string[], allowedTags?: string[]): CoreSearchItem[] {
-	// No tag permissions → no tag access
+function listTags(app: App, scopePatterns?: string[], allowedTags?: string[], filter?: SearchFilter): CoreSearchItem[] {
 	if (allowedTags !== undefined && allowedTags.length === 0) return [];
+
+	const parsedFm = filter?.frontmatter ? parseFrontmatterFilter(filter.frontmatter) : undefined;
+	const tagPatterns = filter?.tags
+		? enforceTagPermissions(filter.tags, allowedTags)
+		: undefined;
+	if (tagPatterns !== undefined && tagPatterns.length === 0) return [];
 
 	const counts = new Map<string, number>();
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (scopePatterns !== undefined) {
 			if (scopePatterns.length === 0 || !fileInScope(file, scopePatterns)) continue;
 		}
+		if (filter?.path && !file.path.startsWith(filter.path)) continue;
 		const cache = app.metadataCache.getFileCache(file);
+		if (parsedFm && !matchesFrontmatterFilter(cache?.frontmatter, parsedFm)) continue;
 		const tags = getFileTags(cache);
 		if (tags.length === 0) continue;
+		if (tagPatterns && !fileTagsMatchPatterns(tags, tagPatterns)) continue;
 		for (const tag of tags) {
 			if (allowedTags !== undefined && !isTagPermitted(tag, allowedTags)) continue;
 			counts.set(tag, (counts.get(tag) ?? 0) + 1);
@@ -421,6 +474,34 @@ function listTags(app: App, scopePatterns?: string[], allowedTags?: string[]): C
 		size: count,
 		tags: [tag],
 	}));
+}
+
+// -----------------------------------------------------------------------
+// Cross-operation filters (single-pass, no operation awareness — H3/H4)
+// -----------------------------------------------------------------------
+
+function applyFilters(items: CoreSearchItem[], filter: SearchFilter, app: App, allowedTags?: string[]): CoreSearchItem[] {
+	const parsedFm = filter.frontmatter ? parseFrontmatterFilter(filter.frontmatter) : undefined;
+	const tagPatterns = filter.tags
+		? enforceTagPermissions(filter.tags, allowedTags)
+		: undefined;
+	if (tagPatterns !== undefined && tagPatterns.length === 0) return [];
+
+	return items.filter((item) => {
+		if (filter.path && !item.path.startsWith(filter.path)) return false;
+
+		if (!tagPatterns && !parsedFm) return true;
+		if (item.type === 'folder') return false;
+
+		const file = app.vault.getAbstractFileByPath(item.path);
+		if (!(file instanceof TFile)) return false;
+		const cache = app.metadataCache.getFileCache(file);
+
+		if (parsedFm && !matchesFrontmatterFilter(cache?.frontmatter, parsedFm)) return false;
+		if (tagPatterns && !fileTagsMatchPatterns(getFileTags(cache), tagPatterns)) return false;
+
+		return true;
+	});
 }
 
 // -----------------------------------------------------------------------
@@ -460,7 +541,7 @@ export function createSearchAdapter(app: App): SearchAdapter {
 					items = byName(app, request);
 					break;
 				case 'listTags':
-					items = listTags(app, request.scopePatterns, request.allowedTags);
+					items = listTags(app, request.scopePatterns, request.allowedTags, request.filter);
 					break;
 				case 'byContent':
 					items = await byContent(app, request);
@@ -468,6 +549,15 @@ export function createSearchAdapter(app: App): SearchAdapter {
 				case 'byFrontmatter':
 					items = byFrontmatter(app, request);
 					break;
+			}
+
+			if (request.filter && request.operation !== 'listTags') {
+				const filter = request.operation === 'listDir'
+					? {path: request.filter.path}
+					: request.filter;
+				if (filter.path || filter.tags || filter.frontmatter) {
+					items = applyFilters(items, filter, app, request.allowedTags);
+				}
 			}
 
 			// Apply scope filtering before pagination so total and cursor are accurate.

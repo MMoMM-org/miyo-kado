@@ -51,14 +51,32 @@ function makeApp(overrides: {
 	const cacheMap = overrides.cacheMap ?? new Map();
 	const readFile = overrides.readFile ?? new Map();
 
+	// Build path→cache lookup so getFileCache works for both plain objects and TFile instances
+	const pathCacheMap = new Map<string, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null>();
+	for (const [file, cache] of cacheMap) pathCacheMap.set(file.path, cache);
+
+	// Build path→TFile instances for getAbstractFileByPath (instanceof TFile must work)
+	const tfileIndex = new Map<string, InstanceType<typeof TFile>>();
+	for (const f of allFiles) {
+		const tf = new TFile();
+		tf.path = f.path;
+		tf.name = f.name;
+		tf.stat = f.stat;
+		tfileIndex.set(f.path, tf);
+	}
+
 	return {
 		vault: {
 			getMarkdownFiles: vi.fn(() => markdownFiles),
 			getFiles: vi.fn(() => allFiles),
 			read: vi.fn(async (file: ReturnType<typeof makeTFile>) => readFile.get(file) ?? ''),
+			getAbstractFileByPath: vi.fn((p: string) => tfileIndex.get(p) ?? null),
 		},
 		metadataCache: {
-			getFileCache: vi.fn((file: ReturnType<typeof makeTFile>) => cacheMap.get(file) ?? null),
+			getFileCache: vi.fn((file: {path: string}) => {
+				// Match by path — works for both plain objects and TFile instances
+				return pathCacheMap.get(file.path) ?? cacheMap.get(file as ReturnType<typeof makeTFile>) ?? null;
+			}),
 		},
 	};
 }
@@ -1259,7 +1277,7 @@ describe('SearchAdapter — byContent', () => {
 		});
 		const adapter = createSearchAdapter(app as never);
 
-		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', path: 'notes/'})));
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', filter: {path: 'notes/'}})));
 
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0].path).toBe('notes/a.md');
@@ -2129,5 +2147,243 @@ describe('SearchAdapter — tag permissions', () => {
 		expect(result).toHaveProperty('items');
 		const items = (result as {items: {path: string}[]}).items;
 		expect(items).toHaveLength(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Universal filter tests
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — filter.path', () => {
+	it('byName with filter.path narrows results to prefix', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const app = makeApp({allFiles: [fileA, fileB]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('byTag with filter.path narrows results to prefix', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}]}],
+			[fileB, {tags: [{tag: '#project'}]}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byTag',
+			query: '#project',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('byFrontmatter with filter.path narrows results to prefix', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {status: 'active'}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byFrontmatter',
+			query: 'status=active',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('byContent with filter.path pre-filters files', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'archive/b.md'});
+		const app = makeApp({
+			markdownFiles: [fileA, fileB],
+			readFile: new Map([
+				[fileA, 'hello world'],
+				[fileB, 'hello world'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byContent',
+			query: 'hello',
+			filter: {path: 'notes/'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+});
+
+describe('SearchAdapter — filter.tags', () => {
+	it('byName with filter.tags keeps only tagged files', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}]}],
+			[fileB, {tags: [{tag: '#personal'}]}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {tags: ['project']},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('filter.tags with glob matches sub-tags', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#status/active'}]}],
+			[fileB, {tags: [{tag: '#category/work'}]}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {tags: ['status/*']},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('filter.tags ignored for listDir', async () => {
+		const folder = new TFolder();
+		folder.path = 'notes';
+		folder.name = 'notes';
+		const file = new TFile();
+		file.path = 'notes/a.md';
+		file.name = 'a.md';
+		folder.children = [file];
+
+		const root = new TFolder();
+		root.path = '/';
+		root.name = '';
+		root.children = [folder];
+
+		const app = makeAppWithTree(root);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'notes/',
+			filter: {tags: ['#nonexistent']},
+		})));
+
+		expect(result.items.length).toBeGreaterThan(0);
+	});
+});
+
+describe('SearchAdapter — filter.frontmatter', () => {
+	it('byName with filter.frontmatter key=value keeps matching files', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {status: 'archived'}}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {frontmatter: 'status=active'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('byName with filter.frontmatter key-only keeps files with key', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {title: 'hello'}}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {frontmatter: 'status'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+});
+
+describe('SearchAdapter — combined filters', () => {
+	it('filter.path + filter.tags narrows by both', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const fileC = makeTFile({path: 'archive/c.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}]}],
+			[fileB, {tags: [{tag: '#personal'}]}],
+			[fileC, {tags: [{tag: '#project'}]}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB, fileC], markdownFiles: [fileA, fileB, fileC], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {path: 'notes/', tags: ['project']},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('filter.path + filter.frontmatter + filter.tags all combine', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {tags: [{tag: '#project'}], frontmatter: {status: 'active'}}],
+			[fileB, {tags: [{tag: '#project'}], frontmatter: {status: 'archived'}}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {path: 'notes/', tags: ['project'], frontmatter: 'status=active'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
 	});
 });
