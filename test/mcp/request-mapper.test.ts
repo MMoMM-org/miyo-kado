@@ -365,6 +365,25 @@ describe('mapSearchRequest — filter parsing', () => {
 	it('filter.path with encoded traversal → throws', () => {
 		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: '%2e%2e/secret'}}), KEY_ID)).toThrow(/filter\.path.*traversal/);
 	});
+
+	it('filter.path exceeding 512 chars → throws', () => {
+		const longPath = 'a'.repeat(513);
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: longPath}}), KEY_ID)).toThrow(/512 characters/);
+	});
+
+	it('filter.tags entries exceeding 128 chars → silently dropped', () => {
+		const longTag = '#' + 'a'.repeat(128);
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: [longTag, '#valid']}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.tags).toEqual(['#valid']);
+	});
+
+	it('filter.tags all entries exceeding 128 chars → no filter.tags', () => {
+		const longTag = '#' + 'a'.repeat(128);
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: [longTag]}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------

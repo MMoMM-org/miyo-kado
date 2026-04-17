@@ -177,12 +177,13 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 		const f = rawFilter as Record<string, unknown>;
 		const filter: SearchFilter = {};
 		if (typeof f['path'] === 'string' && f['path'].length > 0) {
+			if (f['path'].length > 512) throw new Error('mapSearchRequest: filter.path must not exceed 512 characters');
 			const pathError = validatePath(f['path']);
 			if (pathError) throw new Error(`mapSearchRequest: filter.path — ${pathError}`);
 			filter.path = f['path'].endsWith('/') ? f['path'] : f['path'] + '/';
 		}
 		if (Array.isArray(f['tags']) && f['tags'].length > 0) {
-			filter.tags = f['tags'].filter((t): t is string => typeof t === 'string' && t.length > 0);
+			filter.tags = f['tags'].filter((t): t is string => typeof t === 'string' && t.length > 0 && t.length <= 128);
 			if (filter.tags.length === 0) delete filter.tags;
 		}
 		if (typeof f['frontmatter'] === 'string' && f['frontmatter'].length > 0) {

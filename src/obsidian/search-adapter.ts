@@ -552,9 +552,13 @@ export function createSearchAdapter(app: App): SearchAdapter {
 			}
 
 			if (request.filter && request.operation !== 'listTags') {
-				const filter = request.operation === 'listDir'
-					? {path: request.filter.path}
-					: request.filter;
+				let filter = request.filter;
+				if (request.operation === 'listDir') {
+					filter = {path: filter.path};
+				} else if (request.operation === 'byContent') {
+					// byContent already pre-filters by filter.path before reading files
+					filter = {tags: filter.tags, frontmatter: filter.frontmatter};
+				}
 				if (filter.path || filter.tags || filter.frontmatter) {
 					items = applyFilters(items, filter, app, request.allowedTags);
 				}
