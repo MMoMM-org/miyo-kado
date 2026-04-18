@@ -248,8 +248,14 @@ describe('mapSearchRequest — path handling (/ and empty)', () => {
 		expect(result.path).toBeUndefined();
 	});
 
-	it('path: "" → throws with message matching /path must not be empty.*Use \'\\/\' to list the vault root\\./', () => {
-		expect(() => mapSearchRequest(makeSearchArgs({path: ''}), KEY_ID)).toThrow(/path must not be empty/);
+	it('path: "" with listDir → throws with message matching /path must not be empty/', () => {
+		expect(() => mapSearchRequest({operation: 'listDir', path: ''}, KEY_ID)).toThrow(/path must not be empty/);
+	});
+
+	it('path with non-listDir operation → ignored', () => {
+		const result = mapSearchRequest(makeSearchArgs({path: 'notes/'}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBeUndefined();
 	});
 
 	it('path omitted → result.path === undefined', () => {
@@ -274,6 +280,109 @@ describe('mapSearchRequest — path handling (/ and empty)', () => {
 		const result = mapSearchRequest({operation: 'byContent', path: '/'}, KEY_ID) as CoreSearchRequest;
 
 		expect(result.path).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapSearchRequest — filter parsing
+// ---------------------------------------------------------------------------
+
+describe('mapSearchRequest — filter parsing', () => {
+	it('filter with path normalizes trailing slash', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {path: 'notes'}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.path).toBe('notes/');
+	});
+
+	it('filter with path preserves existing trailing slash', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {path: 'notes/'}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.path).toBe('notes/');
+	});
+
+	it('filter with tags array', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: ['#project', '#status/active']}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.tags).toEqual(['#project', '#status/active']);
+	});
+
+	it('filter with frontmatter key=value', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {frontmatter: 'status=active'}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.frontmatter).toBe('status=active');
+	});
+
+	it('filter with frontmatter key-only', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {frontmatter: 'status'}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.frontmatter).toBe('status');
+	});
+
+	it('filter with all three fields', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {path: 'notes', tags: ['#project'], frontmatter: 'status=done'}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toEqual({path: 'notes/', tags: ['#project'], frontmatter: 'status=done'});
+	});
+
+	it('empty filter object → no filter on result', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
+	});
+
+	it('filter with empty path → no filter.path', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {path: ''}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
+	});
+
+	it('filter with empty tags array → no filter.tags', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: []}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
+	});
+
+	it('filter with non-string tags entries → filtered out', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: ['#valid', '', 123]}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.tags).toEqual(['#valid']);
+	});
+
+	it('filter undefined → no filter on result', () => {
+		const result = mapSearchRequest(makeSearchArgs(), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
+	});
+
+	it('filter.path with traversal segment → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: '../secret'}}), KEY_ID)).toThrow(/filter\.path.*traversal/);
+	});
+
+	it('filter.path with null byte → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: 'notes/\0hidden'}}), KEY_ID)).toThrow(/filter\.path.*null/);
+	});
+
+	it('filter.path with encoded traversal → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: '%2e%2e/secret'}}), KEY_ID)).toThrow(/filter\.path.*traversal/);
+	});
+
+	it('filter.path exceeding 512 chars → throws', () => {
+		const longPath = 'a'.repeat(513);
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {path: longPath}}), KEY_ID)).toThrow(/512 characters/);
+	});
+
+	it('filter.tags entries exceeding 128 chars → silently dropped', () => {
+		const longTag = '#' + 'a'.repeat(128);
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: [longTag, '#valid']}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.tags).toEqual(['#valid']);
+	});
+
+	it('filter.tags all entries exceeding 128 chars → no filter.tags', () => {
+		const longTag = '#' + 'a'.repeat(128);
+		const result = mapSearchRequest(makeSearchArgs({filter: {tags: [longTag]}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toBeUndefined();
 	});
 });
 

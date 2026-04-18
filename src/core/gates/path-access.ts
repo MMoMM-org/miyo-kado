@@ -34,7 +34,7 @@ function decodePath(path: string): string {
 }
 
 /** Validates a normalized path, returning an error message or null if valid. */
-function validatePath(normalized: string): string | null {
+export function validatePath(normalized: string): string | null {
 	if (normalized.length === 0) {
 		return 'Path must not be empty';
 	}
