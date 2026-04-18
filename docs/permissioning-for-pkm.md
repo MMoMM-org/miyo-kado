@@ -20,7 +20,7 @@ Most PKM/AI integrations gloss over this. They assume that if the AI is "your" A
 
 Giving an AI uncontrolled read access to all of that is the digital equivalent of handing someone your unlocked phone "just to look something up". Fine — until it isn't.
 
-This appendix gives you a framework for thinking about the problem and implementing real access control over your AI workflows.
+This document gives you a framework for thinking about the problem and implementing real access control over your AI workflows.
 
 ---
 
@@ -169,13 +169,32 @@ Whichever route you pick, walk it through the starter checklist above before you
 
 ---
 
+## It's not hypothetical
+
+If you think "this is theoretical, nobody actually gets hurt by loose AI permissions" — here are some real-world incidents that demonstrate why enforcement matters.
+
+**Prompt injection through documents.** In 2025, Khoj (an AI plugin for Obsidian) had a [vulnerability](https://github.com/khoj-ai/khoj/security/advisories/GHSA-h2q2-vch3-72qm) where hidden prompt injection in indexed notes could trigger cross-site scripting, steal secrets from the desktop app, and potentially achieve remote code execution. The AI read a note, the note contained an instruction, the instruction ran. No sandbox prevented it — the AI's access to the note *was* the attack surface.
+
+**Weaponized Obsidian plugins.** The [Shell Commands plugin attack](https://cybersecuritynews.com/hackers-weaponize-obsidian-shell-commands-plugin/) showed that plugins can be configured to execute attacker-defined commands the moment a vault is opened. Zero interaction required. If an AI agent can install or configure plugins, the attack surface expands to everything those plugins can do.
+
+**AI agents with over-broad tokens.** An [autonomous AI agent exploited unauthenticated API endpoints](https://www.helpnetsecurity.com/2026/03/03/enterprise-ai-agent-security-2026/) to gain read-write access to a production database containing 46.5 million chat messages and 95 writable system prompts. The root cause: the agent had broad access tokens, and nobody audited what it actually touched.
+
+**Data pasted into AI tools.** In 2025, [63% of employees who used AI tools pasted sensitive data](https://www.reco.ai/blog/ai-and-cloud-security-breaches-2025/) — including source code and customer records — into personal chatbot accounts. Your vault contains similar data. The difference is that a vault-integrated AI doesn't even need you to paste — it reads directly.
+
+**The MCP protocol itself.** A [comprehensive security analysis of MCP](https://arxiv.org/html/2511.20920v1) found that the protocol does not enforce authentication or authorization — it is left entirely to the server implementation. Tokens are often over-permissioned, long-lived, and unscoped. Without server-side enforcement, "connecting an MCP tool" and "giving it everything" are the same action.
+
+These are not edge cases. They are the current state of AI tooling.
+
+---
+
 ## A note on threat models
 
 Permissioning is not about assuming your AI is malicious. The threat model is broader and quieter:
 
 - **Accidental over-collection.** The AI was asked a question and pulled 200 files for context. Some of them shouldn't have been pulled. You will not know which ones unless you have an audit log.
-- **Prompt injection from your own notes.** A note you saved a year ago contains a sentence that, today, an AI reads as an instruction. Without enforcement, the AI follows it.
+- **Prompt injection from your own notes.** A note you saved a year ago contains a sentence that, today, an AI reads as an instruction. Without enforcement, the AI follows it. This is not speculative — the Khoj vulnerability above is exactly this pattern.
 - **Context leakage between conversations.** Information from one chat surfaces in another, or in a model the original tool never intended to share with.
+- **Shadow AI with elevated privileges.** When employees connect autonomous agents to corporate systems, they create what security researchers call [shadow AI](https://www.obsidiansecurity.com/blog/security-for-ai-agents) — tools with elevated privileges that traditional security cannot detect. Your personal vault setup has the same dynamic in miniature.
 - **A future AI tool you will connect to that does not yet exist.** Your permissioning needs to work for that one too — which is why per-identity revocation matters.
 
 You do not need to be paranoid. You need to be precise about what you have allowed and have a way to verify it.
@@ -184,6 +203,21 @@ You do not need to be paranoid. You need to be precise about what you have allow
 
 ## Further reading
 
+**MCP security:**
 - [Model Context Protocol specification](https://modelcontextprotocol.io/) — the protocol most "AI talks to tools" integrations are converging on
+- [MCP security best practices](https://modelcontextprotocol.io/specification/draft/basic/security_best_practices) — the spec's own security guidance
+- [Securing the Model Context Protocol: Risks, Controls, and Governance](https://arxiv.org/html/2511.20920v1) — academic security analysis of MCP
+- [MCP security overview](https://www.paloaltonetworks.com/blog/cloud-security/model-context-protocol-mcp-a-security-overview/) — Palo Alto Networks assessment
+- [Understanding MCP security risks and controls](https://www.redhat.com/en/blog/model-context-protocol-mcp-understanding-security-risks-and-controls) — Red Hat's analysis
+
+**AI agent security:**
+- [OWASP prompt injection](https://genai.owasp.org/llmrisk2023-24/llm01-24-prompt-injection/) — the #1 risk in the OWASP Top 10 for LLM Applications
+- [Is a secure AI assistant possible?](https://www.technologyreview.com/2026/02/11/1132768/is-a-secure-ai-assistant-possible/) — MIT Technology Review
+- [AI agents and identity risks](https://www.cyberark.com/resources/blog/ai-agents-and-identity-risks-how-security-will-shift-in-2026) — CyberArk on identity risks in 2026
+
+**Obsidian-specific:**
 - [Obsidian Developer Policies](https://docs.obsidian.md/Developer+policies) — what plugins are and aren't allowed to do with vault data
-- [MiYo Kado repository](https://github.com/MMoMM-org/miyo-kado) — reference implementation of the patterns described above
+- [Khoj XSS via prompt injection](https://github.com/khoj-ai/khoj/security/advisories/GHSA-h2q2-vch3-72qm) — the vulnerability described above
+
+**Reference implementation:**
+- [MiYo Kado repository](https://github.com/MMoMM-org/miyo-kado) — default-deny, per-key, audited MCP server for Obsidian
