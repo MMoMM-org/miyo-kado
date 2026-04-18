@@ -67,7 +67,9 @@ The folder picker includes a `** (Full vault)` entry at the top for convenience.
 
 Tags restrict which tags are visible in search operations (`listTags`, `byTag`). When tags are configured, only matching tags appear in results.
 
-Tag patterns support wildcards: `project/*` matches `project/alpha`, `project/beta`, etc.
+- Use `*` to grant access to **all tags** in the vault.
+- Tag patterns support wildcards: `project/*` matches `project/alpha`, `project/beta`, etc.
+- If no tags are configured, tag-based search operations return no results.
 
 ## API Key Management
 
