@@ -156,10 +156,3 @@ Example lines:
 | `gate` | On denial only: which permission gate rejected the request |
 
 When the log reaches **Max log size** (configured in the General tab), the file is rotated (`kado-audit.log.1`, `.2`, ...) and older rotations beyond **Retained logs** are deleted.
-
-## Known Edge Cases
-
-### Editing a note the AI wants access to
-
-- **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago -- Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
-- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *\<note\>* ..."). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (about 2 s for Obsidian autosave) and it retries, its write is applied on top of your latest edits.

@@ -56,6 +56,13 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Settings import / export.** Backup/restore for the whole config.
 - **Opt-in content truncation on `kado-read`.** First ~1000 words with a hint that more exists.
 
+## Known edge cases
+
+### Editing a note the AI wants access to
+
+- **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago -- Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
+- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *\<note\>* ..."). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (~2 s Obsidian autosave) and it retries, its write is applied on top of your latest edits.
+
 ## Quick Start
 
 1. [Install the plugin](docs/installation.md)
