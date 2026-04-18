@@ -21,7 +21,7 @@ Letting an AI assistant talk to your vault sounds great until you realize most i
 - **Audit trail.** Every allowed and denied request is logged so you can see exactly what an assistant touched.
 - **Local-first.** The MCP server runs inside Obsidian on `127.0.0.1` by default. No cloud, no telemetry, no third party.
 
-If you've ever wanted to say "this assistant can read my project notes but not my journal, and can delete drafts but never touch archived material", Kado is for you. Delete is a separate permission flag alongside create/read/update — you decide which keys are allowed to remove content, and all deletions go through the trash (respecting your Obsidian "Deleted files" setting).
+If you've ever wanted to say "this assistant can read my project notes but not my journal, and can delete drafts but never touch archived material", Kado is for you. For a deeper look at why AI permissioning matters for PKM workflows -- and why guardrails are not the same as real permissions -- see [Permissioning your AI](docs/permissioning-for-pkm.md).
 
 ## Features
 
@@ -34,31 +34,43 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
 
-## Installation
+## Documentation
 
-### From the Obsidian Community Plugins
+| Document | Audience | Content |
+|----------|----------|---------|
+| [Installation](docs/installation.md) | Everyone | Community Plugins, BRAT, manual install |
+| [Configuration Guide](docs/configuration.md) | Vault owners | Settings UI, security setup, API key management |
+| [Client Setup](docs/client-setup.md) | Vault owners | Claude Code, Claude Desktop, Cursor, Windsurf |
+| [How It Works](docs/how-it-works.md) | Vault owners | Architecture, security model, enforcement logic, audit log |
+| [Example Configurations](docs/example-configs.md) | Vault owners | Common setups with permission matrices |
+| [API Reference](docs/api-reference.md) | MCP client developers | Tool schemas, parameters, examples, error codes |
+| [Development Guide](docs/development.md) | Contributors | Build, test, lint, architecture, live testing |
+| [Permissioning your AI](docs/permissioning-for-pkm.md) | PKM practitioners | Why AI permissioning matters, guardrails vs enforcement |
 
-Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in **Settings -> Community plugins -> Browse**, install, and enable.
+## Roadmap
 
-### Using BRAT (recommended while pending review)
+- **Tag permissions beyond read-only.** Deny permission so tags can *exclude* matching items from otherwise-allowed paths.
+- **Granular whitelist / blacklist toggle.** Per-section toggle for mixed strategies.
+- **Sub-path key scopes.** Narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
+- **Real-time permission testing.** Dry-run in the settings UI.
+- **Settings import / export.** Backup/restore for the whole config.
+- **Opt-in content truncation on `kado-read`.** First ~1000 words with a hint that more exists.
 
-1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
-2. In BRAT settings, **Add Beta Plugin** -> paste `MMoMM-org/miyo-kado`
-3. Enable **MiYo Kado** in **Settings -> Community plugins**
+## Known edge cases
 
-### Manual
+### Editing a note the AI wants access to
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/MMoMM-org/miyo-kado/releases/latest)
-2. Copy them into `<your-vault>/.obsidian/plugins/miyo-kado/` (create the folder if it doesn't exist)
-3. Reload Obsidian and enable **MiYo Kado** in **Settings -> Community plugins**
+- **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago -- Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
+- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *\<note\>* ..."). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (~2 s Obsidian autosave) and it retries, its write is applied on top of your latest edits.
 
 ## Quick Start
 
-1. Open **Settings -> MiYo Kado**
-2. Add paths to the global security whitelist (e.g. `notes/`, `projects/`, or `**` for full vault)
-3. Create an API key and assign it paths and per-data-type permissions
-4. Enable the server
-5. Connect your MCP client using the key
+1. [Install the plugin](docs/installation.md)
+2. Open **Settings > MiYo Kado**
+3. Add paths to the global security whitelist (e.g. `notes/`, `projects/`, or `**` for full vault)
+4. Create an API key and assign it paths and per-data-type permissions
+5. Enable the server
+6. [Connect your AI client](docs/client-setup.md)
 
 ```json
 {
@@ -67,7 +79,7 @@ Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in 
       "type": "http",
       "url": "http://127.0.0.1:23026/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_KEY_ID"
+        "Authorization": "Bearer YOUR_API_KEY"
       }
     }
   }
@@ -94,17 +106,9 @@ Once MiYo Kado is in the Community Plugins directory, search for "MiYo Kado" in 
   <img src="assets/settings-api-key.png" alt="MiYo Kado API Key settings tab showing key management, permissions, paths and tags" width="720" />
 </p>
 
-## Documentation
-
-| Document | Audience | Content |
-|----------|----------|---------|
-| [Configuration Guide](docs/configuration.md) | Vault owners | Installation, settings UI, security setup, API key management |
-| [API Reference](docs/api-reference.md) | MCP client developers | Tool schemas, parameters, examples, error codes, auth |
-| [Development Guide](docs/development.md) | Contributors | Build, test, lint, architecture, live testing |
-
 ## Security Model
 
-Every request passes through five gates in order. The first denial stops the chain.
+Every request passes through five gates in order. The first denial stops the chain. For the full enforcement logic, see [How It Works](docs/how-it-works.md).
 
 | # | Gate | Purpose |
 |---|------|---------|
@@ -113,8 +117,6 @@ Every request passes through five gates in order. The first denial stops the cha
 | 2 | key-scope | Path must be inside the key's own scope |
 | 3 | datatype-permission | Key must have the required CRUD flag for the data type |
 | 4 | path-access | Final path-traversal and validation check |
-
-Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can use **tags** for search operations.
 
 ## Architecture
 
@@ -129,24 +131,6 @@ MCP Client -> [MCP API Handler] -> [Kado Core] -> [Obsidian Interface] -> Vault
 ## Part of MiYo
 
 Kado is part of **MiYo**, a small family of Obsidian-adjacent tools focused on giving you control over what your assistants can see and do. MiYo Kado is the gateway component -- the piece that turns your vault into a properly-scoped MCP server. More tools are in the works.
-
-## Roadmap
-
-A few things I plan to address in upcoming releases. None of these are blockers for v0.1.x.
-
-### Planned enhancements
-
-- **Tag permissions beyond read-only.** Today tags are read-filters only. I want to add a Deny permission so you can use tags to *exclude* matching items even from otherwise-allowed paths.
-- **Granular whitelist / blacklist toggle.** The mode flip currently applies to paths and tags together. A per-section toggle would allow mixed strategies.
-- **Sub-path key scopes.** Right now an API key can only reference paths that the global scope already includes. I want to support narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
-- **Real-time permission testing.** A "try this request" dry-run in the settings UI so you can verify permissions without wiring up an MCP client.
-- **Settings import / export.** Backup/restore for the whole config (paths, keys, rules).
-- **Opt-in content truncation on `kado-read`.** For large notes, return only the first ~1000 words plus a hint that more content exists — clients can then decide to pull the rest on demand. Keeps assistant context budgets sane when reading long reference notes. (Feedback from the Tomo team.)
-
-### Known edge cases
-
-- **Edit-while-reading gap.** If you're actively typing in a note and your AI assistant reads it via Kado at the same moment, the assistant may see the version from up to 2 seconds ago — Obsidian saves your edits to disk on a ~2 second pause. Pause briefly (or press Cmd/Ctrl+S) before asking the AI about your most recent sentence.
-- **Write while the same note is open and dirty.** If an AI tries to write to a note you are currently editing with unsaved keystrokes, Kado refuses the write with a `CONFLICT` error and shows a Notice ("Kado wanted to modify *<note>* …"). Your typing always wins. The AI client sees the same conflict signal used for any concurrent change and is expected to re-read and retry, so once you pause typing (≈2 s Obsidian autosave) and it retries, its write is applied on top of your latest edits.
 
 ### Open tracking
 

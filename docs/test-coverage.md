@@ -194,6 +194,32 @@ The hardest search property: a key must never see results from paths outside its
 | T-SCOPE.1 | byFrontmatter `tags=finance` (Key1 vs Key3) | Key1 finds it, Key3 does not (array match) |
 | T-SCOPE.2 | Key3 byContent "Budget" | Zero results (maybe-allowed outside Key3 scope) |
 
+### Universal Filters (unit tests)
+
+Cross-operation `filter` parameter narrows any search by path prefix, tags, or frontmatter. Filters are AND-combined. Tag filters are validated against `allowedTags` to prevent tag-existence oracle attacks. These are unit-tested via `test/obsidian/search-adapter.test.ts` and `test/mcp/request-mapper.test.ts`.
+
+| Test ID | Filter | Operation | Assertion |
+|---|---|---|---|
+| — | filter.path | byName, byTag, byFrontmatter, byContent | Only items under prefix returned |
+| — | filter.path | byContent | vault.read only called for in-scope files (pre-filter) |
+| — | filter.path | listTags | Only tags from files under prefix counted |
+| — | filter.tags | byName | Only files with matching tag kept |
+| — | filter.tags (glob) | byName | Sub-tag patterns (`status/*`) match correctly |
+| — | filter.tags (#-prefix) | byName | `#project` normalized same as `project` |
+| — | filter.tags | listDir | Ignored (folders have no tags) |
+| — | filter.tags | listTags | Only files with matching tag counted |
+| — | filter.tags | — | Validated against allowedTags (security) |
+| — | filter.frontmatter (key=value) | byName | Only matching files kept |
+| — | filter.frontmatter (key-only) | byName | Files with key present kept |
+| — | filter.frontmatter | listDir | Ignored |
+| — | filter.frontmatter | listTags | Only matching files contribute tags |
+| — | combined (path+tags) | byName | AND-combined narrowing |
+| — | combined (all three) | byName | Triple AND-combined |
+| — | filter.path (no trailing /) | — | False-matches similar prefixes (documented) |
+| — | filter.path (traversal) | — | `../`, null bytes, `%2e%2e` rejected |
+| — | filter.path (length) | — | >512 chars rejected |
+| — | filter.tags (length) | — | >128 char entries silently dropped |
+
 ### listDir Edge Cases
 
 Directory listings have several edge cases: empty dirs, deep nesting, hidden files. These tests use the dedicated `listdir-fixtures/` tree (read-only, available to Key1) to prove each edge case.

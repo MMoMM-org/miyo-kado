@@ -200,6 +200,37 @@ All delete operations require `expectedModified` (optimistic concurrency). Notes
 | byFrontmatter | `status=active` | 🟢 | 🔴 | 🟡 |
 | byFrontmatter | `tags=finance` (array match, scope boundary) | 🟢 | ⚪ | 🔴 |
 
+## kado-search — Universal Filters
+
+Cross-operation `filter` parameter (path prefix, tags, frontmatter). Filters are AND-combined. Unit-tested only (no live test keys configured for filter scenarios).
+
+| Filter | Operation | Scenario | Status |
+|---|---|---|---|
+| filter.path | byName | narrows results to prefix | 🟢 |
+| filter.path | byTag | narrows results to prefix | 🟢 |
+| filter.path | byFrontmatter | narrows results to prefix | 🟢 |
+| filter.path | byContent | pre-filters before reading (reduces vault.read calls) | 🟢 |
+| filter.path | listDir | applied via applyFilters | 🟢 |
+| filter.path | listTags | narrows which files contribute tags | 🟢 |
+| filter.tags | byName | keeps only tagged files | 🟢 |
+| filter.tags | byName | glob matches sub-tags (`status/*`) | 🟢 |
+| filter.tags | byName | `#`-prefixed pattern accepted | 🟢 |
+| filter.tags | listDir | ignored (folders have no tags) | 🟢 |
+| filter.tags | listTags | narrows which files are counted | 🟢 |
+| filter.tags | — | validated against allowedTags (C1 security fix) | 🟢 |
+| filter.frontmatter | byName | key=value keeps matching files | 🟢 |
+| filter.frontmatter | byName | key-only keeps files with key | 🟢 |
+| filter.frontmatter | listDir | ignored (folders have no frontmatter) | 🟢 |
+| filter.frontmatter | listTags | narrows which files contribute tags | 🟢 |
+| combined | byName | path + tags narrows by both | 🟢 |
+| combined | byName | path + tags + frontmatter all combine | 🟢 |
+| filter.path | — | without trailing slash (edge case) | 🟢 |
+| filter.path | — | traversal `../` rejected | 🟢 |
+| filter.path | — | null byte rejected | 🟢 |
+| filter.path | — | encoded traversal `%2e%2e` rejected | 🟢 |
+| filter.path | — | exceeding 512 chars rejected | 🟢 |
+| filter.tags | — | entries exceeding 128 chars silently dropped | 🟢 |
+
 ---
 
 ## Authentication & Security

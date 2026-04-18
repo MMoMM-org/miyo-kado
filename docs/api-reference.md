@@ -468,7 +468,7 @@ Search the Obsidian vault. Results are scoped to the calling key's permissions a
 |---|---|---|---|
 | `byName` | Find files by name substring or glob pattern | Yes | No |
 | `byTag` | Find files with a specific tag (exact or glob) | Yes | No |
-| `byContent` | Find files containing a substring in the note body | Yes | Optional (path prefix filter) |
+| `byContent` | Find files containing a substring in the note body | Yes | No |
 | `byFrontmatter` | Find files by frontmatter key=value or key-only | Yes | No |
 | `listDir` | List contents of a folder | No | Yes |
 | `listTags` | List all permitted tags with counts | No | No |
@@ -479,9 +479,49 @@ Search the Obsidian vault. Results are scoped to the calling key's permissions a
 |---|---|---|---|
 | `operation` | `"byName" \| "byTag" \| "byContent" \| "byFrontmatter" \| "listDir" \| "listTags"` | Yes | Search operation type |
 | `query` | `string` | Conditional | Search query (required except for `listDir` and `listTags`) |
-| `path` | `string` | Conditional | Folder path for `listDir`, optional path prefix for `byContent` |
+| `path` | `string` | Conditional | Folder path for `listDir` only. `"/"` is the vault root. |
 | `cursor` | `string` | No | Pagination cursor from a previous response |
 | `limit` | `integer` | No | Items per page. Default: 50, min: 1, max: 500 |
+| `depth` | `integer` | No | Walk depth for `listDir`. Omit for unlimited. `depth=1` returns direct children only. |
+| `filter` | `object` | No | Universal cross-operation filter (see below) |
+
+### Filter Object
+
+The optional `filter` parameter narrows results for any operation. All filter fields are AND-combined.
+
+| Field | Type | Description |
+|---|---|---|
+| `filter.path` | `string` | Folder prefix -- only items whose path starts with this value. Normalized to end with `/`. Max 512 chars. |
+| `filter.tags` | `string[]` | Tag filter -- item must carry at least one matching tag. Supports `*` and `?` glob wildcards. Ignored by `listDir`. Max 128 chars per entry. |
+| `filter.frontmatter` | `string` | Frontmatter filter -- `key=value` (match value) or `key` (key exists). Same syntax as `byFrontmatter` query. Ignored by `listDir`. |
+
+**Security:** `filter.tags` patterns are validated against the key's allowed tags. Patterns not permitted by the key's tag scope are silently dropped. `filter.path` is validated against path traversal attacks (`..`, null bytes, encoded traversal).
+
+**Performance:** For `byContent`, `filter.path` is applied as a pre-filter before reading file contents, avoiding unnecessary disk reads.
+
+**Examples:**
+
+```json
+// byName narrowed to a folder, only files tagged #project
+{
+  "operation": "byName",
+  "query": "*.md",
+  "filter": { "path": "notes/", "tags": ["project"] }
+}
+
+// byContent narrowed by frontmatter status
+{
+  "operation": "byContent",
+  "query": "implementation plan",
+  "filter": { "frontmatter": "status=active" }
+}
+
+// listTags only from files in a specific folder
+{
+  "operation": "listTags",
+  "filter": { "path": "Projects/" }
+}
+```
 
 ### Query Formats
 
