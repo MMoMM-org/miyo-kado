@@ -6,6 +6,10 @@ For installation, see [Installation](installation.md). For connecting your AI cl
 
 ## General Tab
 
+<p align="center">
+  <img src="../assets/settings-general.png" alt="MiYo Kado General settings tab" width="560" />
+</p>
+
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Server enabled | Off | Start/stop the MCP server |
@@ -18,6 +22,10 @@ For installation, see [Installation](installation.md). For connecting your AI cl
 | Retained logs | 3 | Number of rotated files to keep |
 
 ## Global Security Tab
+
+<p align="center">
+  <img src="../assets/settings-global-security.png" alt="MiYo Kado Global Security settings tab" width="560" />
+</p>
 
 The global security scope defines what is **eligible** for access across all API keys. No key can exceed these boundaries.
 
@@ -62,6 +70,10 @@ Tags restrict which tags are visible in search operations (`listTags`, `byTag`).
 Tag patterns support wildcards: `project/*` matches `project/alpha`, `project/beta`, etc.
 
 ## API Key Management
+
+<p align="center">
+  <img src="../assets/settings-api-key.png" alt="MiYo Kado API Key settings tab" width="560" />
+</p>
 
 Each API key is an independent access credential with its own scope.
 
