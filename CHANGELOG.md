@@ -1,3 +1,10 @@
+## [0.6.1](https://github.com/MMoMM-org/miyo-kado/compare/0.6.0...0.6.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **logger:** use console.log for debug output ([#23](https://github.com/MMoMM-org/miyo-kado/issues/23)) ([a2812eb](https://github.com/MMoMM-org/miyo-kado/commit/a2812ebbb5f210b7275a138140b2e4903d9f1f76))
+
 # [0.6.0](https://github.com/MMoMM-org/miyo-kado/compare/0.5.3...0.6.0) (2026-04-18)
 
 
