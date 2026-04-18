@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/MMoMM-org/miyo-kado/compare/0.5.3...0.6.0) (2026-04-18)
+
+
+### Features
+
+* **mcp:** universal filter for kado-search ([#21](https://github.com/MMoMM-org/miyo-kado/issues/21)) ([0804cda](https://github.com/MMoMM-org/miyo-kado/commit/0804cdad35d70b4413ed73ff0a1acdcb0091a242))
+
 ## [0.5.3](https://github.com/MMoMM-org/miyo-kado/compare/0.5.2...0.5.3) (2026-04-16)
 
 
