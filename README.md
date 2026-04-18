@@ -47,6 +47,15 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 | [Development Guide](docs/development.md) | Contributors | Build, test, lint, architecture, live testing |
 | [Permissioning your AI](docs/permissioning-for-pkm.md) | PKM practitioners | Why AI permissioning matters, guardrails vs enforcement |
 
+## Roadmap
+
+- **Tag permissions beyond read-only.** Deny permission so tags can *exclude* matching items from otherwise-allowed paths.
+- **Granular whitelist / blacklist toggle.** Per-section toggle for mixed strategies.
+- **Sub-path key scopes.** Narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
+- **Real-time permission testing.** Dry-run in the settings UI.
+- **Settings import / export.** Backup/restore for the whole config.
+- **Opt-in content truncation on `kado-read`.** First ~1000 words with a hint that more exists.
+
 ## Quick Start
 
 1. [Install the plugin](docs/installation.md)
@@ -111,15 +120,6 @@ MCP Client -> [MCP API Handler] -> [Kado Core] -> [Obsidian Interface] -> Vault
 - **MCP API Handler** -- Express + Streamable HTTP transport, auth, rate limiting
 - **Kado Core** -- Permission gates, routing, concurrency guard. No MCP or Obsidian imports.
 - **Obsidian Interface** -- Vault adapters for notes, frontmatter, files, inline fields, search
-
-## Roadmap
-
-- **Tag permissions beyond read-only.** Deny permission so tags can *exclude* matching items from otherwise-allowed paths.
-- **Granular whitelist / blacklist toggle.** Per-section toggle for mixed strategies.
-- **Sub-path key scopes.** Narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
-- **Real-time permission testing.** Dry-run in the settings UI.
-- **Settings import / export.** Backup/restore for the whole config.
-- **Opt-in content truncation on `kado-read`.** First ~1000 words with a hint that more exists.
 
 ## Part of MiYo
 
