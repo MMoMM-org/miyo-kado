@@ -47,6 +47,8 @@ Config file locations:
 
 Restart Claude Desktop after editing the config file.
 
+> **Why not the "Add custom connector" UI?** Claude Desktop has a built-in dialog for adding MCP servers (Settings > Custom Connectors), but it only supports OAuth authentication -- there is no field for custom headers like `Authorization: Bearer`. Since Kado uses Bearer tokens, you must use the config file instead. The dialog will not work with Kado.
+
 > **Note:** Older Claude Desktop versions (pre-2025) only supported `stdio` transport. If `"type": "sse"` doesn't work, update your Claude Desktop or use the stdio proxy workaround:
 > ```json
 > {
