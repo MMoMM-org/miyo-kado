@@ -32,6 +32,7 @@ export function kadoLog(message: string, data?: Record<string, unknown>): void {
 	// Use console.log rather than console.debug: Chromium DevTools (and the
 	// Obsidian console) hide the "Verbose" level by default, which makes
 	// console.debug output invisible unless the user changes the level filter.
+	// eslint-disable-next-line no-console
 	console.log(format(message, data));
 }
 
