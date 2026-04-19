@@ -29,11 +29,7 @@ function format(message: string, data?: Record<string, unknown>): string {
 /** Logs a debug-level message to the console with the [Kado] prefix. No-op unless debug logging is enabled. */
 export function kadoLog(message: string, data?: Record<string, unknown>): void {
 	if (!debugEnabled) return;
-	// Use console.log rather than console.debug: Chromium DevTools (and the
-	// Obsidian console) hide the "Verbose" level by default, which makes
-	// console.debug output invisible unless the user changes the level filter.
-	// eslint-disable-next-line no-console
-	console.log(format(message, data));
+	console.debug(format(message, data));
 }
 
 /** Logs an error-level message to the console with the [Kado] prefix. Always emits. */

@@ -189,9 +189,18 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 	// ── Developer Section ──
 	new Setting(containerEl).setName('Developer').setHeading();
 
+	const debugDesc = document.createDocumentFragment();
+	debugDesc.append('Emit debug messages to the developer console (off by default). Requires the developer tools "Verbose" log level — see ');
+	const debugDocLink = document.createElement('a');
+	debugDocLink.textContent = 'Setup guide';
+	debugDocLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/debug-logging.md';
+	debugDocLink.target = '_blank';
+	debugDesc.appendChild(debugDocLink);
+	debugDesc.append('.');
+
 	new Setting(containerEl)
 		.setName('Debug logging')
-		.setDesc('Emit debug messages to the developer console (off by default)')
+		.setDesc(debugDesc)
 		.addToggle(toggle => toggle
 			.setValue(config.debugLogging)
 			.onChange(async (value) => {

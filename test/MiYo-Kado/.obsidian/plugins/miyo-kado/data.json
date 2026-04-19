@@ -263,5 +263,6 @@
     "logFileName": "kado-audit.log",
     "maxSizeBytes": 10485760,
     "maxRetainedLogs": 3
-  }
+  },
+  "debugLogging": false
 }
