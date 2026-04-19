@@ -33,6 +33,7 @@ import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
 import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
 import {matchTag} from '../core/tag-utils';
+import {kadoLog} from '../core/logger';
 
 // ============================================================
 // Public types
@@ -218,19 +219,31 @@ function truncateKeyId(keyId: string): string {
 	return keyId.slice(0, 12) + '...';
 }
 
+function debugFields(keyId: string, request: CoreRequest): Record<string, unknown> {
+	const fields: Record<string, unknown> = {
+		key: truncateKeyId(keyId),
+		operation: String(request.operation ?? ''),
+	};
+	if ('path' in request && request.path !== undefined) fields.path = request.path;
+	if ('query' in request && request.query !== undefined) fields.query = request.query;
+	return fields;
+}
+
 async function logAllowed(
+	tool: string,
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
 	request: CoreRequest,
 	startHrMs: number,
 ): Promise<void> {
+	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
+	kadoLog(`${tool} allowed`, {...debugFields(keyId, request), durationMs});
 	if (!auditLogger) return;
 	try {
 		const path = 'path' in request ? (request.path as string) : undefined;
 		const query = 'query' in request ? (request.query as string) : undefined;
 		const operation = String(request.operation ?? '');
 		const dataType = extractDataType(request);
-		const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
 		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
@@ -238,11 +251,13 @@ async function logAllowed(
 }
 
 async function logDenied(
+	tool: string,
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
 	request: CoreRequest,
 	gate: string | undefined,
 ): Promise<void> {
+	kadoLog(`${tool} denied`, {...debugFields(keyId, request), gate});
 	if (!auditLogger) return;
 	try {
 		const path = 'path' in request ? (request.path as string) : undefined;
@@ -283,23 +298,28 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		const request = mapReadRequest(args as Record<string, unknown>, keyId);
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-read', deps.auditLogger, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
 		const startMs = performance.now();
 		try {
 			const result = await deps.router(request);
-			if (isCoreError(result)) return mapError(result);
-			await logAllowed(deps.auditLogger, keyId, request, startMs);
+			if (isCoreError(result)) {
+				kadoLog('kado-read error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result);
+			}
+			await logAllowed('kado-read', deps.auditLogger, keyId, request, startMs);
 			return mapFileResult(result as CoreFileResult);
 		} catch (err: unknown) {
 			// Adapters throw *AdapterError with a `code` field (NOT_FOUND,
 			// CONFLICT, VALIDATION_ERROR). Surface those codes so MCP clients
 			// can distinguish missing files from real internal failures.
 			const asError = err as {code?: string; message?: string};
-			if (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
-				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
+			kadoLog('kado-read error', {...debugFields(keyId, request), code});
+			if (code !== 'INTERNAL_ERROR') {
+				return mapError({code, message: asError.message ?? String(err)});
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
@@ -314,18 +334,24 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 		const request = mapWriteRequest(args as Record<string, unknown>, keyId);
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-write', deps.auditLogger, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
-		if (!concurrency.allowed) return mapError(concurrency.error);
+		if (!concurrency.allowed) {
+			kadoLog('kado-write error', {...debugFields(keyId, request), code: concurrency.error.code});
+			return mapError(concurrency.error);
+		}
 
 		const startMs = performance.now();
 		try {
 			const result = await deps.router(request);
-			if (isCoreError(result)) return mapError(result);
-			await logAllowed(deps.auditLogger, keyId, request, startMs);
+			if (isCoreError(result)) {
+				kadoLog('kado-write error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result);
+			}
+			await logAllowed('kado-write', deps.auditLogger, keyId, request, startMs);
 			return mapWriteResult(result as CoreWriteResult);
 		} catch (err: unknown) {
 			// Adapters throw NoteAdapterError / FrontmatterAdapterError with a
@@ -333,8 +359,10 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			// for missing targets, VALIDATION_ERROR for bad inputs). Surface
 			// those codes so MCP clients can retry correctly.
 			const asError = err as {code?: string; message?: string};
-			if (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
-				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
+			kadoLog('kado-write error', {...debugFields(keyId, request), code});
+			if (code !== 'INTERNAL_ERROR') {
+				return mapError({code, message: asError.message ?? String(err)});
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
@@ -355,24 +383,32 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-delete', deps.auditLogger, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
-		if (!concurrency.allowed) return mapError(concurrency.error);
+		if (!concurrency.allowed) {
+			kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
+			return mapError(concurrency.error);
+		}
 
 		const startMs = performance.now();
 		try {
 			const result = await deps.router(request);
-			if (isCoreError(result)) return mapError(result);
-			await logAllowed(deps.auditLogger, keyId, request, startMs);
+			if (isCoreError(result)) {
+				kadoLog('kado-delete error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result);
+			}
+			await logAllowed('kado-delete', deps.auditLogger, keyId, request, startMs);
 			return mapDeleteResult(result as CoreDeleteResult);
 		} catch (err: unknown) {
 			// Adapters throw DeleteAdapterError with a `code` field — propagate it as the canonical error
 			const asError = err as {code?: string; message?: string};
-			if (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') {
-				return mapError({code: asError.code, message: asError.message ?? String(err)});
+			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
+			kadoLog('kado-delete error', {...debugFields(keyId, request), code});
+			if (code !== 'INTERNAL_ERROR') {
+				return mapError({code, message: asError.message ?? String(err)});
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
@@ -393,14 +429,17 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
-			await logDenied(deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-search', deps.auditLogger, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
 		const startMs = performance.now();
 		try {
 			const result = await deps.router(request);
-			if (isCoreError(result)) return mapError(result);
+			if (isCoreError(result)) {
+				kadoLog('kado-search error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result);
+			}
 
 			let searchResult = result as CoreSearchResult;
 
@@ -412,9 +451,10 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 				searchResult = {...searchResult, items: filtered, total: filtered.length};
 			}
 
-			await logAllowed(deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-search', deps.auditLogger, keyId, request, startMs);
 			return mapSearchResult(searchResult);
 		} catch (err: unknown) {
+			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR'});
 			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
 		}
 	});
