@@ -1,3 +1,10 @@
+## [0.6.2](https://github.com/MMoMM-org/miyo-kado/compare/0.6.1...0.6.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* **logger:** revert to console.debug and document Verbose workflow ([#24](https://github.com/MMoMM-org/miyo-kado/issues/24)) ([207a130](https://github.com/MMoMM-org/miyo-kado/commit/207a1305e9513ffd6cf6f6a7c5ba73102ff2779a))
+
 ## [0.6.1](https://github.com/MMoMM-org/miyo-kado/compare/0.6.0...0.6.1) (2026-04-18)
 
 
