@@ -115,6 +115,27 @@ describe('enumerateOpenNotes', () => {
 		expect(enumerateOpenNotes(app)).toEqual([]);
 	});
 
+	// M9 — non-trivial exclusion check: pass-through of raw view type
+	// A leaf returned by getLeavesOfType('markdown') whose getViewType() returns
+	// a non-KNOWN type still makes it through the KNOWN_VIEW_TYPES loop (because
+	// the adapter iterates known types, not view.getViewType()). The descriptor's
+	// type field must faithfully carry the raw string — this catches any filtering
+	// or type-field corruption in leafToDescriptor.
+	it('faithfully passes through the raw view type even when leaf returns a non-standard type string (pass-through per SDD)', () => {
+		const file = makeTFile('notes/custom.md', 'custom');
+		// getLeavesOfType('markdown') returns this leaf, but its getViewType() returns
+		// a non-standard string — adapter must not filter or mutate the type field.
+		const leaf = makeLeaf(file, 'markdown-enhanced-plugin');
+		const app = makeApp({markdown: [leaf]}, null);
+
+		const result = enumerateOpenNotes(app);
+
+		// The leaf IS included (came from getLeavesOfType('markdown')).
+		expect(result).toHaveLength(1);
+		// The type field must carry the raw getViewType() result, not the iteration key.
+		expect(result[0].type).toBe('markdown-enhanced-plugin');
+	});
+
 	it('handles activeLeaf being null (mobile edge case) without throwing', () => {
 		const file = makeTFile('notes/a.md', 'a');
 		const leaf = makeLeaf(file, 'markdown');

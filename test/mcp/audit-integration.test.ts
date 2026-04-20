@@ -23,6 +23,7 @@ import type {
 import {createDefaultConfig} from '../../src/types/canonical';
 import type {ConfigManager} from '../../src/core/config-manager';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
+import type {App} from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,6 +126,66 @@ function makeAuditLogger(): {logger: AuditLogger; entries: AuditEntry[]; drain: 
 	);
 	const drain = (): Promise<void> => logger.flush();
 	return {logger, entries, drain};
+}
+
+/**
+ * Variant of makeAuditLogger that also exposes the raw NDJSON lines as written
+ * to disk (before parsing). Used by M11/L4 tests to assert serialization.
+ */
+function makeAuditLoggerWithRaw(): {
+	logger: AuditLogger;
+	entries: AuditEntry[];
+	rawLines: string[];
+	drain: () => Promise<void>;
+} {
+	const entries: AuditEntry[] = [];
+	const rawLines: string[] = [];
+	const deps = {
+		write: vi.fn(async (batched: string) => {
+			for (const line of batched.split('\n')) {
+				if (line.trim()) {
+					rawLines.push(line.trim());
+					entries.push(JSON.parse(line) as AuditEntry);
+				}
+			}
+		}),
+		getSize: vi.fn(async () => 0),
+		exists: vi.fn(async () => false),
+		rename: vi.fn(async () => undefined),
+		remove: vi.fn(async () => undefined),
+		getLogPath: vi.fn(() => 'logs/kado-audit.log'),
+	};
+	const logger = new AuditLogger(
+		{enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10 * 1024 * 1024, maxRetainedLogs: 3},
+		deps,
+	);
+	const drain = (): Promise<void> => logger.flush();
+	return {logger, entries, rawLines, drain};
+}
+
+/**
+ * Creates a mock Obsidian App whose workspace returns the given leaves from
+ * getLeavesOfType('markdown'). Used to exercise the enumerateOpenNotes path
+ * with non-empty open note data in audit tests.
+ */
+function makeNotesApp(markdownLeaves: Array<{path: string; basename: string; active?: boolean}>): App {
+	// Build leaf objects matching the WorkspaceLeaf shape expected by enumerateOpenNotes
+	const leaves = markdownLeaves.map((n) => ({
+		view: {
+			file: {path: n.path, basename: n.basename},
+			getViewType: () => 'markdown',
+		},
+	}));
+	// activeLeaf: point to the first note that has active: true, if any
+	const activeIndex = markdownLeaves.findIndex((n) => n.active);
+	const activeLeaf = activeIndex >= 0 ? leaves[activeIndex] : null;
+
+	return {
+		workspace: {
+			activeLeaf,
+			getLeavesOfType: vi.fn((type: string) => (type === 'markdown' ? leaves : [])),
+		},
+	} as unknown as App;
 }
 
 function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
@@ -547,5 +608,141 @@ describe('audit integration — kado-open-notes feature-gate denial', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// M11 — permittedCount written to NDJSON (not just in-memory)
+// ---------------------------------------------------------------------------
+
+describe('audit integration — permittedCount serialized to NDJSON line', () => {
+	it('serializes permittedCount into the raw NDJSON line on an allowed open-notes call with non-empty response', async () => {
+		const {logger, entries, rawLines, drain} = makeAuditLoggerWithRaw();
+		// Config: both global AND key allow access to notes/** (both layers required for ACL to pass)
+		const base = createDefaultConfig();
+		const fullPermissions = {note: {create: true, read: true, update: true, delete: true}, frontmatter: {create: true, read: true, update: true, delete: true}, file: {create: true, read: true, update: true, delete: true}, dataviewInlineField: {create: true, read: true, update: true, delete: true}};
+		const config: KadoConfig = {
+			...base,
+			security: {
+				...base.security,
+				allowActiveNote: true,
+				allowOtherNotes: true,
+				listMode: 'whitelist' as const,
+				paths: [{path: 'notes/**', permissions: fullPermissions}],
+			},
+			apiKeys: [{
+				id: 'kado_test-key',
+				label: 'Test Key',
+				enabled: true,
+				createdAt: 0,
+				listMode: 'whitelist' as const,
+				paths: [{path: 'notes/**', permissions: fullPermissions}],
+				tags: [],
+				allowActiveNote: true,
+				allowOtherNotes: true,
+			}],
+		};
+		// App has one open note in the permitted scope so permittedCount will be 1, not 0
+		const app = makeNotesApp([{path: 'notes/active.md', basename: 'active', active: true}]);
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+			app,
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		const entry = entries[0] as AuditEntry;
+		expect(entry.permittedCount).toBe(1);
+
+		// Verify the field is actually serialized in the raw NDJSON line — not just
+		// present on the parsed JS object. This proves the write path is correct.
+		expect(rawLines).toHaveLength(1);
+		const parsed = JSON.parse(rawLines[0]!) as AuditEntry;
+		expect(parsed.permittedCount).toBe(1);
+	});
+
+	it('does NOT serialize permittedCount in the raw NDJSON line on a denied open-notes call', async () => {
+		const {logger, rawLines, drain} = makeAuditLoggerWithRaw();
+		const config = makeOpenNotesConfig({allowActiveNote: false, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(rawLines).toHaveLength(1);
+		const parsed = JSON.parse(rawLines[0]!) as AuditEntry;
+		// gate=feature-gate must be present; permittedCount must be absent
+		expect(parsed.gate).toBe('feature-gate');
+		expect(Object.prototype.hasOwnProperty.call(parsed, 'permittedCount')).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// L4 — privacy invariant with non-empty workspace (permitted + filtered paths)
+// ---------------------------------------------------------------------------
+
+describe('audit integration — privacy invariant: no note path in serialized entry (non-trivial workspace)', () => {
+	it('does not include any note path string in the serialized NDJSON entry even when notes are open', async () => {
+		const {logger, rawLines, drain} = makeAuditLoggerWithRaw();
+		const base = createDefaultConfig();
+		// Config: key has whitelist access to notes/** only — private/ is filtered out
+		const config: KadoConfig = {
+			...base,
+			security: {
+				...base.security,
+				allowActiveNote: true,
+				allowOtherNotes: true,
+				listMode: 'whitelist' as const,
+				paths: [{path: 'notes/**', permissions: {note: {create: true, read: true, update: true, delete: true}, frontmatter: {create: true, read: true, update: true, delete: true}, file: {create: true, read: true, update: true, delete: true}, dataviewInlineField: {create: true, read: true, update: true, delete: true}}}],
+				tags: [],
+			},
+			apiKeys: [{
+				id: 'kado_test-key',
+				label: 'Test Key',
+				enabled: true,
+				createdAt: 0,
+				listMode: 'whitelist' as const,
+				paths: [{path: 'notes/**', permissions: {note: {create: true, read: true, update: true, delete: true}, frontmatter: {create: true, read: true, update: true, delete: true}, file: {create: true, read: true, update: true, delete: true}, dataviewInlineField: {create: true, read: true, update: true, delete: true}}}],
+				tags: [],
+				allowActiveNote: true,
+				allowOtherNotes: true,
+			}],
+		};
+		// App: one permitted note (notes/permitted.md) + one ACL-filtered note (private/filtered-path.md)
+		const app = makeNotesApp([
+			{path: 'notes/permitted.md', basename: 'permitted', active: false},
+			{path: 'private/filtered-path.md', basename: 'filtered-path', active: false},
+		]);
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+			app,
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(rawLines).toHaveLength(1);
+		const rawEntry = rawLines[0]!;
+		const parsed = JSON.parse(rawEntry) as AuditEntry;
+
+		// permittedCount should be 1 (only notes/permitted.md passed ACL) — confirms
+		// the workspace was non-trivially exercised.
+		expect(parsed.permittedCount).toBe(1);
+
+		// The serialized audit entry must not contain either path string — privacy invariant.
+		expect(rawEntry.includes('notes/permitted.md')).toBe(false);
+		expect(rawEntry.includes('private/filtered-path.md')).toBe(false);
+		// Also verify the JS object has no path field
+		expect(parsed.path).toBeUndefined();
 	});
 });
