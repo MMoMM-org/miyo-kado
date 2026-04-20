@@ -512,15 +512,24 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		const gate = gateOpenNoteScope(req.scope, config.security, key);
 		if (gate.kind === 'deny') {
 			kadoLog('kado-open-notes denied', {key: keyId.slice(0, 12) + '...', scope: req.scope, gate: 'feature-gate'});
+			if (deps.auditLogger) {
+				try {
+					await deps.auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: 'openNotes', query: req.scope, decision: 'denied', gate: 'feature-gate'}));
+				} catch { /* audit failures must never crash the tool */ }
+			}
 			return mapError(gate.error);
 		}
 
 		try {
 			const all = enumerateOpenNotes(deps.app);
 			const byScope = pruneToScopeKind(all, gate.kind);
-			// TODO: T2.3 — wire audit log here
 			const permitted = filterDescriptorsByAcl(byScope, keyId, config);
 			kadoLog('kado-open-notes allowed', {key: keyId.slice(0, 12) + '...', scope: req.scope, count: permitted.length});
+			if (deps.auditLogger) {
+				try {
+					await deps.auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: 'openNotes', query: req.scope, decision: 'allowed', permittedCount: permitted.length}));
+				} catch { /* audit failures must never crash the tool */ }
+			}
 			return mapOpenNotesResult({notes: permitted});
 		} catch (err: unknown) {
 			kadoLog('kado-open-notes error', {key: keyId.slice(0, 12) + '...', code: 'INTERNAL_ERROR'});

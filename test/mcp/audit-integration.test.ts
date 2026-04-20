@@ -376,3 +376,176 @@ describe('audit integration — multiple tool calls produce multiple entries', (
 		expect(entries).toHaveLength(3);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// T2.3 — kado-open-notes audit log integration
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a KadoConfig that permits the given key to use the open-notes tool
+ * for the specified scope flags.
+ */
+function makeOpenNotesConfig(opts: {
+	allowActiveNote: boolean;
+	allowOtherNotes: boolean;
+}): KadoConfig {
+	const base = createDefaultConfig();
+	return {
+		...base,
+		security: {
+			...base.security,
+			allowActiveNote: opts.allowActiveNote,
+			allowOtherNotes: opts.allowOtherNotes,
+		},
+		apiKeys: [
+			{
+				id: 'kado_test-key',
+				label: 'Test Key',
+				enabled: true,
+				createdAt: 0,
+				listMode: 'whitelist' as const,
+				paths: [{path: '**', permissions: {note: {create: true, read: true, update: true, delete: true}, frontmatter: {create: true, read: true, update: true, delete: true}, file: {create: true, read: true, update: true, delete: true}, dataviewInlineField: {create: true, read: true, update: true, delete: true}}}],
+				tags: [],
+				allowActiveNote: opts.allowActiveNote,
+				allowOtherNotes: opts.allowOtherNotes,
+			},
+		],
+	};
+}
+
+describe('audit integration — kado-open-notes allowed call', () => {
+	it('emits exactly one audit entry with operation=openNotes and decision=allowed on success', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: true, allowOtherNotes: true});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].decision).toBe('allowed');
+		expect(entries[0].operation).toBe('openNotes');
+	});
+
+	it('includes scope in the audit entry query field', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: true, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'active'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].query).toBe('active');
+	});
+
+	it('includes permittedCount in the audit entry', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: true, allowOtherNotes: true});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		// The mock app returns zero open notes — permittedCount must be 0
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].permittedCount).toBe(0);
+	});
+
+	it('does NOT include any note paths in the audit entry', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: true, allowOtherNotes: true});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		// path field must be absent — privacy invariant
+		expect(entries[0].path).toBeUndefined();
+	});
+});
+
+describe('audit integration — kado-open-notes feature-gate denial', () => {
+	it('emits exactly one audit entry with decision=denied when the feature gate blocks the call', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		// Both flags off → gate denies
+		const config = makeOpenNotesConfig({allowActiveNote: false, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'active'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].decision).toBe('denied');
+		expect(entries[0].operation).toBe('openNotes');
+	});
+
+	it('includes scope and gate=feature-gate in the denial entry', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: false, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'other'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].query).toBe('other');
+		expect(entries[0].gate).toBe('feature-gate');
+	});
+
+	it('does not include permittedCount in the denial entry', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: false, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'all'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].permittedCount).toBeUndefined();
+	});
+
+	it('emits exactly one entry per denied call (no duplicate logging)', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const config = makeOpenNotesConfig({allowActiveNote: false, allowOtherNotes: false});
+		const deps = makeDeps({
+			auditLogger: logger,
+			configManager: makeConfigManager(config),
+		});
+		const handler = getHandler('kado-open-notes', deps);
+
+		await handler({scope: 'active'}, makeExtra('kado_test-key'));
+		await drain();
+
+		expect(entries).toHaveLength(1);
+	});
+});

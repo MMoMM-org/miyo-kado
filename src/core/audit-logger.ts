@@ -30,6 +30,8 @@ export interface AuditEntry {
 	decision: 'allowed' | 'denied';
 	gate?: string;
 	durationMs?: number;
+	/** Number of permitted items returned (used by open-notes tool). Only set on allowed decisions. */
+	permittedCount?: number;
 }
 
 /** I/O callbacks injected into AuditLogger for file operations (no Obsidian dependency). */
