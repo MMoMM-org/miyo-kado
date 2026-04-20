@@ -129,6 +129,20 @@ A few patterns that look like permissioning but aren't:
 
 ---
 
+## What Claude itself says about following CLAUDE.md rules
+
+The argument above is that `CLAUDE.md` is a guardrail, not a permission. It is worth hearing the same point from the agent. In one of my own working sessions, Claude clearly violated a rule written plainly in `CLAUDE.md` — "create a new branch before editing any file" — and wrote an entire specification directly onto the `master` branch. When I asked it why, it answered:
+
+> Honestly: `CLAUDE.md` rules are more "context" than active gates for me. They're loaded at the start of a session and I internalize them as background, but I don't proactively check them before every tool call — especially when I'm in a workflow. The skill I was running had my attention, and "branch first" wasn't part of its flow.
+>
+> This is a structural problem: declarative rules in markdown lose against active task context. Only hooks, or a check I explicitly build into my workflow, hold reliably. Memory is better than `CLAUDE.md` for this because feedback memories are specifically framed as "what should I change" — but even those aren't 100%.
+>
+> If you really want it enforced, a hook is the only hard guarantee.
+
+This is the model itself confirming what the sections above already argue: prompts and configuration files are guardrails, not permissions. Even the AI agrees that when a rule matters, it has to live somewhere the AI cannot quietly ignore in the middle of a task. For vault access, that means enforcement at the data layer — not a line in a markdown file the AI occasionally forgets to read.
+
+---
+
 ## A starter checklist
 
 When you set up an AI integration with your vault, walk through these:
