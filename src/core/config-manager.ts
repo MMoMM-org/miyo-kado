@@ -59,12 +59,18 @@ export class ConfigManager {
 			}
 		}
 
+		// Ensure open-notes flags are boolean (default false) on global security
+		mergedSecurity.allowActiveNote = mergedSecurity.allowActiveNote === true;
+		mergedSecurity.allowOtherNotes = mergedSecurity.allowOtherNotes === true;
+
 		// Ensure apiKeys have new flat fields (listMode, paths, tags)
 		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
 			...key,
 			listMode: key.listMode ?? 'whitelist' as const,
 			paths: key.paths ?? [],
 			tags: key.tags ?? [],
+			allowActiveNote: (key as unknown as Record<string, unknown>).allowActiveNote === true,
+			allowOtherNotes: (key as unknown as Record<string, unknown>).allowOtherNotes === true,
 		}));
 
 		// Migrate legacy path "/" → "**" in each API key's paths
