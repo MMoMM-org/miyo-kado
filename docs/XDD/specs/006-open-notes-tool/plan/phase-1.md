@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Core Foundation — Types, Config, Feature Gate, Adapter"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
