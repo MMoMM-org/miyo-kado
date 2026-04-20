@@ -1161,6 +1161,9 @@ describe('kado-open-notes handler', () => {
 		expect(result.isError).toBe(true);
 		const parsed = JSON.parse(getFirstText(result));
 		expect(parsed.code).toBe('INTERNAL_ERROR');
+		// Static redacted message — raw exception must not leak to the client.
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(parsed.message).not.toContain('Unexpected Obsidian API failure');
 	});
 
 	// L6-a: scope:'active' when no file is currently open → { notes: [] } (no error)
@@ -1231,5 +1234,82 @@ describe('kado-open-notes handler', () => {
 		const paths = parsed.notes.map((n: OpenNoteDescriptor) => n.path);
 		expect(paths).not.toContain('notes/active.md');
 		expect(paths).not.toContain('private/secret.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// INTERNAL_ERROR message redaction (security hardening)
+//
+// When a tool handler's catch branch fires on an UNEXPECTED exception (adapter
+// throws a raw Error, not a structured CoreError), the response message must
+// be a static string — NOT the raw exception text, which may include internal
+// paths, Obsidian internals, or stack fragments.
+// ---------------------------------------------------------------------------
+
+describe('INTERNAL_ERROR message redaction', () => {
+	const SENSITIVE_FRAGMENT = 'internal-vault-path-/etc/passwd';
+
+	function throwingRouter() {
+		return vi.fn(async () => {
+			throw new Error(SENSITIVE_FRAGMENT);
+		});
+	}
+
+	function getHandlerByName(deps: ToolDependencies, name: string) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		const reg = server.tools.find((t) => t.name === name);
+		if (!reg) throw new Error(`tool ${name} not registered`);
+		return reg.handler;
+	}
+
+	it('kado-read: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-read');
+		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-write: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-write');
+		const result = await handler(
+			{operation: 'note', path: 'notes/a.md', content: 'text'},
+			makeExtra(),
+		);
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-delete: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-delete');
+		const result = await handler(
+			{operation: 'note', path: 'notes/a.md', expectedModified: 1},
+			makeExtra(),
+		);
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-search: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-search');
+		const result = await handler({operation: 'listTags'}, makeExtra());
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 });

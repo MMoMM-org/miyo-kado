@@ -384,11 +384,11 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			// can distinguish missing files from real internal failures.
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-read error', {...debugFields(keyId, request), code});
+			kadoLog('kado-read error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -427,11 +427,11 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			// those codes so MCP clients can retry correctly.
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-write error', {...debugFields(keyId, request), code});
+			kadoLog('kado-write error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -473,11 +473,11 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			// Adapters throw DeleteAdapterError with a `code` field — propagate it as the canonical error
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-delete error', {...debugFields(keyId, request), code});
+			kadoLog('kado-delete error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -521,8 +521,8 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 			await logAllowed('kado-search', deps.auditLogger, keyId, request, startMs);
 			return mapSearchResult(searchResult);
 		} catch (err: unknown) {
-			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR'});
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
