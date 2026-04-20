@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: MCP Tool Registration & Handler"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -64,7 +64,7 @@ Phase 2 wires the pieces built in Phase 1 into the MCP tool registry: a request/
      - [x] Response shape exactly matches contract `[ref: PRD/AC Feature-1]`
      - [x] Reuses existing path-ACL functions; no duplicated glob matching `[ref: SDD/ADR-1]`
 
-- [ ] **T2.3 Audit log integration** `[activity: backend-api]` `[parallel: true]`
+- [x] **T2.3 Audit log integration** `[activity: backend-api]` `[parallel: true]`
 
   1. **Prime**: Read `[ref: src/core/audit-logger.ts]` and existing `createAuditEntry` call sites in `src/mcp/tools.ts`.
   2. **Test**: When `auditLogger` is present, a `kado-open-notes` tool call produces one audit entry with action=`openNotes`, scope from the request, resulting permitted count; denied feature-gate calls also log (with denial reason); audit entries do NOT contain paths of ACL-filtered notes (only the permitted count).
@@ -74,9 +74,18 @@ Phase 2 wires the pieces built in Phase 1 into the MCP tool registry: a request/
      - [ ] Audit emits exactly once per call `[ref: SDD/System-Wide Patterns/Logging-Auditing]`
      - [ ] Audit never leaks ACL-filtered paths `[ref: SDD/Gotchas; SDD/ADR-4]`
 
-- [ ] **T2.4 Phase 2 Validation** `[activity: validate]`
+- [x] **T2.4 Phase 2 Validation** `[activity: validate]`
 
   - Run all Phase 2 unit tests plus Phase 1 tests to confirm no regressions. Run `npm run build`. Manually confirm the tool appears in the MCP server's tool list when the plugin loads (smoke test via logs, UI-verification deferred to Phase 3). Confirm `ADR-1` and `ADR-4` are satisfied by code inspection — no parallel ACL path, no per-note error leaks.
+
+  **Validation results (2026-04-20):**
+  - `npx vitest run` → 890 tests pass across 40 files (+38 from Phase 2: 20 mappers + 10 handler + 8 audit)
+  - `npm run build` → clean
+  - `npm run lint` → clean
+  - ADR-1 (reuse path ACL): `filterDescriptorsByAcl` calls existing `isPathInScope` — no duplicated glob matching ✓
+  - ADR-4 (silent path filter): handler drops descriptors without error; only feature-gate emits `FORBIDDEN` ✓
+  - Audit privacy: entries carry only `permittedCount`; no paths in open-notes audit ✓
+  - Commits: `f733049` (T2.1), `4e4b1a8` (T2.2), `04c181f` (T2.3)
 
 ---
 
