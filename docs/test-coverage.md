@@ -233,6 +233,54 @@ Directory listings have several edge cases: empty dirs, deep nesting, hidden fil
 
 ---
 
+## Open Notes Discovery
+
+The `kado-open-notes` tool exposes the user's currently open Obsidian notes. It is double-gated: (1) per-key `allowActiveNote` / `allowOtherNotes` feature flags AND-combined with the matching global flags — no inheritance; (2) the existing path ACL, applied silently (per-note denial never surfaces as an error, preserving the privacy invariant). Feature-gate denial does return an explicit `FORBIDDEN` with `gate: 'feature-gate'` and a message naming which flag is off.
+
+Live-verified configuration for this section: global has `allowActiveNote: true`, `allowOtherNotes: true`; per-key flags per the API key overview (Key1 both on, Key2 both off, Key3 only `allowActiveNote` on). Three notes open in the vault: `allowed/Project Alpha.md` (active), `maybe-allowed/Quarterly Review.md`, `nope/Credentials.md` (no R for any key → must be silently filtered under Key1).
+
+### Feature Gate Matrix
+
+The scope × key combinations cover both allow paths and deny paths. Feature-gate denials must name the specific flag(s) off; silent category filtering (scope `all` with one category gated off) must succeed without error.
+
+| Test ID | Tool | Scope | Key | Expected |
+|---|---|---|---|---|
+| T-ON.1 | kado-open-notes | active | Key1 | One entry: `allowed/Project Alpha.md`, `active: true`, `type: "markdown"` |
+| T-ON.2 | kado-open-notes | other | Key1 | One entry: `maybe-allowed/Quarterly Review.md`, `active: false`; `nope/Credentials.md` silently omitted |
+| T-ON.3 | kado-open-notes | all | Key1 | Two entries (Project Alpha + Quarterly Review); `nope/Credentials.md` silently omitted |
+| T-ON.4 | kado-open-notes | active | Key2 | FORBIDDEN, `gate: 'feature-gate'`, message names `allowActiveNote` off |
+| T-ON.5 | kado-open-notes | other | Key2 | FORBIDDEN, message names `allowOtherNotes` off |
+| T-ON.6 | kado-open-notes | all | Key2 | FORBIDDEN, message names both flags off |
+| T-ON.7 | kado-open-notes | active | Key3 | One entry: Project Alpha (gate allowed) |
+| T-ON.8 | kado-open-notes | other | Key3 | FORBIDDEN, "key allowOtherNotes is off" |
+| T-ON.9 | kado-open-notes | all | Key3 | One entry: Project Alpha only (silent filter of `other` category, no error) |
+
+### Privacy Invariant (Path ACL is Silent)
+
+The hardest property: a key with no R permission on a path must never receive a signal that the note exists — not as an error, not as an empty field, not as anything. The response shape for "note silently filtered" and "note not open" must be indistinguishable.
+
+| Test ID | Scenario | Expected |
+|---|---|---|
+| T-ON.PRIV.1 | Key1 scope=all with `nope/Credentials.md` open | Response has 2 entries (Project Alpha, Quarterly Review). No third entry. No warning. No error. |
+| T-ON.PRIV.2 | Key1 scope=other with `nope/Credentials.md` open | Response has 1 entry (Quarterly Review). Credentials silently omitted. |
+| T-ON.PRIV.3 | Audit log entry for the above | Contains `permittedCount` only; no paths (permitted or filtered) logged for open-notes action. |
+
+### Workspace Edge Cases
+
+Workspace behaviour is governed by Obsidian's API. These cases exercise the adapter's dedupe and focus detection beyond the simple single-file case.
+
+| Test ID | Scenario | Expected |
+|---|---|---|
+| T-ON.WS.1 | Switch focus from `Project Alpha.md` to `Quarterly Review.md`, then call scope=active | New entry reflects the new active file — no stale cache |
+| T-ON.WS.2 | Open two panes on the same file (one active) — call scope=all | Single entry for that path with `active: true` (dedupe with active-upgrade) |
+| T-ON.WS.3 | Focus a non-file view (settings/graph/search), notes still open — call scope=active | Response contains zero `active: true` entries; other open notes still returned under `scope: other` if flag on |
+| T-ON.WS.4 | Canvas/PDF file open | Entry present with `type: "canvas"` or `type: "pdf"` respectively |
+| T-ON.WS.5 | No files open at all | `{ notes: [] }` with no error |
+
+**Verification status (2026-04-20):** T-ON.1–T-ON.10 (focus switch) manually verified live against the test vault via the three MCP keys. T-ON.11 (linked panes) and T-ON.WS.2 verified manually. T-ON.WS.3–WS.5 covered by unit tests (`test/obsidian/open-notes-adapter.test.ts`) but not yet automated in `mcp-live.test.ts`.
+
+---
+
 ## Security
 
 Hard security boundaries: authentication rejects invalid credentials, path handling rejects traversal attacks and encoding tricks, unicode is handled correctly. These tests prove Kado cannot be bypassed via malformed input.
@@ -320,6 +368,8 @@ Local test-coverage todo list. Known bugs are tracked as GitHub Issues (see `doc
 | Audit | Audit log rotation triggered by maxSizeBytes | Config option exists but rotation path never executes in tests |
 | Edge cases | Very long path names | Path near filesystem limits — no coverage |
 | Binary | File size limits (>1 MB) | No large fixture beyond 150 KB |
+| Open-notes | T-ON.* automated in `mcp-live.test.ts` | Currently manually verified; automation requires a workspace-manipulation harness in the live test |
+| Open-notes | Canvas/PDF types in live vault (T-ON.WS.4) | No canvas or non-markdown files in TestVault fixtures yet |
 
 ### Closed During Latest Session
 
