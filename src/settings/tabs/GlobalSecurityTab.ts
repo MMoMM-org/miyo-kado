@@ -11,6 +11,7 @@ import type {ListMode} from '../../types/canonical';
 import {createDefaultPermissions} from '../../types/canonical';
 import {renderPathEntry, type PathRule} from '../components/PathEntry';
 import {renderTagEntry} from '../components/TagEntry';
+import {renderOpenNotesSection} from '../components/OpenNotesSection';
 
 export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPlugin, onRedisplay: () => void): void {
 	const config = plugin.configManager.getConfig();
@@ -22,6 +23,29 @@ export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPl
 		void plugin.saveSettings();
 		onRedisplay();
 	});
+
+	// ── Open Notes Section ──
+	renderOpenNotesSection(
+		containerEl,
+		{
+			allowActiveNote: security.allowActiveNote ?? false,
+			allowOtherNotes: security.allowOtherNotes ?? false,
+		},
+		security.listMode,
+		'global',
+		{
+			onToggleActive: (value) => {
+				security.allowActiveNote = value;
+				void plugin.saveSettings();
+				onRedisplay();
+			},
+			onToggleOther: (value) => {
+				security.allowOtherNotes = value;
+				void plugin.saveSettings();
+				onRedisplay();
+			},
+		},
+	);
 
 	// ── Paths Section ──
 	containerEl.createDiv({cls: 'kado-section-label', text: 'Paths'});
