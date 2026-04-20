@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: MCP Tool Registration & Handler"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -32,7 +32,7 @@ phase: 2
 
 Phase 2 wires the pieces built in Phase 1 into the MCP tool registry: a request/response mapper, a handler that composes feature gate → adapter → path ACL → audit, and the registration entry point.
 
-- [ ] **T2.1 Request/response mappers** `[activity: backend-api]`
+- [x] **T2.1 Request/response mappers** `[activity: backend-api]`
 
   1. **Prime**: Read existing mappers `[ref: src/mcp/request-mapper.ts]` and `[ref: src/mcp/response-mapper.ts]`.
   2. **Test**: `mapOpenNotesRequest({})` with no `scope` produces `CoreOpenNotesRequest` with `scope: 'all'` and the supplied `keyId`; `mapOpenNotesRequest({ scope: 'active' })` passes through; invalid scope is rejected via Zod before the mapper runs (verify at the Zod-schema boundary); `mapOpenNotesResult({ notes: [...] })` produces a `CallToolResult` where `content[0].text` is valid JSON with the exact shape `{ notes: [{ name, path, active, type }] }`.
@@ -42,7 +42,7 @@ Phase 2 wires the pieces built in Phase 1 into the MCP tool registry: a request/
      - [ ] Missing `scope` defaults to `'all'` `[ref: PRD/AC Feature-1 "default all"]`
      - [ ] Response JSON shape matches contract exactly `[ref: PRD/AC Feature-1 "keys: name, path, active, type"]`
 
-- [ ] **T2.2 Tool handler + registration** `[activity: backend-api]`
+- [x] **T2.2 Tool handler + registration** `[activity: backend-api]`
 
   1. **Prime**: Read the existing `registerTools` and handler pattern `[ref: src/mcp/tools.ts; registerReadTool / registerSearchTool]`; read `filterResultsByScope` `[ref: src/mcp/tools.ts; lines: 123-137]`; read SDD Example 3 `[ref: SDD/Implementation Examples/Example 3]`.
   2. **Test**:
@@ -58,11 +58,11 @@ Phase 2 wires the pieces built in Phase 1 into the MCP tool registry: a request/
   3. **Implement**: Create `registerOpenNotesTool()` in `src/mcp/tools.ts` mirroring the existing tool-registration pattern. Compose: authenticate → `mapOpenNotesRequest` → `gateOpenNoteScope` → (on allow) `enumerateOpenNotes` → prune to scope kind → `filterResultsByScope`-equivalent path ACL → `mapOpenNotesResult`. Add it to `registerTools()`. Thread `app: App` into `ToolDependencies` if not already available (minimal change — verify existing deps first).
   4. **Validate**: All tests pass, including negative path-ACL and negative feature-gate paths. `npx tsc --noEmit` both configs; `npm run lint`.
   5. **Success**:
-     - [ ] Tool is registered and discoverable via MCP `list_tools` `[ref: SDD/Tool Contract]`
-     - [ ] Feature-gate denial returns `FORBIDDEN` with `gate: 'feature-gate'` `[ref: PRD/AC Feature-3]`
-     - [ ] Path-ACL denial NEVER surfaces per-note error `[ref: PRD/AC Feature-3 "silent filter"; SDD/ADR-4]`
-     - [ ] Response shape exactly matches contract `[ref: PRD/AC Feature-1]`
-     - [ ] Reuses existing path-ACL functions; no duplicated glob matching `[ref: SDD/ADR-1]`
+     - [x] Tool is registered and discoverable via MCP `list_tools` `[ref: SDD/Tool Contract]`
+     - [x] Feature-gate denial returns `FORBIDDEN` with `gate: 'feature-gate'` `[ref: PRD/AC Feature-3]`
+     - [x] Path-ACL denial NEVER surfaces per-note error `[ref: PRD/AC Feature-3 "silent filter"; SDD/ADR-4]`
+     - [x] Response shape exactly matches contract `[ref: PRD/AC Feature-1]`
+     - [x] Reuses existing path-ACL functions; no duplicated glob matching `[ref: SDD/ADR-1]`
 
 - [ ] **T2.3 Audit log integration** `[activity: backend-api]` `[parallel: true]`
 

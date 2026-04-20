@@ -133,6 +133,7 @@ function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
 		gates: [makeAllowGate()],
 		router: vi.fn(async () => makeFileResult()),
 		getFileMtime: vi.fn(() => undefined),
+		app: {workspace: {activeLeaf: null, getLeavesOfType: () => []}} as unknown as import('obsidian').App,
 		...overrides,
 	};
 }
