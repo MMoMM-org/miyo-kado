@@ -4,6 +4,7 @@
  * Tests cover: 3 tools registered, each handler orchestrates the correct
  * pipeline (map request → permission check → concurrency guard for writes
  * → route → map response), and error paths return isError:true results.
+ * Also covers kado-open-notes tool handler (T2.2, spec 006).
  */
 
 import {describe, it, expect, vi} from 'vitest';
@@ -23,9 +24,11 @@ import type {
 	KadoConfig,
 	ApiKeyConfig,
 	SecurityConfig,
+	OpenNoteDescriptor,
 } from '../../src/types/canonical';
 import {createDefaultConfig} from '../../src/types/canonical';
 import type {ConfigManager} from '../../src/core/config-manager';
+import type {App} from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,6 +124,8 @@ function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -134,6 +139,8 @@ function makeApiKey(id: string, overrides?: Partial<ApiKeyConfig>): ApiKeyConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -157,12 +164,30 @@ function makeDenyGate(error: CoreError): PermissionGate {
 	};
 }
 
+function makeMockApp(openNotes: OpenNoteDescriptor[] = []): App {
+	return {
+		workspace: {
+			activeLeaf: openNotes.find((n) => n.active) ?? null,
+			getLeavesOfType: vi.fn((_type: string) => {
+				// Return mock leaves matching the open notes list
+				return openNotes.map((note) => ({
+					view: {
+						file: {basename: note.name, path: note.path},
+						getViewType: () => note.type,
+					},
+				}));
+			}),
+		},
+	} as unknown as App;
+}
+
 function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
 	return {
 		configManager: makeConfigManager(),
 		gates: [makeAllowGate()],
 		router: vi.fn(async () => makeFileResult()),
 		getFileMtime: vi.fn(() => undefined),
+		app: makeMockApp(),
 		...overrides,
 	};
 }
@@ -181,10 +206,10 @@ function getFirstText(result: {content: {type: string; text?: string}[]}): strin
 // ---------------------------------------------------------------------------
 
 describe('registerTools()', () => {
-	it('registers exactly 4 tools on the server', () => {
+	it('registers exactly 5 tools on the server', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
-		expect(server.tools).toHaveLength(4);
+		expect(server.tools).toHaveLength(5);
 	});
 
 	it('registers a tool named kado-delete', () => {
@@ -209,6 +234,12 @@ describe('registerTools()', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
 		expect(server.tools.map((t) => t.name)).toContain('kado-search');
+	});
+
+	it('registers a tool named kado-open-notes', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
+		expect(server.tools.map((t) => t.name)).toContain('kado-open-notes');
 	});
 });
 
@@ -740,6 +771,8 @@ describe('computeAllowedTags()', () => {
 				listMode: 'whitelist',
 				paths: [],
 				tags: keyTags,
+				allowActiveNote: false,
+				allowOtherNotes: false,
 			}],
 		};
 	}
@@ -899,5 +932,384 @@ describe('kadoSearchShape — depth and description', () => {
 		for (const substring of ['type', 'folder', 'childCount', 'depth', '/', 'VALIDATION_ERROR', 'NOT_FOUND']) {
 			expect(combined, `expected combined description to contain "${substring}"`).toContain(substring);
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-open-notes handler (T2.2 spec 006)
+// ---------------------------------------------------------------------------
+
+vi.mock('../../src/obsidian/open-notes-adapter', () => ({
+	enumerateOpenNotes: vi.fn(() => [] as OpenNoteDescriptor[]),
+}));
+
+describe('kado-open-notes handler', () => {
+	// Import the mock so we can configure it per-test
+	async function getHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		const reg = server.tools.find((t) => t.name === 'kado-open-notes')!;
+		return reg.handler;
+	}
+
+	function makeOpenNotesDescriptor(overrides?: Partial<OpenNoteDescriptor>): OpenNoteDescriptor {
+		return {
+			name: 'note',
+			path: 'notes/note.md',
+			active: false,
+			type: 'markdown',
+			...overrides,
+		};
+	}
+
+	function makeOpenNotesConfig(opts: {
+		globalActive?: boolean;
+		globalOther?: boolean;
+		keyActive?: boolean;
+		keyOther?: boolean;
+		keyPaths?: {path: string}[];
+		globalPaths?: {path: string}[];
+	} = {}): Partial<KadoConfig> {
+		return {
+			security: makeSecurityConfig({
+				allowActiveNote: opts.globalActive ?? true,
+				allowOtherNotes: opts.globalOther ?? true,
+				listMode: 'whitelist',
+				paths: (opts.globalPaths ?? [{path: 'notes/**'}]).map((p) => ({
+					path: p.path,
+					permissions: makeReadPermissions(),
+				})),
+			}),
+			apiKeys: [makeApiKey('kado_test-key', {
+				allowActiveNote: opts.keyActive ?? true,
+				allowOtherNotes: opts.keyOther ?? true,
+				listMode: 'whitelist',
+				paths: (opts.keyPaths ?? [{path: 'notes/**'}]).map((p) => ({
+					path: p.path,
+					permissions: makeReadPermissions(),
+				})),
+			})],
+		};
+	}
+
+	// Scenario 1: Missing bearer token → UNAUTHORIZED
+	it('returns UNAUTHORIZED when bearer token is absent', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		const handler = await getHandler(makeDeps());
+		const extraWithoutAuth = {...makeExtra(), authInfo: undefined};
+
+		const result = await handler({}, extraWithoutAuth);
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('UNAUTHORIZED');
+		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
+	});
+
+	// Scenario 2: Both gates off, scope:'all' → FORBIDDEN with gate:'feature-gate'; no adapter call
+	it('returns FORBIDDEN with gate:feature-gate when both feature flags are off; adapter not called', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		const config = makeOpenNotesConfig({globalActive: false, globalOther: false, keyActive: false, keyOther: false});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.code).toBe('FORBIDDEN');
+		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
+	});
+
+	// L5 — ADR-4: MCP response on gate-denial must not leak any note paths
+	it('gate-denial response body has no path key and no note path values (ADR-4 leak check)', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const note1 = makeOpenNotesDescriptor({path: 'notes/sensitive.md', name: 'sensitive', active: true});
+		const note2 = makeOpenNotesDescriptor({path: 'private/personal.md', name: 'personal', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([note1, note2]);
+		// All flags off — gate will deny before adapter is ever called
+		const config = makeOpenNotesConfig({globalActive: false, globalOther: false, keyActive: false, keyOther: false});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const rawText = getFirstText(result);
+		const parsed = JSON.parse(rawText);
+
+		// The response body must not have a path key
+		expect(Object.prototype.hasOwnProperty.call(parsed, 'path')).toBe(false);
+		// The raw response text must not contain any open-notes path strings
+		expect(rawText.includes('notes/sensitive.md')).toBe(false);
+		expect(rawText.includes('private/personal.md')).toBe(false);
+	});
+
+	// Scenario 3: scope:'active', gates allow, one markdown open with active:true
+	it('returns only the active note when scope is active and gates allow', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const activeNote = makeOpenNotesDescriptor({path: 'notes/active.md', name: 'active', active: true});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([activeNote]);
+		const config = makeOpenNotesConfig({keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}]});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'active'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(1);
+		expect(parsed.notes[0].active).toBe(true);
+		expect(parsed.notes[0].path).toBe('notes/active.md');
+	});
+
+	// Scenario 4: scope:'other', two files open (one active, one not) → only non-active returned
+	it('returns only non-active notes when scope is other', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const activeNote = makeOpenNotesDescriptor({path: 'notes/active.md', name: 'active', active: true});
+		const otherNote = makeOpenNotesDescriptor({path: 'notes/other.md', name: 'other', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([activeNote, otherNote]);
+		const config = makeOpenNotesConfig({keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}]});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'other'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(1);
+		expect(parsed.notes[0].active).toBe(false);
+		expect(parsed.notes[0].path).toBe('notes/other.md');
+	});
+
+	// Scenario 5: scope:'all', three files open, key has R on only two → third silently omitted
+	it('silently omits notes outside path ACL when scope is all', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const note1 = makeOpenNotesDescriptor({path: 'notes/a.md', name: 'a', active: true});
+		const note2 = makeOpenNotesDescriptor({path: 'notes/b.md', name: 'b', active: false});
+		const note3 = makeOpenNotesDescriptor({path: 'private/secret.md', name: 'secret', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([note1, note2, note3]);
+		const config = makeOpenNotesConfig({keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}]});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(2);
+		expect(parsed.notes.map((n: OpenNoteDescriptor) => n.path)).not.toContain('private/secret.md');
+	});
+
+	// Scenario 6: scope:'all', only allowActiveNote on → response contains only the active file
+	it('filters to only active note when only allowActiveNote is on for scope:all', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const activeNote = makeOpenNotesDescriptor({path: 'notes/active.md', name: 'active', active: true});
+		const otherNote = makeOpenNotesDescriptor({path: 'notes/other.md', name: 'other', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([activeNote, otherNote]);
+		const config = makeOpenNotesConfig({
+			globalActive: true, globalOther: false,
+			keyActive: true, keyOther: false,
+			keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}],
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(1);
+		expect(parsed.notes[0].active).toBe(true);
+	});
+
+	// Scenario 7: all files filtered by path ACL → { notes: [] } with no error
+	it('returns empty notes array (no error) when all files are filtered by path ACL', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const note = makeOpenNotesDescriptor({path: 'private/secret.md', name: 'secret', active: true});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([note]);
+		const config = makeOpenNotesConfig({keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}]});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(0);
+	});
+
+	// Scenario 8: zero files open + gates on → { notes: [] } with no error
+	it('returns empty notes array when no files are open and gates allow', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		const config = makeOpenNotesConfig();
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(0);
+	});
+
+	// Scenario 9: adapter throws unexpected error → INTERNAL_ERROR
+	it('returns INTERNAL_ERROR when the adapter throws an unexpected error', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		vi.mocked(enumerateOpenNotes).mockImplementation(() => {
+			throw new Error('Unexpected Obsidian API failure');
+		});
+		const config = makeOpenNotesConfig();
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		// Static redacted message — raw exception must not leak to the client.
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(parsed.message).not.toContain('Unexpected Obsidian API failure');
+	});
+
+	// L6-a: scope:'active' when no file is currently open → { notes: [] } (no error)
+	it('returns empty notes array (no error) when scope is active and no file is open', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		// No notes open — enumerateOpenNotes returns []
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		const config = makeOpenNotesConfig({
+			globalActive: true, globalOther: true,
+			keyActive: true, keyOther: true,
+			keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}],
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'active'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(0);
+	});
+
+	// L6-b: scope:'all', only KEY has active on but GLOBAL does NOT → feature-gate deny (AND semantics)
+	it('denies via feature-gate when global allowActiveNote is off and key allowActiveNote is on (AND semantics)', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		// Clear call history from previous tests so we can assert this specific invocation.
+		vi.mocked(enumerateOpenNotes).mockClear();
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		// Global OFF, Key ON — AND semantics means this must deny
+		const config = makeOpenNotesConfig({
+			globalActive: false, globalOther: false,
+			keyActive: true, keyOther: true,
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.code).toBe('FORBIDDEN');
+		// Adapter must not have been called — gate fired before enumeration
+		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
+	});
+
+	// L6-c: scope:'other' end-to-end with mixed ACL — active file excluded, only non-active permitted notes returned
+	it('scope:other returns only non-active notes that pass path ACL, excluding active and ACL-filtered notes', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const activeNote = makeOpenNotesDescriptor({path: 'notes/active.md', name: 'active', active: true});
+		const permittedOther = makeOpenNotesDescriptor({path: 'notes/other.md', name: 'other', active: false});
+		const filteredOther = makeOpenNotesDescriptor({path: 'private/secret.md', name: 'secret', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([activeNote, permittedOther, filteredOther]);
+		// Key has whitelist access to notes/** only — private/ is ACL-filtered
+		const config = makeOpenNotesConfig({
+			globalActive: true, globalOther: true,
+			keyActive: true, keyOther: true,
+			keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}],
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'other'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		// Only the non-active permitted note survives; active and filtered are both absent
+		expect(parsed.notes).toHaveLength(1);
+		expect(parsed.notes[0].path).toBe('notes/other.md');
+		expect(parsed.notes[0].active).toBe(false);
+		// Neither the active note path nor the ACL-filtered path should appear
+		const paths = parsed.notes.map((n: OpenNoteDescriptor) => n.path);
+		expect(paths).not.toContain('notes/active.md');
+		expect(paths).not.toContain('private/secret.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// INTERNAL_ERROR message redaction (security hardening)
+//
+// When a tool handler's catch branch fires on an UNEXPECTED exception (adapter
+// throws a raw Error, not a structured CoreError), the response message must
+// be a static string — NOT the raw exception text, which may include internal
+// paths, Obsidian internals, or stack fragments.
+// ---------------------------------------------------------------------------
+
+describe('INTERNAL_ERROR message redaction', () => {
+	const SENSITIVE_FRAGMENT = 'internal-vault-path-/etc/passwd';
+
+	function throwingRouter() {
+		return vi.fn(async () => {
+			throw new Error(SENSITIVE_FRAGMENT);
+		});
+	}
+
+	function getHandlerByName(deps: ToolDependencies, name: string) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		const reg = server.tools.find((t) => t.name === name);
+		if (!reg) throw new Error(`tool ${name} not registered`);
+		return reg.handler;
+	}
+
+	it('kado-read: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-read');
+		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-write: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-write');
+		const result = await handler(
+			{operation: 'note', path: 'notes/a.md', content: 'text'},
+			makeExtra(),
+		);
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-delete: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-delete');
+		const result = await handler(
+			{operation: 'note', path: 'notes/a.md', expectedModified: 1},
+			makeExtra(),
+		);
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+
+	it('kado-search: static message on unexpected router throw, no exception text in response', async () => {
+		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-search');
+		const result = await handler({operation: 'listTags'}, makeExtra());
+		const parsed = JSON.parse(getFirstText(result));
+
+		expect(result.isError).toBe(true);
+		expect(parsed.code).toBe('INTERNAL_ERROR');
+		expect(parsed.message).toBe('An unexpected error occurred');
+		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 });

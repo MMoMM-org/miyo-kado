@@ -374,6 +374,14 @@ class DropdownComponent {
 
 // --- Views ---
 
+/** Minimal stub — tests construct plain objects shaped like WorkspaceLeaf. */
+export class WorkspaceLeaf {
+	view = {
+		getViewType: vi.fn(() => 'markdown'),
+		file: null as TFile | null,
+	};
+}
+
 export class MarkdownView {
 	editor = {
 		replaceSelection: vi.fn(),

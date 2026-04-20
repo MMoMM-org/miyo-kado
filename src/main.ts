@@ -137,7 +137,7 @@ export default class KadoPlugin extends Plugin {
 
 		this.mcpServer = new KadoMcpServer(
 			this.configManager,
-			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger}),
+			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app}),
 			this.manifest.version,
 		);
 		this.register(() => this.mcpServer.stop());

@@ -118,6 +118,44 @@ export interface CoreDeleteResult {
 export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest;
 
 // ============================================================
+// Open Notes Requests and Results
+// ============================================================
+
+/** Which category of open notes to enumerate. 'all' means both active and other. */
+export type OpenNotesScope = 'active' | 'other' | 'all';
+
+/** Request to enumerate currently open notes in the Obsidian workspace. */
+export interface CoreOpenNotesRequest {
+	/** Explicit discriminator for the open-notes request type. */
+	kind: 'openNotes';
+	keyId: string;
+	/** 'all' is the default applied by the request-mapper when not specified. */
+	scope: OpenNotesScope;
+}
+
+/**
+ * View type of an open note.
+ * Known values: 'markdown', 'canvas', 'pdf', 'image'. Unknown types pass through as-is.
+ */
+export type OpenNoteType = string;
+
+/** Descriptor for a single open note leaf in the workspace. */
+export interface OpenNoteDescriptor {
+	/** Obsidian basename (filename without vault path). */
+	name: string;
+	/** Vault-relative path. */
+	path: string;
+	/** True when this note is the currently focused leaf. */
+	active: boolean;
+	type: OpenNoteType;
+}
+
+/** Result of an open-notes enumeration. */
+export interface CoreOpenNotesResult {
+	notes: OpenNoteDescriptor[];
+}
+
+// ============================================================
 // Core Results
 // ============================================================
 
@@ -230,6 +268,10 @@ export interface SecurityConfig {
 	paths: PathPermission[];
 	/** Tags for read-only filtering, stored without '#'. */
 	tags: string[];
+	/** Whether the open-notes tool may return the currently active note. Default: false (applied by config-manager on load). */
+	allowActiveNote: boolean;
+	/** Whether the open-notes tool may return non-active open notes. Default: false (applied by config-manager on load). */
+	allowOtherNotes: boolean;
 }
 
 /** Configuration for a single API key including its independent scope and permissions. */
@@ -244,6 +286,10 @@ export interface ApiKeyConfig {
 	paths: PathPermission[];
 	/** Subset of global security tags this key can use. */
 	tags: string[];
+	/** Whether this key may receive the active note via open-notes. Default: false. Applied as AND with global. */
+	allowActiveNote: boolean;
+	/** Whether this key may receive non-active notes via open-notes. Default: false. Applied as AND with global. */
+	allowOtherNotes: boolean;
 }
 
 /** Whether the MCP server binds to localhost or a public network interface. */
@@ -299,12 +345,33 @@ export function createDefaultPermissions(): DataTypePermissions {
 	};
 }
 
-/** Returns a SecurityConfig with whitelist mode, no paths, and no tags. */
+/** Returns a SecurityConfig with whitelist mode, no paths, no tags, and open-notes gating off. */
 export function createDefaultSecurityConfig(): SecurityConfig {
 	return {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
+	};
+}
+
+/**
+ * Returns a new ApiKeyConfig with safe defaults: disabled open-notes flags,
+ * whitelist mode, empty paths/tags. Pass overrides to customise individual fields.
+ */
+export function createDefaultApiKeyConfig(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
+	return {
+		id: '',
+		label: '',
+		enabled: true,
+		createdAt: 0,
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
+		...overrides,
 	};
 }
 
@@ -366,6 +433,14 @@ export function isCoreSearchRequest(req: CoreRequest): req is CoreSearchRequest 
  */
 export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest {
 	return 'kind' in req && req.kind === 'delete';
+}
+
+/**
+ * Returns true when `req` is a CoreOpenNotesRequest.
+ * Discriminated by the explicit `kind: 'openNotes'` marker.
+ */
+export function isCoreOpenNotesRequest(req: {kind?: unknown}): req is CoreOpenNotesRequest {
+	return 'kind' in req && req.kind === 'openNotes';
 }
 
 // ============================================================

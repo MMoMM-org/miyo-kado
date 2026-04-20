@@ -14,6 +14,8 @@
 | **listMode** | whitelist | whitelist | whitelist |
 | **Paths** | `allowed/**`, `maybe-allowed/**`, `listdir-fixtures/**` | _(none)_ | `allowed/**` |
 | **Tags** | `engineering`, `project/*`, `miyo/kado`, `finance` | _(none)_ | `engineering` |
+| **allowActiveNote** | ✅ on | ❌ off (default) | ✅ on |
+| **allowOtherNotes** | ✅ on | ❌ off (default) | ❌ off |
 
 ### Key1 — Detailed Permissions
 
@@ -199,6 +201,36 @@ All delete operations require `expectedModified` (optimistic concurrency). Notes
 | byContent | "Budget" (scope boundary) | 🟡 | 🟡 | 🔴 |
 | byFrontmatter | `status=active` | 🟢 | 🔴 | 🟡 |
 | byFrontmatter | `tags=finance` (array match, scope boundary) | 🟢 | ⚪ | 🔴 |
+
+## kado-open-notes
+
+Enumerates currently open Obsidian notes. Double-gated: (1) per-key `allowActiveNote` / `allowOtherNotes` flags AND (2) existing path ACL. Path-ACL denial is **silent** (no per-note error — privacy invariant). Feature-gate denial returns `FORBIDDEN` with `gate: 'feature-gate'` and a message naming the off flag(s).
+
+**Global flags:** both `allowActiveNote` and `allowOtherNotes` default to `false`. No inheritance to keys — each key must opt in independently. For the scenarios below, global has both flags ON; per-key flags as in the API Key Overview above.
+
+Live scenario: three notes open — `allowed/Project Alpha.md` (active), `maybe-allowed/Quarterly Review.md`, `nope/Credentials.md`. `Credentials.md` must always be silently filtered (no R on `nope/`).
+
+| Test ID | Scope | Key | Expected |
+|---|---|---|---|
+| T-ON.1 | active | Key1 | 🟢 one entry: `allowed/Project Alpha.md`, `active: true`, `type: "markdown"` |
+| T-ON.2 | other | Key1 | 🟢 one entry: `maybe-allowed/Quarterly Review.md`, `active: false`; `nope/Credentials.md` silently omitted |
+| T-ON.3 | all | Key1 | 🟢 both permitted notes; `nope/Credentials.md` silently omitted |
+| T-ON.4 | active | Key2 | 🔴 `FORBIDDEN` `gate: 'feature-gate'` "allowActiveNote is off" |
+| T-ON.5 | other | Key2 | 🔴 `FORBIDDEN` "allowOtherNotes is off" |
+| T-ON.6 | all | Key2 | 🔴 `FORBIDDEN` message names both off flags |
+| T-ON.7 | active | Key3 | 🟢 Project Alpha |
+| T-ON.8 | other | Key3 | 🔴 `FORBIDDEN` "key allowOtherNotes is off" |
+| T-ON.9 | all | Key3 | 🟡 Project Alpha only (silent filter of `other` category, no error) |
+| T-ON.10 | active | Key1 | 🟢 after focus switch, new active file appears — live reactivity |
+| T-ON.11 | all | Key1 | 🟢 linked panes on same file → single entry, `active: true` (dedupe + active-upgrade) |
+
+**Invariants verified (live):**
+- `Credentials.md` never in output under any scope for Key1 — no error, no existence leak (ADR-4 silent path-ACL).
+- Exactly one entry with `active: true` per response (or zero if active leaf is non-file).
+- Response keys: exactly `name`, `path`, `active`, `type`.
+- `type` lower-cased (`"markdown"`). Non-file views (settings, graph) excluded by design.
+- Focus switch reacts immediately — no stale cache.
+- Linked panes dedupe by `path`; active pane wins the `active: true` flag.
 
 ## kado-search — Universal Filters
 

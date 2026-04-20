@@ -11,6 +11,7 @@ import type {ApiKeyConfig, DataTypePermissions, KadoConfig, ListMode, PathPermis
 import {createDefaultPermissions} from '../../types/canonical';
 import {renderPermissionMatrix} from '../components/PermissionMatrix';
 import {renderTagEntry} from '../components/TagEntry';
+import {renderOpenNotesSection} from '../components/OpenNotesSection';
 
 export function renderApiKeyTab(
 	containerEl: HTMLElement,
@@ -124,6 +125,25 @@ function renderKeyPermissions(
 				void plugin.saveSettings();
 				onRedisplay();
 			}));
+
+	renderOpenNotesSection(
+		containerEl,
+		{allowActiveNote: key.allowActiveNote, allowOtherNotes: key.allowOtherNotes},
+		key.listMode,
+		'key',
+		{
+			onToggleActive: (value: boolean) => {
+				key.allowActiveNote = value;
+				void plugin.saveSettings();
+				onRedisplay();
+			},
+			onToggleOther: (value: boolean) => {
+				key.allowOtherNotes = value;
+				void plugin.saveSettings();
+				onRedisplay();
+			},
+		},
+	);
 
 	// ── Paths Section ──
 	containerEl.createDiv({cls: 'kado-section-label', text: 'Paths'});

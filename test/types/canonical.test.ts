@@ -9,12 +9,15 @@ import {
 	createDefaultConfig,
 	createDefaultCrudFlags,
 	createDefaultPermissions,
+	createDefaultSecurityConfig,
 	isCoreReadRequest,
 	isCoreWriteRequest,
 	isCoreSearchRequest,
+	isCoreOpenNotesRequest,
 	type CoreReadRequest,
 	type CoreWriteRequest,
 	type CoreSearchRequest,
+	type CoreOpenNotesRequest,
 	type CoreFileResult,
 	type CoreWriteResult,
 	type CoreSearchResult,
@@ -24,6 +27,10 @@ import {
 	type KadoConfig,
 	type CrudFlags,
 	type DataTypePermissions,
+	type OpenNotesScope,
+	type OpenNoteType,
+	type OpenNoteDescriptor,
+	type CoreOpenNotesResult,
 } from '../../src/types/canonical';
 
 // --- Factory helpers ---
@@ -126,7 +133,7 @@ describe('createDefaultConfig', () => {
 	it('produces independent objects on each call', () => {
 		const a = createDefaultConfig();
 		const b = createDefaultConfig();
-		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, listMode: 'whitelist', paths: [], tags: []});
+		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false});
 		expect(b.apiKeys).toHaveLength(0);
 	});
 });
@@ -307,5 +314,119 @@ describe('GateResult shape', () => {
 		if (!result.allowed) {
 			expect(result.error.code).toBe('FORBIDDEN');
 		}
+	});
+});
+
+// ============================================================
+// Open Notes — T1.1
+// ============================================================
+
+describe('createDefaultSecurityConfig — open notes flags', () => {
+	it('defaults allowActiveNote to false', () => {
+		const config = createDefaultSecurityConfig();
+		expect(config.allowActiveNote).toBe(false);
+	});
+
+	it('defaults allowOtherNotes to false', () => {
+		const config = createDefaultSecurityConfig();
+		expect(config.allowOtherNotes).toBe(false);
+	});
+
+	it('produces independent objects on each call', () => {
+		const a = createDefaultSecurityConfig();
+		const b = createDefaultSecurityConfig();
+		a.allowActiveNote = true;
+		expect(b.allowActiveNote).toBe(false);
+	});
+});
+
+describe('createDefaultConfig — open notes flags on security', () => {
+	it('security.allowActiveNote defaults to false', () => {
+		const config = createDefaultConfig();
+		expect(config.security.allowActiveNote).toBe(false);
+	});
+
+	it('security.allowOtherNotes defaults to false', () => {
+		const config = createDefaultConfig();
+		expect(config.security.allowOtherNotes).toBe(false);
+	});
+});
+
+describe('OpenNotesScope type', () => {
+	it('accepts all valid scope values', () => {
+		const scopes: OpenNotesScope[] = ['active', 'other', 'all'];
+		expect(scopes).toHaveLength(3);
+	});
+});
+
+describe('CoreOpenNotesRequest shape', () => {
+	it('has kind discriminator set to openNotes', () => {
+		const req: CoreOpenNotesRequest = {
+			kind: 'openNotes',
+			keyId: 'kado_abc123',
+			scope: 'all',
+		};
+		expect(req.kind).toBe('openNotes');
+	});
+
+	it('accepts all valid scope values', () => {
+		const scopes: OpenNotesScope[] = ['active', 'other', 'all'];
+		for (const scope of scopes) {
+			const req: CoreOpenNotesRequest = {kind: 'openNotes', keyId: 'k', scope};
+			expect(req.scope).toBe(scope);
+		}
+	});
+});
+
+describe('OpenNoteDescriptor shape', () => {
+	it('has all required fields', () => {
+		const descriptor: OpenNoteDescriptor = {
+			name: 'test.md',
+			path: 'notes/test.md',
+			active: true,
+			type: 'markdown',
+		};
+		expect(descriptor.name).toBe('test.md');
+		expect(descriptor.path).toBe('notes/test.md');
+		expect(descriptor.active).toBe(true);
+		expect(descriptor.type).toBe('markdown');
+	});
+
+	it('accepts all known OpenNoteType values', () => {
+		const types: OpenNoteType[] = ['markdown', 'canvas', 'pdf', 'image', 'unknown-type'];
+		for (const type of types) {
+			const descriptor: OpenNoteDescriptor = {name: 'f', path: 'f', active: false, type};
+			expect(descriptor.type).toBe(type);
+		}
+	});
+});
+
+describe('CoreOpenNotesResult shape', () => {
+	it('has a notes array', () => {
+		const result: CoreOpenNotesResult = {notes: []};
+		expect(result.notes).toHaveLength(0);
+	});
+
+	it('holds OpenNoteDescriptor entries', () => {
+		const note: OpenNoteDescriptor = {name: 'a.md', path: 'a.md', active: false, type: 'markdown'};
+		const result: CoreOpenNotesResult = {notes: [note]};
+		expect(result.notes[0]?.name).toBe('a.md');
+	});
+});
+
+describe('isCoreOpenNotesRequest', () => {
+	it('returns true for a CoreOpenNotesRequest', () => {
+		const req: CoreOpenNotesRequest = {kind: 'openNotes', keyId: 'k', scope: 'all'};
+		expect(isCoreOpenNotesRequest(req)).toBe(true);
+	});
+
+	it('returns false for a CoreDeleteRequest (kind: delete)', () => {
+		const req = {kind: 'delete', apiKeyId: 'k', operation: 'note' as const, path: 'p', expectedModified: 0};
+		expect(isCoreOpenNotesRequest(req)).toBe(false);
+	});
+
+	it('returns false for a CoreReadRequest (no kind)', () => {
+		const req: CoreReadRequest = {apiKeyId: 'k', operation: 'note', path: 'p'};
+		expect(isCoreOpenNotesRequest(req as unknown as CoreOpenNotesRequest)).toBe(false);
 	});
 });

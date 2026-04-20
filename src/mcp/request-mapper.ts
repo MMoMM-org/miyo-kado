@@ -14,6 +14,8 @@ import type {
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreOpenNotesRequest,
+	OpenNotesScope,
 	DeleteDataType,
 	SearchFilter,
 } from '../types/canonical';
@@ -193,4 +195,19 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 	}
 
 	return result;
+}
+
+/**
+ * Maps raw MCP tool arguments into a CoreOpenNotesRequest.
+ * Defaults scope to 'all' when not supplied.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ */
+export function mapOpenNotesRequest(args: Args, keyId: string): CoreOpenNotesRequest {
+	const scope: OpenNotesScope =
+		typeof args['scope'] === 'string' && ['active', 'other', 'all'].includes(args['scope'])
+			? (args['scope'] as OpenNotesScope)
+			: 'all';
+
+	return {kind: 'openNotes', keyId, scope};
 }

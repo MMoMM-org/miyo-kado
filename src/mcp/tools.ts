@@ -11,16 +11,17 @@
 // NOTE: Uses Zod v4. The MCP SDK 1.29+ includes zod-compat supporting both v3 and v4.
 // If tool schemas don't render correctly in clients, pin zod to "^3.22.0".
 import {z} from 'zod';
+import type {App} from 'obsidian';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
-import type {PermissionGate, CoreRequest, CoreError, DataType} from '../types/canonical';
-import {isCoreSearchRequest} from '../types/canonical';
+import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
+import {isCoreSearchRequest, isCoreOpenNotesRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {validateConcurrency} from '../core/concurrency-guard';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError} from './response-mapper';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest} from './request-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError, mapOpenNotesResult} from './response-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapOpenNotesRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
@@ -28,12 +29,17 @@ import type {
 	CoreDeleteResult,
 	CoreSearchItem,
 	KadoConfig,
+	ApiKeyConfig,
+	OpenNoteDescriptor,
 } from '../types/canonical';
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
 import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
 import {matchTag} from '../core/tag-utils';
 import {kadoLog} from '../core/logger';
+import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
+import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
+import {authenticateGate} from '../core/gates/authenticate';
 
 // ============================================================
 // Public types
@@ -48,6 +54,8 @@ export interface ToolDependencies {
 	router: (request: CoreRequest) => Promise<RouteResult>;
 	getFileMtime: (path: string) => number | undefined;
 	auditLogger?: AuditLogger;
+	/** Obsidian App instance — required by the kado-open-notes tool handler. */
+	app: App;
 }
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -75,6 +83,12 @@ const kadoDeleteShape = {
 	path: z.string().describe('Vault-relative path.'),
 	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
 	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
+};
+
+export const kadoOpenNotesShape = {
+	scope: z.enum(['active', 'other', 'all']).optional().describe(
+		'Which open notes to enumerate: "active" (focused leaf only), "other" (non-active open notes), "all" (default, both active and other)',
+	),
 };
 
 export const kadoSearchShape = {
@@ -119,6 +133,18 @@ function missingAuthError(): CallToolResult {
 	return mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'});
 }
 
+/**
+ * Returns true when a file path is permitted by both the global scope and the key scope.
+ * Shared predicate used by filterResultsByScope and filterDescriptorsByAcl to avoid
+ * duplicating glob-matching logic — any future change to whitelist/blacklist semantics
+ * applies to both.
+ */
+function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
+	const inGlobal = isPathInScope(path, config.security.listMode, config.security.paths.map((p) => p.path));
+	const inKey = isPathInScope(path, key.listMode, key.paths.map((p) => p.path));
+	return inGlobal && inKey;
+}
+
 /** Filters search result items to only include paths within the key's permitted scope. */
 export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
 	const key = config.apiKeys.find((k) => k.id === keyId);
@@ -130,9 +156,7 @@ export function filterResultsByScope(items: CoreSearchItem[], keyId: string, con
 			const inKey = isFolderInScope(item.path, key.listMode, key.paths.map((p) => p.path));
 			return inGlobal && inKey;
 		}
-		const inGlobal = isPathInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
-		const inKey = isPathInScope(item.path, key.listMode, key.paths.map((p) => p.path));
-		return inGlobal && inKey;
+		return isPathPermittedForKey(item.path, key, config);
 	});
 }
 
@@ -208,6 +232,29 @@ export function computeAllowedTags(keyId: string, config: KadoConfig): string[] 
 	);
 }
 
+/**
+ * Prunes open-note descriptors to only those matching the scope kind from the feature gate.
+ * 'allow-active-only' keeps only active notes; 'allow-other-only' keeps only non-active;
+ * 'allow-both' keeps all.
+ */
+function pruneToScopeKind(
+	notes: OpenNoteDescriptor[],
+	kind: 'allow-active-only' | 'allow-other-only' | 'allow-both',
+): OpenNoteDescriptor[] {
+	if (kind === 'allow-active-only') return notes.filter((n) => n.active);
+	if (kind === 'allow-other-only') return notes.filter((n) => !n.active);
+	return notes;
+}
+
+/**
+ * Filters open-note descriptors by path ACL (global AND key whitelist/blacklist).
+ * Silently drops any descriptor whose path is not permitted — ADR-4 privacy invariant.
+ * Delegates to isPathPermittedForKey to share glob-matching logic with filterResultsByScope.
+ */
+function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, config: KadoConfig): OpenNoteDescriptor[] {
+	return notes.filter((note) => isPathPermittedForKey(note.path, key, config));
+}
+
 function extractDataType(request: CoreRequest): DataType {
 	if (isCoreSearchRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
@@ -233,17 +280,27 @@ async function logAllowed(
 	tool: string,
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
-	request: CoreRequest,
+	request: CoreRequest | CoreOpenNotesRequest,
 	startHrMs: number,
+	extra?: {permittedCount?: number},
 ): Promise<void> {
 	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
-	kadoLog(`${tool} allowed`, {...debugFields(keyId, request), durationMs});
+	if (isCoreOpenNotesRequest(request as {kind?: unknown})) {
+		kadoLog(`${tool} allowed`, {key: truncateKeyId(keyId), scope: (request as CoreOpenNotesRequest).scope, durationMs});
+		if (!auditLogger) return;
+		try {
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: 'openNotes', query: (request as CoreOpenNotesRequest).scope, decision: 'allowed', durationMs, permittedCount: extra?.permittedCount}));
+		} catch { /* audit logging must never crash a tool call */ }
+		return;
+	}
+	const coreReq = request as CoreRequest;
+	kadoLog(`${tool} allowed`, {...debugFields(keyId, coreReq), durationMs});
 	if (!auditLogger) return;
 	try {
-		const path = 'path' in request ? (request.path as string) : undefined;
-		const query = 'query' in request ? (request.query as string) : undefined;
-		const operation = String(request.operation ?? '');
-		const dataType = extractDataType(request);
+		const path = 'path' in coreReq ? (coreReq.path as string) : undefined;
+		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
+		const operation = String(coreReq.operation ?? '');
+		const dataType = extractDataType(coreReq);
 		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
@@ -254,16 +311,25 @@ async function logDenied(
 	tool: string,
 	auditLogger: AuditLogger | undefined,
 	keyId: string,
-	request: CoreRequest,
+	request: CoreRequest | CoreOpenNotesRequest,
 	gate: string | undefined,
 ): Promise<void> {
-	kadoLog(`${tool} denied`, {...debugFields(keyId, request), gate});
+	if (isCoreOpenNotesRequest(request as {kind?: unknown})) {
+		kadoLog(`${tool} denied`, {key: truncateKeyId(keyId), scope: (request as CoreOpenNotesRequest).scope, gate});
+		if (!auditLogger) return;
+		try {
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: 'openNotes', query: (request as CoreOpenNotesRequest).scope, decision: 'denied', gate}));
+		} catch { /* audit logging must never crash a tool call */ }
+		return;
+	}
+	const coreReq = request as CoreRequest;
+	kadoLog(`${tool} denied`, {...debugFields(keyId, coreReq), gate});
 	if (!auditLogger) return;
 	try {
-		const path = 'path' in request ? (request.path as string) : undefined;
-		const query = 'query' in request ? (request.query as string) : undefined;
-		const operation = String(request.operation ?? '');
-		const dataType = extractDataType(request);
+		const path = 'path' in coreReq ? (coreReq.path as string) : undefined;
+		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
+		const operation = String(coreReq.operation ?? '');
+		const dataType = extractDataType(coreReq);
 		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'denied', gate}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
@@ -284,6 +350,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	registerWriteTool(server, deps);
 	registerSearchTool(server, deps);
 	registerDeleteTool(server, deps);
+	registerOpenNotesTool(server, deps);
 }
 
 // ============================================================
@@ -317,11 +384,11 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			// can distinguish missing files from real internal failures.
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-read error', {...debugFields(keyId, request), code});
+			kadoLog('kado-read error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -360,11 +427,11 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			// those codes so MCP clients can retry correctly.
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-write error', {...debugFields(keyId, request), code});
+			kadoLog('kado-write error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -406,11 +473,11 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			// Adapters throw DeleteAdapterError with a `code` field — propagate it as the canonical error
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
-			kadoLog('kado-delete error', {...debugFields(keyId, request), code});
+			kadoLog('kado-delete error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }
@@ -454,8 +521,50 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 			await logAllowed('kado-search', deps.auditLogger, keyId, request, startMs);
 			return mapSearchResult(searchResult);
 		} catch (err: unknown) {
-			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR'});
-			return mapError({code: 'INTERNAL_ERROR', message: String(err)});
+			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
+		}
+	});
+}
+
+function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void {
+	server.registerTool('kado-open-notes', {
+		description: 'List currently open Obsidian notes. Gated by per-key feature flags (allowActiveNote, allowOtherNotes) and path ACL. Read-only — does not modify workspace state. Returns { notes: [{ name, path, active, type }] }. Returns FORBIDDEN with gate="feature-gate" when the requested scope is disabled by either the global or key flag; returns an empty list when no permitted files are open or all are silently filtered by the path ACL.',
+		inputSchema: kadoOpenNotesShape,
+	}, async (args, extra: Extra): Promise<CallToolResult> => {
+		const keyId = extractKeyId(extra);
+		if (!keyId) return missingAuthError();
+
+		const config = deps.configManager.getConfig();
+
+		// M6: run authenticate gate the same way as other tools
+		const authResult = authenticateGate.evaluate(
+			{apiKeyId: keyId, operation: 'note', path: ''} as CoreRequest,
+			config,
+		);
+		if (!authResult.allowed) return mapError(authResult.error);
+
+		// key is guaranteed to exist and be enabled after auth gate
+		const key = config.apiKeys.find((k) => k.id === keyId)!;
+
+		const req = mapOpenNotesRequest(args as Record<string, unknown>, keyId);
+		const gate = gateOpenNoteScope(req.scope, config.security, key);
+		if (gate.kind === 'deny') {
+			await logDenied('kado-open-notes', deps.auditLogger, keyId, req, 'feature-gate');
+			return mapError(gate.error);
+		}
+
+		const startMs = performance.now();
+		try {
+			const all = enumerateOpenNotes(deps.app);
+			const byScope = pruneToScopeKind(all, gate.kind);
+			const permitted = filterDescriptorsByAcl(byScope, key, config);
+			await logAllowed('kado-open-notes', deps.auditLogger, keyId, req, startMs, {permittedCount: permitted.length});
+			return mapOpenNotesResult({notes: permitted});
+		} catch (err: unknown) {
+			// M7: static message to avoid leaking internal details; raw error logged below
+			kadoLog('kado-open-notes error', {key: truncateKeyId(keyId), code: 'INTERNAL_ERROR', err: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});
 }

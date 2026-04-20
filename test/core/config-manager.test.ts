@@ -107,6 +107,8 @@ describe('ConfigManager.load()', () => {
 			listMode: 'whitelist',
 			paths: [],
 			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
 		};
 		const {manager} = makeConfigManager({apiKeys: [storedKey], security: {listMode: 'whitelist', paths: [], tags: []}});
 		await manager.load();
@@ -283,6 +285,8 @@ describe('ConfigManager.load() migration: "/" → "**"', () => {
 			listMode: 'whitelist',
 			paths: [makePathPermission({path: '/'})],
 			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
 		};
 		const {manager} = makeConfigManager({
 			apiKeys: [storedKey],
@@ -334,6 +338,108 @@ describe('ConfigManager.load() migration: "/" → "**"', () => {
 		const manager2 = new ConfigManager(async () => persisted as unknown, saveFn);
 		await manager2.load();
 		expect(manager2.getConfig().security.paths[0]?.path).toBe('**');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Migration: open-notes flags default-merge
+// ---------------------------------------------------------------------------
+
+describe('ConfigManager.load() migration: open-notes flags', () => {
+	it('defaults allowActiveNote and allowOtherNotes to false on global security when absent', async () => {
+		const {manager} = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [], tags: []},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.allowActiveNote).toBe(false);
+		expect(config.security.allowOtherNotes).toBe(false);
+	});
+
+	it('preserves allowActiveNote=true and allowOtherNotes=true on global security when already set', async () => {
+		const {manager} = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: true, allowOtherNotes: true},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.allowActiveNote).toBe(true);
+		expect(config.security.allowOtherNotes).toBe(true);
+	});
+
+	it('coerces malformed non-boolean global security flags to false', async () => {
+		const {manager} = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: 'yes', allowOtherNotes: 1},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.allowActiveNote).toBe(false);
+		expect(config.security.allowOtherNotes).toBe(false);
+	});
+
+	it('defaults allowActiveNote and allowOtherNotes to false on each API key when absent', async () => {
+		// Simulates a stored key from an older version without the open-notes flags.
+		// Using 'unknown' cast because the config-manager intentionally migrates missing fields.
+		const storedKey = {
+			id: 'kado_flags-test',
+			label: 'Flags Test',
+			enabled: true,
+			createdAt: 1700000000000,
+			listMode: 'whitelist',
+			paths: [],
+			tags: [],
+		} as unknown as ApiKeyConfig;
+		const {manager} = makeConfigManager({
+			apiKeys: [storedKey],
+			security: {listMode: 'whitelist', paths: [], tags: []},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.apiKeys[0]?.allowActiveNote).toBe(false);
+		expect(config.apiKeys[0]?.allowOtherNotes).toBe(false);
+	});
+
+	it('preserves allowActiveNote=true and allowOtherNotes=true on API keys when already set', async () => {
+		const storedKey: ApiKeyConfig = {
+			id: 'kado_flags-preserve',
+			label: 'Flags Preserve',
+			enabled: true,
+			createdAt: 1700000000000,
+			listMode: 'whitelist',
+			paths: [],
+			tags: [],
+			allowActiveNote: true,
+			allowOtherNotes: true,
+		};
+		const {manager} = makeConfigManager({
+			apiKeys: [storedKey],
+			security: {listMode: 'whitelist', paths: [], tags: []},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.apiKeys[0]?.allowActiveNote).toBe(true);
+		expect(config.apiKeys[0]?.allowOtherNotes).toBe(true);
+	});
+
+	it('coerces malformed non-boolean API key flags to false', async () => {
+		const storedKey = {
+			id: 'kado_flags-coerce',
+			label: 'Flags Coerce',
+			enabled: true,
+			createdAt: 1700000000000,
+			listMode: 'whitelist' as const,
+			paths: [],
+			tags: [],
+			allowActiveNote: 'yes',
+			allowOtherNotes: 1,
+		};
+		const {manager} = makeConfigManager({
+			apiKeys: [storedKey],
+			security: {listMode: 'whitelist', paths: [], tags: []},
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.apiKeys[0]?.allowActiveNote).toBe(false);
+		expect(config.apiKeys[0]?.allowOtherNotes).toBe(false);
 	});
 });
 

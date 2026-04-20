@@ -13,6 +13,7 @@ import {
 	type KadoConfig,
 	createDefaultConfig,
 	createDefaultSecurityConfig,
+	createDefaultApiKeyConfig,
 } from '../types/canonical';
 import {kadoLog} from './logger';
 
@@ -59,12 +60,18 @@ export class ConfigManager {
 			}
 		}
 
+		// Ensure open-notes flags are boolean (default false) on global security
+		mergedSecurity.allowActiveNote = mergedSecurity.allowActiveNote === true;
+		mergedSecurity.allowOtherNotes = mergedSecurity.allowOtherNotes === true;
+
 		// Ensure apiKeys have new flat fields (listMode, paths, tags)
 		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
 			...key,
 			listMode: key.listMode ?? 'whitelist' as const,
 			paths: key.paths ?? [],
 			tags: key.tags ?? [],
+			allowActiveNote: (key as unknown as Record<string, unknown>).allowActiveNote === true,
+			allowOtherNotes: (key as unknown as Record<string, unknown>).allowOtherNotes === true,
 		}));
 
 		// Migrate legacy path "/" → "**" in each API key's paths
@@ -103,15 +110,11 @@ export class ConfigManager {
 	 * The key is immediately added to the config.
 	 */
 	generateApiKey(label: string): ApiKeyConfig {
-		const key: ApiKeyConfig = {
+		const key = createDefaultApiKeyConfig({
 			id: `kado_${crypto.randomUUID()}`,
 			label,
-			enabled: true,
 			createdAt: Date.now(),
-			listMode: 'whitelist',
-			paths: [],
-			tags: [],
-		};
+		});
 		this.config.apiKeys.push(key);
 		return key;
 	}

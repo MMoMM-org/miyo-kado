@@ -438,8 +438,27 @@ Updated 2026-04-01 after security test implementation.
 | F-19 Frontmatter/tag search | `kado-search > finds notes by tag`, `searches by frontmatter field`, `lists all tags` |
 | Binary files | PNG/PDF read with header verification, base64 roundtrip, create/update, permission enforcement (T11.1–T11.9) |
 | Rate limiting | RateLimit headers on every response, 429 with Retry-After on burst (Rate limiting tests) |
+| Open-notes tool | `kado-open-notes` with scope=active/other/all verified across Key1 (both flags on), Key2 (both off → FORBIDDEN), Key3 (only active on → silent filter of other). Privacy invariant: `nope/Credentials.md` silently filtered under Key1, never errors or leaks existence. Active-detection reacts live to focus switches. See `docs/test-matrix.md` → kado-open-notes. |
 
 ### Manual Test Scenarios
+
+**Open-notes tool (`kado-open-notes`):**
+
+Requires three keys with distinct open-notes flag combinations (see API key overview in `docs/test-matrix.md`):
+- Key1: `allowActiveNote: true`, `allowOtherNotes: true`
+- Key2: both `false` (default)
+- Key3: `allowActiveNote: true`, `allowOtherNotes: false`
+
+Open three notes across paths with different ACLs: one in `allowed/` (key has R), one in `maybe-allowed/` (key has R), one in `nope/` (key has no R). Focus the `allowed/` note.
+
+1. Key1, `scope: 'active'` → one entry (allowed note, `active: true`).
+2. Key1, `scope: 'other'` → one entry (maybe-allowed note, `active: false`). The `nope/` note is **silently omitted** — no error, no entry.
+3. Key1, `scope: 'all'` → both permitted notes; `nope/` still silently filtered.
+4. Key2, any scope → `FORBIDDEN` with `gate: 'feature-gate'` and message naming the off flag(s).
+5. Key3, `scope: 'active'` → active note returned.
+6. Key3, `scope: 'other'` → `FORBIDDEN` (`allowOtherNotes` off).
+7. Key3, `scope: 'all'` → only the active note (silent filter of `other` category — no error).
+8. Switch focus to a different permitted note, re-call with `scope: 'active'` → the response reflects the new active file.
 
 **Full vault access (`**` pattern):**
 
