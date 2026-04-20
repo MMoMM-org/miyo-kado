@@ -29,6 +29,7 @@ import type {
 	CoreDeleteResult,
 	CoreSearchItem,
 	KadoConfig,
+	ApiKeyConfig,
 	OpenNoteDescriptor,
 } from '../types/canonical';
 import type {AuditLogger} from '../core/audit-logger';
@@ -131,6 +132,18 @@ function missingAuthError(): CallToolResult {
 	return mapError({code: 'UNAUTHORIZED', message: 'Missing authentication token'});
 }
 
+/**
+ * Returns true when a file path is permitted by both the global scope and the key scope.
+ * Shared predicate used by filterResultsByScope and filterDescriptorsByAcl to avoid
+ * duplicating glob-matching logic — any future change to whitelist/blacklist semantics
+ * applies to both.
+ */
+function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
+	const inGlobal = isPathInScope(path, config.security.listMode, config.security.paths.map((p) => p.path));
+	const inKey = isPathInScope(path, key.listMode, key.paths.map((p) => p.path));
+	return inGlobal && inKey;
+}
+
 /** Filters search result items to only include paths within the key's permitted scope. */
 export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
 	const key = config.apiKeys.find((k) => k.id === keyId);
@@ -142,9 +155,7 @@ export function filterResultsByScope(items: CoreSearchItem[], keyId: string, con
 			const inKey = isFolderInScope(item.path, key.listMode, key.paths.map((p) => p.path));
 			return inGlobal && inKey;
 		}
-		const inGlobal = isPathInScope(item.path, config.security.listMode, config.security.paths.map((p) => p.path));
-		const inKey = isPathInScope(item.path, key.listMode, key.paths.map((p) => p.path));
-		return inGlobal && inKey;
+		return isPathPermittedForKey(item.path, key, config);
 	});
 }
 
@@ -237,16 +248,10 @@ function pruneToScopeKind(
 /**
  * Filters open-note descriptors by path ACL (global AND key whitelist/blacklist).
  * Silently drops any descriptor whose path is not permitted — ADR-4 privacy invariant.
- * Reuses isPathInScope to avoid duplicating glob matching logic.
+ * Delegates to isPathPermittedForKey to share glob-matching logic with filterResultsByScope.
  */
-function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], keyId: string, config: KadoConfig): OpenNoteDescriptor[] {
-	const key = config.apiKeys.find((k) => k.id === keyId);
-	if (!key) return [];
-	return notes.filter((note) => {
-		const inGlobal = isPathInScope(note.path, config.security.listMode, config.security.paths.map((p) => p.path));
-		const inKey = isPathInScope(note.path, key.listMode, key.paths.map((p) => p.path));
-		return inGlobal && inKey;
-	});
+function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, config: KadoConfig): OpenNoteDescriptor[] {
+	return notes.filter((note) => isPathPermittedForKey(note.path, key, config));
 }
 
 function extractDataType(request: CoreRequest): DataType {
@@ -529,7 +534,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		try {
 			const all = enumerateOpenNotes(deps.app);
 			const byScope = pruneToScopeKind(all, gate.kind);
-			const permitted = filterDescriptorsByAcl(byScope, keyId, config);
+			const permitted = filterDescriptorsByAcl(byScope, key, config);
 			kadoLog('kado-open-notes allowed', {key: keyId.slice(0, 12) + '...', scope: req.scope, count: permitted.length});
 			if (deps.auditLogger) {
 				try {
