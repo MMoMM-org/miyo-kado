@@ -14,12 +14,15 @@ import {
 	mapWriteRequest,
 	mapSearchRequest,
 	mapDeleteRequest,
+	mapOpenNotesRequest,
+	kadoOpenNotesShape,
 } from '../../src/mcp/request-mapper';
 import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreOpenNotesRequest,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -501,5 +504,87 @@ describe('mapDeleteRequest()', () => {
 		expect(result.operation).toBe('note');
 		// keys field is only validated/attached for frontmatter; for note it's not required
 		// (implementation may pass through or omit — test just ensures no error)
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapOpenNotesRequest
+// ---------------------------------------------------------------------------
+
+describe('mapOpenNotesRequest()', () => {
+	it('defaults scope to "all" when not supplied', () => {
+		const result = mapOpenNotesRequest({}, KEY_ID) as CoreOpenNotesRequest;
+
+		expect(result.kind).toBe('openNotes');
+		expect(result.keyId).toBe(KEY_ID);
+		expect(result.scope).toBe('all');
+	});
+
+	it('passes through scope "active"', () => {
+		const result = mapOpenNotesRequest({scope: 'active'}, KEY_ID) as CoreOpenNotesRequest;
+
+		expect(result.scope).toBe('active');
+	});
+
+	it('passes through scope "other"', () => {
+		const result = mapOpenNotesRequest({scope: 'other'}, KEY_ID) as CoreOpenNotesRequest;
+
+		expect(result.scope).toBe('other');
+	});
+
+	it('passes through scope "all" explicitly', () => {
+		const result = mapOpenNotesRequest({scope: 'all'}, KEY_ID) as CoreOpenNotesRequest;
+
+		expect(result.scope).toBe('all');
+	});
+
+	it('sets kind to "openNotes"', () => {
+		const result = mapOpenNotesRequest({}, KEY_ID) as CoreOpenNotesRequest;
+
+		expect(result.kind).toBe('openNotes');
+	});
+
+	it('includes the keyId in the result', () => {
+		const result = mapOpenNotesRequest({}, 'kado_key_xyz') as CoreOpenNotesRequest;
+
+		expect(result.keyId).toBe('kado_key_xyz');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kadoOpenNotesShape (Zod schema boundary)
+// ---------------------------------------------------------------------------
+
+describe('kadoOpenNotesShape — Zod schema boundary', () => {
+	it('accepts an empty object (scope optional)', () => {
+		const schema = kadoOpenNotesShape;
+
+		expect(() => schema.scope?.parse(undefined)).not.toThrow();
+	});
+
+	it('accepts scope "active"', () => {
+		const result = kadoOpenNotesShape.scope?.parse('active');
+
+		expect(result).toBe('active');
+	});
+
+	it('accepts scope "other"', () => {
+		const result = kadoOpenNotesShape.scope?.parse('other');
+
+		expect(result).toBe('other');
+	});
+
+	it('accepts scope "all"', () => {
+		const result = kadoOpenNotesShape.scope?.parse('all');
+
+		expect(result).toBe('all');
+	});
+
+	it('rejects an invalid scope value', () => {
+		expect(() => kadoOpenNotesShape.scope?.parse('invalid')).toThrow();
+	});
+
+	it('rejects scope "ACTIVE" (case-sensitive)', () => {
+		expect(() => kadoOpenNotesShape.scope?.parse('ACTIVE')).toThrow();
 	});
 });

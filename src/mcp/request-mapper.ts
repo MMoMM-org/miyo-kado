@@ -9,15 +9,29 @@
  * NO imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
+import {z} from 'zod';
 import type {
 	CoreReadRequest,
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreOpenNotesRequest,
+	OpenNotesScope,
 	DeleteDataType,
 	SearchFilter,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
+
+// ---------------------------------------------------------------------------
+// Zod shape for kado-open-notes (exported so T2.2 can import it into tools.ts)
+// ---------------------------------------------------------------------------
+
+/** Zod input shape for the kado-open-notes tool. */
+export const kadoOpenNotesShape = {
+	scope: z.enum(['active', 'other', 'all']).optional().describe(
+		'Which open notes to enumerate: "active" (focused leaf only), "other" (non-active open notes), "all" (default, both active and other)',
+	),
+};
 
 type Args = Record<string, unknown>;
 
@@ -193,4 +207,19 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 	}
 
 	return result;
+}
+
+/**
+ * Maps raw MCP tool arguments into a CoreOpenNotesRequest.
+ * Defaults scope to 'all' when not supplied.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ */
+export function mapOpenNotesRequest(args: Args, keyId: string): CoreOpenNotesRequest {
+	const scope: OpenNotesScope =
+		typeof args['scope'] === 'string' && ['active', 'other', 'all'].includes(args['scope'])
+			? (args['scope'] as OpenNotesScope)
+			: 'all';
+
+	return {kind: 'openNotes', keyId, scope};
 }

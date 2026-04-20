@@ -13,6 +13,7 @@ import type {
 	CoreSearchResult,
 	CoreDeleteResult,
 	CoreError,
+	CoreOpenNotesResult,
 } from '../types/canonical';
 
 function textResult(data: unknown): CallToolResult {
@@ -61,4 +62,11 @@ export function mapError(error: CoreError): CallToolResult {
 		content: [{type: 'text', text: JSON.stringify({code: error.code, message: error.message})}],
 		isError: true,
 	};
+}
+
+/** Serializes a CoreOpenNotesResult into a JSON CallToolResult with the contract shape { notes: OpenNoteDescriptor[] }. */
+export function mapOpenNotesResult(result: CoreOpenNotesResult): CallToolResult {
+	return textResult({
+		notes: result.notes.map((n) => ({name: n.name, path: n.path, active: n.active, type: n.type})),
+	});
 }

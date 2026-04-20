@@ -13,6 +13,7 @@ import {
 	mapSearchResult,
 	mapDeleteResult,
 	mapError,
+	mapOpenNotesResult,
 } from '../../src/mcp/response-mapper';
 import type {
 	CoreFileResult,
@@ -21,6 +22,8 @@ import type {
 	CoreSearchItem,
 	CoreDeleteResult,
 	CoreError,
+	CoreOpenNotesResult,
+	OpenNoteDescriptor,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -290,5 +293,94 @@ describe('mapDeleteResult()', () => {
 	it('is not flagged as error', () => {
 		const mapped = mapDeleteResult({path: 'a.md'});
 		expect(mapped.isError).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapOpenNotesResult
+// ---------------------------------------------------------------------------
+
+function makeOpenNoteDescriptor(overrides?: Partial<OpenNoteDescriptor>): OpenNoteDescriptor {
+	return {
+		name: 'a.md',
+		path: 'notes/a.md',
+		active: false,
+		type: 'markdown',
+		...overrides,
+	};
+}
+
+function makeOpenNotesResult(overrides?: Partial<CoreOpenNotesResult>): CoreOpenNotesResult {
+	return {
+		notes: [makeOpenNoteDescriptor()],
+		...overrides,
+	};
+}
+
+describe('mapOpenNotesResult()', () => {
+	it('returns a CallToolResult with a single text content entry', () => {
+		const result = mapOpenNotesResult(makeOpenNotesResult());
+
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0].type).toBe('text');
+	});
+
+	it('does not set isError', () => {
+		const result = mapOpenNotesResult(makeOpenNotesResult());
+
+		expect(result.isError).toBeFalsy();
+	});
+
+	it('produces valid JSON in content[0].text', () => {
+		const result = mapOpenNotesResult(makeOpenNotesResult());
+
+		expect(() => JSON.parse(result.content[0].text as string)).not.toThrow();
+	});
+
+	it('JSON shape has top-level "notes" array', () => {
+		const result = mapOpenNotesResult(makeOpenNotesResult());
+		const body = JSON.parse(result.content[0].text as string) as {notes: unknown};
+
+		expect(Array.isArray(body.notes)).toBe(true);
+	});
+
+	it('each note descriptor has exactly name, path, active, type keys', () => {
+		const descriptor = makeOpenNoteDescriptor({name: 'b.md', path: 'notes/b.md', active: true, type: 'canvas'});
+		const result = mapOpenNotesResult(makeOpenNotesResult({notes: [descriptor]}));
+		const body = JSON.parse(result.content[0].text as string) as {notes: Array<Record<string, unknown>>};
+		const note = body.notes[0] as Record<string, unknown>;
+
+		expect(Object.keys(note).sort()).toEqual(['active', 'name', 'path', 'type']);
+		expect(note['name']).toBe('b.md');
+		expect(note['path']).toBe('notes/b.md');
+		expect(note['active']).toBe(true);
+		expect(note['type']).toBe('canvas');
+	});
+
+	it('handles empty notes array', () => {
+		const result = mapOpenNotesResult(makeOpenNotesResult({notes: []}));
+		const body = JSON.parse(result.content[0].text as string) as {notes: unknown[]};
+
+		expect(body.notes).toEqual([]);
+	});
+
+	it('handles multiple notes', () => {
+		const notes = [
+			makeOpenNoteDescriptor({name: 'a.md', path: 'notes/a.md', active: true, type: 'markdown'}),
+			makeOpenNoteDescriptor({name: 'b.md', path: 'notes/b.md', active: false, type: 'canvas'}),
+		];
+		const result = mapOpenNotesResult(makeOpenNotesResult({notes}));
+		const body = JSON.parse(result.content[0].text as string) as {notes: unknown[]};
+
+		expect(body.notes).toHaveLength(2);
+	});
+
+	it('active flag is a boolean in the JSON output', () => {
+		const descriptor = makeOpenNoteDescriptor({active: true});
+		const result = mapOpenNotesResult(makeOpenNotesResult({notes: [descriptor]}));
+		const body = JSON.parse(result.content[0].text as string) as {notes: Array<Record<string, unknown>>};
+		const note = body.notes[0] as Record<string, unknown>;
+
+		expect(typeof note['active']).toBe('boolean');
 	});
 });
