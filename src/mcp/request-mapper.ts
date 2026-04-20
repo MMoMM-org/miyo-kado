@@ -9,7 +9,6 @@
  * NO imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
-import {z} from 'zod';
 import type {
 	CoreReadRequest,
 	CoreWriteRequest,
@@ -21,17 +20,6 @@ import type {
 	SearchFilter,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
-
-// ---------------------------------------------------------------------------
-// Zod shape for kado-open-notes (exported so T2.2 can import it into tools.ts)
-// ---------------------------------------------------------------------------
-
-/** Zod input shape for the kado-open-notes tool. */
-export const kadoOpenNotesShape = {
-	scope: z.enum(['active', 'other', 'all']).optional().describe(
-		'Which open notes to enumerate: "active" (focused leaf only), "other" (non-active open notes), "all" (default, both active and other)',
-	),
-};
 
 type Args = Record<string, unknown>;
 

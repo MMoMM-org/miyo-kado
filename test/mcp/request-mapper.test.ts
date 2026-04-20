@@ -15,8 +15,8 @@ import {
 	mapSearchRequest,
 	mapDeleteRequest,
 	mapOpenNotesRequest,
-	kadoOpenNotesShape,
 } from '../../src/mcp/request-mapper';
+import {kadoOpenNotesShape} from '../../src/mcp/tools';
 import type {
 	CoreReadRequest,
 	CoreWriteRequest,

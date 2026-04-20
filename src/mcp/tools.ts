@@ -21,7 +21,7 @@ import {isCoreSearchRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError, mapOpenNotesResult} from './response-mapper';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapOpenNotesRequest, kadoOpenNotesShape} from './request-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapOpenNotesRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
@@ -81,6 +81,12 @@ const kadoDeleteShape = {
 	path: z.string().describe('Vault-relative path.'),
 	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
 	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
+};
+
+export const kadoOpenNotesShape = {
+	scope: z.enum(['active', 'other', 'all']).optional().describe(
+		'Which open notes to enumerate: "active" (focused leaf only), "other" (non-active open notes), "all" (default, both active and other)',
+	),
 };
 
 export const kadoSearchShape = {
