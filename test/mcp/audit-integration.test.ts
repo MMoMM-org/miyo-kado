@@ -8,6 +8,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
+import {TFile} from 'obsidian';
 import {registerTools} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import {AuditLogger} from '../../src/core/audit-logger';
@@ -170,12 +171,17 @@ function makeAuditLoggerWithRaw(): {
  */
 function makeNotesApp(markdownLeaves: Array<{path: string; basename: string; active?: boolean}>): App {
 	// Build leaf objects matching the WorkspaceLeaf shape expected by enumerateOpenNotes
-	const leaves = markdownLeaves.map((n) => ({
-		view: {
-			file: {path: n.path, basename: n.basename},
-			getViewType: () => 'markdown',
-		},
-	}));
+	const leaves = markdownLeaves.map((n) => {
+		const file = new TFile();
+		file.path = n.path;
+		file.basename = n.basename;
+		return {
+			view: {
+				file,
+				getViewType: () => 'markdown',
+			},
+		};
+	});
 	// activeLeaf: point to the first note that has active: true, if any
 	const activeIndex = markdownLeaves.findIndex((n) => n.active);
 	const activeLeaf = activeIndex >= 0 ? leaves[activeIndex] : null;

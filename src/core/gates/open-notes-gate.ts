@@ -40,7 +40,7 @@ function buildAllDenyMessage(global: SecurityConfig, key: ApiKeyConfig): string 
 	if (!global.allowOtherNotes || !key.allowOtherNotes) {
 		parts.push(buildOffMessage('other', global, key));
 	}
-	return parts.join('; ');
+	return parts.length > 0 ? parts.join('; ') : 'open-notes is not permitted for this scope';
 }
 
 /**

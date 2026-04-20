@@ -39,7 +39,9 @@ export function enumerateOpenNotes(app: App): OpenNoteDescriptor[] {
 
 function leafToDescriptor(leaf: WorkspaceLeaf, activeLeaf: WorkspaceLeaf | null): OpenNoteDescriptor | null {
 	const file: TFile | undefined = (leaf.view as unknown as {file?: TFile}).file ?? undefined;
-	if (!file) return null;
+	// instanceof guards against plugin-injected views that expose a non-TFile
+	// object with a .path property — only real vault files may produce descriptors.
+	if (!file || !(file instanceof TFile)) return null;
 	return {
 		name: file.basename,
 		path: file.path,

@@ -81,6 +81,18 @@ describe('enumerateOpenNotes', () => {
 		expect(result[0].path).toBe('notes/shared.md');
 	});
 
+	it('returns all entries with active: false when workspace.activeLeaf is null (mobile fallback)', () => {
+		const file = makeTFile('notes/a.md', 'a');
+		const leaf = makeLeaf(file, 'markdown');
+		const app = makeApp({markdown: [leaf]}, null);
+
+		const result = enumerateOpenNotes(app);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].active).toBe(false);
+		expect(result[0].path).toBe('notes/a.md');
+	});
+
 	it('excludes leaves whose view returns no file', () => {
 		const leaf = makeLeaf(null, 'markdown');
 		const app = makeApp({markdown: [leaf]}, null);

@@ -529,7 +529,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 
 function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void {
 	server.registerTool('kado-open-notes', {
-		description: 'List currently open Obsidian notes. Gated by per-key feature flags (allowActiveNote, allowOtherNotes) and path ACL. Read-only — does not modify workspace state. Returns { notes: [{ name, path, active, type }] }. Empty list when no permitted files are open.',
+		description: 'List currently open Obsidian notes. Gated by per-key feature flags (allowActiveNote, allowOtherNotes) and path ACL. Read-only — does not modify workspace state. Returns { notes: [{ name, path, active, type }] }. Returns FORBIDDEN with gate="feature-gate" when the requested scope is disabled by either the global or key flag; returns an empty list when no permitted files are open or all are silently filtered by the path ACL.',
 		inputSchema: kadoOpenNotesShape,
 	}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
