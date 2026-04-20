@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/MMoMM-org/miyo-kado/compare/0.6.2...0.7.0) (2026-04-20)
+
+
+### Features
+
+* **open-notes:** add kado-open-notes MCP tool (spec 006) ([#27](https://github.com/MMoMM-org/miyo-kado/issues/27)) ([543a201](https://github.com/MMoMM-org/miyo-kado/commit/543a201e8a112f69b431a7ae06ba5fe99b2bd1b8))
+
 ## [0.6.2](https://github.com/MMoMM-org/miyo-kado/compare/0.6.1...0.6.2) (2026-04-19)
 
 
