@@ -80,8 +80,13 @@
 
 | Test file | Source | Describes | P | F |
 |-----------|--------|-----------|--:|--:|
-| `mcp/tools.test.ts` | `src/mcp/tools.ts` | registerTools, kado-read/write/search handlers, **scopePatterns injection**, filterResultsByScope, **computeAllowedTags** | 34 | 0 |
-| `mcp/audit-integration.test.ts` | `src/mcp/audit-integration.ts` | allowed/denied read/write/search audit, disabled logger, multiple entries | 12 | 0 |
+| `mcp/tools.test.ts` | `src/mcp/tools.ts` | registerTools, kado-read/write/search/open-notes handlers, **scopePatterns injection**, filterResultsByScope, **computeAllowedTags**, **open-notes feature gate + path ACL composition** | 44 | 0 |
+| `mcp/audit-integration.test.ts` | `src/mcp/audit-integration.ts` | allowed/denied read/write/search audit, disabled logger, multiple entries, **open-notes audit (success + denial, no path leaks)** | 20 | 0 |
+| `mcp/request-mapper.test.ts` | `src/mcp/request-mapper.ts` | read/write/search/delete/**open-notes** request mapping, Zod shape validation | (+12) | 0 |
+| `mcp/response-mapper.test.ts` | `src/mcp/response-mapper.ts` | file/write/search/delete/**open-notes** result mapping, error envelope | (+8) | 0 |
+| `core/gates/open-notes-gate.test.ts` | `src/core/gates/open-notes-gate.ts` | `gateOpenNoteScope` decision matrix (7 rows), purity, error shape, AND-combination no inheritance | 18 | 0 |
+| `obsidian/open-notes-adapter.test.ts` | `src/obsidian/open-notes-adapter.ts` | `enumerateOpenNotes` across known view types, active-leaf detection, linked-pane dedupe, non-file view exclusion | 7 | 0 |
+| `settings/components/OpenNotesSection.test.ts` | `src/settings/components/OpenNotesSection.ts` | Two-toggle render, listMode-aware wording flip (whitelist/blacklist × global/key), callback wiring | 14 | 0 |
 
 ### Obsidian Adapters
 

@@ -14,6 +14,8 @@
 | **listMode** | whitelist | whitelist | whitelist |
 | **Paths** | `allowed/**`, `maybe-allowed/**`, `listdir-fixtures/**` | _(none)_ | `allowed/**` |
 | **Tags** | `engineering`, `project/*`, `miyo/kado`, `finance` | _(none)_ | `engineering` |
+| **allowActiveNote** | ✅ on | ❌ off (default) | ✅ on |
+| **allowOtherNotes** | ✅ on | ❌ off (default) | ❌ off |
 
 ### Key1 — Detailed Permissions
 
@@ -199,6 +201,27 @@ All delete operations require `expectedModified` (optimistic concurrency). Notes
 | byContent | "Budget" (scope boundary) | 🟡 | 🟡 | 🔴 |
 | byFrontmatter | `status=active` | 🟢 | 🔴 | 🟡 |
 | byFrontmatter | `tags=finance` (array match, scope boundary) | 🟢 | ⚪ | 🔴 |
+
+## kado-open-notes
+
+Enumerates currently open Obsidian notes. Double-gated: (1) per-key `allowActiveNote` / `allowOtherNotes` flags AND (2) existing path ACL. Path-ACL denial is **silent** (no per-note error — privacy invariant). Feature-gate denial returns `FORBIDDEN` with `gate: 'feature-gate'` and a message naming the off flag(s).
+
+**Global flags:** both `allowActiveNote` and `allowOtherNotes` default to `false`. No inheritance to keys — each key must opt in independently. For the scenarios below, global has both flags ON; per-key flags as in the API Key Overview above.
+
+Live scenario: three notes open — `allowed/Project Alpha.md` (active), `maybe-allowed/Quarterly Review.md`, `nope/Credentials.md`. `Credentials.md` must always be silently filtered (no R on `nope/`).
+
+| Scope | Key1 (both on) | Key2 (both off) | Key3 (only active on) |
+|---|---|---|---|
+| active | 🟢 Project Alpha | 🔴 `FORBIDDEN` "allowActiveNote off" | 🟢 Project Alpha |
+| other | 🟢 Quarterly Review (Credentials silent) | 🔴 `FORBIDDEN` "allowOtherNotes off" | 🔴 `FORBIDDEN` "key allowOtherNotes is off" |
+| all | 🟢 Project Alpha + Quarterly Review (Credentials silent) | 🔴 `FORBIDDEN` both flags named | 🟡 Project Alpha only (silent filter of other) |
+
+**Invariants verified:**
+- `Credentials.md` never in output — no error, no existence leak ([`nope/`](SDD/ADR-4) silent path-ACL).
+- Exactly one entry with `active: true` per response (or zero if active leaf is non-file).
+- Response keys: exactly `name`, `path`, `active`, `type`.
+- `type` lower-cased (`"markdown"`). Non-file views (settings, graph) excluded.
+- Linked panes on same file → single entry, `active: true` if any pane focused.
 
 ## kado-search — Universal Filters
 
