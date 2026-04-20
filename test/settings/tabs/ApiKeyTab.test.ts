@@ -3,7 +3,8 @@
  *
  * Covers: rendering for a valid key, "Key not found" when keyId is unknown,
  * rename button mutates key.label and calls saveSettings, key display shows
- * the key ID, key-management heading is present.
+ * the key ID, key-management heading is present, OpenNotesSection placement
+ * and toggle wiring (T3.2 spec 006).
  */
 
 import {describe, it, expect, vi} from 'vitest';
@@ -98,6 +99,96 @@ describe('renderApiKeyTab — rename flow', () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(key.label).toBe('New Name');
+		expect(saveSettings).toHaveBeenCalled();
+		expect(onRedisplay).toHaveBeenCalled();
+	});
+});
+
+describe('renderApiKeyTab — OpenNotesSection placement', () => {
+	it('renders the Open Notes section label between Access Mode setting and Paths label', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', allowActiveNote: false, allowOtherNotes: false});
+		const {plugin} = mockPlugin([key]);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+
+		const allChildren = Array.from(container.querySelectorAll('[data-setting-name="Access mode"], .kado-section-label'));
+		const labels = allChildren.map(el => el.getAttribute('data-setting-name') ?? el.textContent ?? '');
+
+		const accessModeIdx = labels.indexOf('Access mode');
+		const openNotesIdx = labels.indexOf('Open Notes');
+		const pathsIdx = labels.indexOf('Paths');
+
+		expect(accessModeIdx).toBeGreaterThanOrEqual(0);
+		expect(openNotesIdx).toBeGreaterThanOrEqual(0);
+		expect(pathsIdx).toBeGreaterThanOrEqual(0);
+		expect(openNotesIdx).toBeGreaterThan(accessModeIdx);
+		expect(pathsIdx).toBeGreaterThan(openNotesIdx);
+	});
+
+	it('renders Active note and Other open notes settings', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', allowActiveNote: true, allowOtherNotes: false});
+		const {plugin} = mockPlugin([key]);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+
+		const settingNames = Array.from(container.querySelectorAll('[data-setting-name]'))
+			.map(el => el.getAttribute('data-setting-name'));
+		expect(settingNames).toContain('Active note');
+		expect(settingNames).toContain('Other open notes');
+	});
+});
+
+describe('renderApiKeyTab — OpenNotesSection toggle wiring', () => {
+	it('toggling Active note sets key.allowActiveNote, calls saveSettings and onRedisplay', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', allowActiveNote: false, allowOtherNotes: false});
+		const {plugin, saveSettings} = mockPlugin([key]);
+		const onRedisplay = vi.fn();
+
+		renderApiKeyTab(container, plugin, key.id, onRedisplay, vi.fn());
+
+		const activeNoteSetting = container.querySelector('[data-setting-name="Active note"]') as HTMLElement;
+		const toggle = activeNoteSetting.querySelector('[role="switch"]') as HTMLElement;
+		toggle.click();
+
+		expect(key.allowActiveNote).toBe(true);
+		expect(saveSettings).toHaveBeenCalled();
+		expect(onRedisplay).toHaveBeenCalled();
+	});
+
+	it('toggling Other open notes sets key.allowOtherNotes, calls saveSettings and onRedisplay', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', allowActiveNote: false, allowOtherNotes: false});
+		const {plugin, saveSettings} = mockPlugin([key]);
+		const onRedisplay = vi.fn();
+
+		renderApiKeyTab(container, plugin, key.id, onRedisplay, vi.fn());
+
+		const otherNotesSetting = container.querySelector('[data-setting-name="Other open notes"]') as HTMLElement;
+		const toggle = otherNotesSetting.querySelector('[role="switch"]') as HTMLElement;
+		toggle.click();
+
+		expect(key.allowOtherNotes).toBe(true);
+		expect(saveSettings).toHaveBeenCalled();
+		expect(onRedisplay).toHaveBeenCalled();
+	});
+
+	it('toggling Active note from true to false sets key.allowActiveNote to false', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', allowActiveNote: true, allowOtherNotes: false});
+		const {plugin, saveSettings} = mockPlugin([key]);
+		const onRedisplay = vi.fn();
+
+		renderApiKeyTab(container, plugin, key.id, onRedisplay, vi.fn());
+
+		const activeNoteSetting = container.querySelector('[data-setting-name="Active note"]') as HTMLElement;
+		const toggle = activeNoteSetting.querySelector('[role="switch"]') as HTMLElement;
+		// Toggle is initialized to true (aria-checked="true"), clicking flips it to false
+		toggle.click();
+
+		expect(key.allowActiveNote).toBe(false);
 		expect(saveSettings).toHaveBeenCalled();
 		expect(onRedisplay).toHaveBeenCalled();
 	});
