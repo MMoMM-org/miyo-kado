@@ -107,7 +107,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 - [x] [Phase 1: Core Foundation — Types, Config, Feature Gate, Adapter](phase-1.md)
 - [x] [Phase 2: MCP Tool Registration & Handler](phase-2.md)
-- [ ] [Phase 3: Settings UI & End-to-End Validation](phase-3.md)
+- [x] [Phase 3: Settings UI & End-to-End Validation](phase-3.md)
 
 ---
 
