@@ -67,6 +67,8 @@ describe('renderGlobalSecurityTab — rendering', () => {
 					},
 				],
 				tags: [],
+				allowActiveNote: false,
+				allowOtherNotes: false,
 			},
 		});
 
@@ -117,10 +119,11 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 
 		renderGlobalSecurityTab(container, plugin, onRedisplay);
 
-		// The mock ToggleComponent renders a div with role="switch".
-		// Index 0 = access-mode toggle, index 1 = allowActiveNote, index 2 = allowOtherNotes.
-		const toggles = Array.from(container.querySelectorAll('[role="switch"]'));
-		const activeNoteToggle = toggles[1] as HTMLElement;
+		// Locate the Active note setting by its data-setting-name attribute — immune
+		// to DOM order changes unlike positional index queries.
+		const activeNoteSetting = container.querySelector('[data-setting-name="Active note"]') as HTMLElement;
+		expect(activeNoteSetting).not.toBeNull();
+		const activeNoteToggle = activeNoteSetting.querySelector('[role="switch"]') as HTMLElement;
 
 		activeNoteToggle.click();
 
@@ -136,9 +139,11 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 
 		renderGlobalSecurityTab(container, plugin, onRedisplay);
 
-		// Index 0 = access-mode, 1 = allowActiveNote, 2 = allowOtherNotes
-		const toggles = Array.from(container.querySelectorAll('[role="switch"]'));
-		const otherNotesToggle = toggles[2] as HTMLElement;
+		// Locate the Other open notes setting by its data-setting-name attribute — immune
+		// to DOM order changes unlike positional index queries.
+		const otherNotesSetting = container.querySelector('[data-setting-name="Other open notes"]') as HTMLElement;
+		expect(otherNotesSetting).not.toBeNull();
+		const otherNotesToggle = otherNotesSetting.querySelector('[role="switch"]') as HTMLElement;
 
 		otherNotesToggle.click();
 
@@ -223,6 +228,8 @@ describe('renderGlobalSecurityTab — interactivity', () => {
 					},
 				],
 				tags: [],
+				allowActiveNote: false,
+				allowOtherNotes: false,
 			},
 		});
 		const onRedisplay = vi.fn();

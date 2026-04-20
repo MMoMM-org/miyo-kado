@@ -107,6 +107,8 @@ describe('ConfigManager.load()', () => {
 			listMode: 'whitelist',
 			paths: [],
 			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
 		};
 		const {manager} = makeConfigManager({apiKeys: [storedKey], security: {listMode: 'whitelist', paths: [], tags: []}});
 		await manager.load();
@@ -283,6 +285,8 @@ describe('ConfigManager.load() migration: "/" → "**"', () => {
 			listMode: 'whitelist',
 			paths: [makePathPermission({path: '/'})],
 			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
 		};
 		const {manager} = makeConfigManager({
 			apiKeys: [storedKey],
@@ -373,7 +377,9 @@ describe('ConfigManager.load() migration: open-notes flags', () => {
 	});
 
 	it('defaults allowActiveNote and allowOtherNotes to false on each API key when absent', async () => {
-		const storedKey: ApiKeyConfig = {
+		// Simulates a stored key from an older version without the open-notes flags.
+		// Using 'unknown' cast because the config-manager intentionally migrates missing fields.
+		const storedKey = {
 			id: 'kado_flags-test',
 			label: 'Flags Test',
 			enabled: true,
@@ -381,7 +387,7 @@ describe('ConfigManager.load() migration: open-notes flags', () => {
 			listMode: 'whitelist',
 			paths: [],
 			tags: [],
-		};
+		} as unknown as ApiKeyConfig;
 		const {manager} = makeConfigManager({
 			apiKeys: [storedKey],
 			security: {listMode: 'whitelist', paths: [], tags: []},

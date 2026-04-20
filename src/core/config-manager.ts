@@ -13,6 +13,7 @@ import {
 	type KadoConfig,
 	createDefaultConfig,
 	createDefaultSecurityConfig,
+	createDefaultApiKeyConfig,
 } from '../types/canonical';
 import {kadoLog} from './logger';
 
@@ -109,15 +110,11 @@ export class ConfigManager {
 	 * The key is immediately added to the config.
 	 */
 	generateApiKey(label: string): ApiKeyConfig {
-		const key: ApiKeyConfig = {
+		const key = createDefaultApiKeyConfig({
 			id: `kado_${crypto.randomUUID()}`,
 			label,
-			enabled: true,
 			createdAt: Date.now(),
-			listMode: 'whitelist',
-			paths: [],
-			tags: [],
-		};
+		});
 		this.config.apiKeys.push(key);
 		return key;
 	}

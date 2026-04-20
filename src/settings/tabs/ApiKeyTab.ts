@@ -128,7 +128,7 @@ function renderKeyPermissions(
 
 	renderOpenNotesSection(
 		containerEl,
-		{allowActiveNote: key.allowActiveNote ?? false, allowOtherNotes: key.allowOtherNotes ?? false},
+		{allowActiveNote: key.allowActiveNote, allowOtherNotes: key.allowOtherNotes},
 		key.listMode,
 		'key',
 		{

@@ -54,6 +54,8 @@ function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -67,6 +69,8 @@ function makeApiKey(id: string, overrides?: Partial<ApiKeyConfig>): ApiKeyConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -77,6 +81,7 @@ function makeConfig(security: SecurityConfig, apiKeys: ApiKeyConfig[]): KadoConf
 		security,
 		apiKeys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+		debugLogging: false,
 	};
 }
 

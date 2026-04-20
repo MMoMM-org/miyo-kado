@@ -52,6 +52,8 @@ function makeTestConfig(): KadoConfig {
 				},
 			],
 			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
 		},
 		apiKeys: [
 			{
@@ -72,6 +74,8 @@ function makeTestConfig(): KadoConfig {
 					},
 				],
 				tags: [],
+				allowActiveNote: false,
+				allowOtherNotes: false,
 			},
 		],
 		audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
@@ -660,6 +664,8 @@ describe('End-to-end tool call pipeline', () => {
 					listMode: 'whitelist',
 					paths: [{path: '100 Inbox', permissions: perms}],
 					tags: [],
+					allowActiveNote: false,
+					allowOtherNotes: false,
 				},
 				apiKeys: [
 					{
@@ -670,6 +676,8 @@ describe('End-to-end tool call pipeline', () => {
 						listMode: 'whitelist',
 						paths: [{path: '100 Inbox', permissions: perms}],
 						tags: [],
+						allowActiveNote: false,
+						allowOtherNotes: false,
 					},
 				],
 				audit: {enabled: false, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},

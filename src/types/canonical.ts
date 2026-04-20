@@ -269,9 +269,9 @@ export interface SecurityConfig {
 	/** Tags for read-only filtering, stored without '#'. */
 	tags: string[];
 	/** Whether the open-notes tool may return the currently active note. Default: false (applied by config-manager on load). */
-	allowActiveNote?: boolean;
+	allowActiveNote: boolean;
 	/** Whether the open-notes tool may return non-active open notes. Default: false (applied by config-manager on load). */
-	allowOtherNotes?: boolean;
+	allowOtherNotes: boolean;
 }
 
 /** Configuration for a single API key including its independent scope and permissions. */
@@ -287,9 +287,9 @@ export interface ApiKeyConfig {
 	/** Subset of global security tags this key can use. */
 	tags: string[];
 	/** Whether this key may receive the active note via open-notes. Default: false. Applied as AND with global. */
-	allowActiveNote?: boolean;
+	allowActiveNote: boolean;
 	/** Whether this key may receive non-active notes via open-notes. Default: false. Applied as AND with global. */
-	allowOtherNotes?: boolean;
+	allowOtherNotes: boolean;
 }
 
 /** Whether the MCP server binds to localhost or a public network interface. */
@@ -353,6 +353,25 @@ export function createDefaultSecurityConfig(): SecurityConfig {
 		tags: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
+	};
+}
+
+/**
+ * Returns a new ApiKeyConfig with safe defaults: disabled open-notes flags,
+ * whitelist mode, empty paths/tags. Pass overrides to customise individual fields.
+ */
+export function createDefaultApiKeyConfig(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
+	return {
+		id: '',
+		label: '',
+		enabled: true,
+		createdAt: 0,
+		listMode: 'whitelist',
+		paths: [],
+		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
+		...overrides,
 	};
 }
 

@@ -256,12 +256,13 @@ describe('gateOpenNoteScope — purity', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Undefined tolerance — optional fields default to false (AND with undefined = false)
+// Flag-off denial — config-manager guarantees both flags are present; test that
+// false values still produce the expected deny (mirrors former "undefined tolerance" cases).
 // ---------------------------------------------------------------------------
 
-describe('gateOpenNoteScope — undefined tolerance', () => {
-	it('treats undefined allowActiveNote on global as false → deny', () => {
-		const global: SecurityConfig = {listMode: 'whitelist', paths: [], tags: []};
+describe('gateOpenNoteScope — flag-off denial', () => {
+	it('global allowActiveNote=false with key allowActiveNote=true → deny', () => {
+		const global = makeGlobal({allowActiveNote: false, allowOtherNotes: false});
 		const key = makeKey({allowActiveNote: true});
 
 		const result = gateOpenNoteScope('active', global, key);
@@ -269,17 +270,9 @@ describe('gateOpenNoteScope — undefined tolerance', () => {
 		expect(result.kind).toBe('deny');
 	});
 
-	it('treats undefined allowActiveNote on key as false → deny', () => {
+	it('global allowActiveNote=true with key allowActiveNote=false → deny', () => {
 		const global = makeGlobal({allowActiveNote: true});
-		const key: ApiKeyConfig = {
-			id: 'kado_test-key',
-			label: 'Test Key',
-			enabled: true,
-			createdAt: 1700000000000,
-			listMode: 'whitelist',
-			paths: [],
-			tags: [],
-		};
+		const key = makeKey({allowActiveNote: false});
 
 		const result = gateOpenNoteScope('active', global, key);
 

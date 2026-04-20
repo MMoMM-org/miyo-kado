@@ -56,7 +56,11 @@ const ENABLED_KEY = {
 	label: 'Test Key',
 	enabled: true,
 	createdAt: 1700000000000,
-	areas: [],
+	listMode: 'whitelist' as const,
+	paths: [],
+	tags: [],
+	allowActiveNote: false,
+	allowOtherNotes: false,
 };
 
 const DISABLED_KEY = {
@@ -64,7 +68,11 @@ const DISABLED_KEY = {
 	label: 'Disabled Key',
 	enabled: false,
 	createdAt: 1700000000000,
-	areas: [],
+	listMode: 'whitelist' as const,
+	paths: [],
+	tags: [],
+	allowActiveNote: false,
+	allowOtherNotes: false,
 };
 
 // ---------------------------------------------------------------------------

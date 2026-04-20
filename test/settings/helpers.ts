@@ -32,7 +32,7 @@ export function renderSandbox(): HTMLElement {
 export function defaultConfig(): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
-		security: {listMode: 'whitelist', paths: [], tags: []},
+		security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
 		apiKeys: [],
 		audit: {
 			enabled: true,
@@ -55,6 +55,8 @@ export function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }

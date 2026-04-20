@@ -48,6 +48,8 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -58,6 +60,7 @@ function makeConfig(keys: ApiKeyConfig[]): KadoConfig {
 		security: createDefaultSecurityConfig(),
 		apiKeys: keys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
+		debugLogging: false,
 	};
 }
 

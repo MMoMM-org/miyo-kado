@@ -28,8 +28,8 @@ export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPl
 	renderOpenNotesSection(
 		containerEl,
 		{
-			allowActiveNote: security.allowActiveNote ?? false,
-			allowOtherNotes: security.allowOtherNotes ?? false,
+			allowActiveNote: security.allowActiveNote,
+			allowOtherNotes: security.allowOtherNotes,
 		},
 		security.listMode,
 		'global',

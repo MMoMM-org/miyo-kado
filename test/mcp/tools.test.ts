@@ -124,6 +124,8 @@ function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -137,6 +139,8 @@ function makeApiKey(id: string, overrides?: Partial<ApiKeyConfig>): ApiKeyConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		allowActiveNote: false,
+		allowOtherNotes: false,
 		...overrides,
 	};
 }
@@ -767,6 +771,8 @@ describe('computeAllowedTags()', () => {
 				listMode: 'whitelist',
 				paths: [],
 				tags: keyTags,
+				allowActiveNote: false,
+				allowOtherNotes: false,
 			}],
 		};
 	}
@@ -1015,6 +1021,29 @@ describe('kado-open-notes handler', () => {
 		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
 	});
 
+	// L5 — ADR-4: MCP response on gate-denial must not leak any note paths
+	it('gate-denial response body has no path key and no note path values (ADR-4 leak check)', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const note1 = makeOpenNotesDescriptor({path: 'notes/sensitive.md', name: 'sensitive', active: true});
+		const note2 = makeOpenNotesDescriptor({path: 'private/personal.md', name: 'personal', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([note1, note2]);
+		// All flags off — gate will deny before adapter is ever called
+		const config = makeOpenNotesConfig({globalActive: false, globalOther: false, keyActive: false, keyOther: false});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const rawText = getFirstText(result);
+		const parsed = JSON.parse(rawText);
+
+		// The response body must not have a path key
+		expect(Object.prototype.hasOwnProperty.call(parsed, 'path')).toBe(false);
+		// The raw response text must not contain any open-notes path strings
+		expect(rawText.includes('notes/sensitive.md')).toBe(false);
+		expect(rawText.includes('private/personal.md')).toBe(false);
+	});
+
 	// Scenario 3: scope:'active', gates allow, one markdown open with active:true
 	it('returns only the active note when scope is active and gates allow', async () => {
 		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
@@ -1132,5 +1161,75 @@ describe('kado-open-notes handler', () => {
 		expect(result.isError).toBe(true);
 		const parsed = JSON.parse(getFirstText(result));
 		expect(parsed.code).toBe('INTERNAL_ERROR');
+	});
+
+	// L6-a: scope:'active' when no file is currently open → { notes: [] } (no error)
+	it('returns empty notes array (no error) when scope is active and no file is open', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		// No notes open — enumerateOpenNotes returns []
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		const config = makeOpenNotesConfig({
+			globalActive: true, globalOther: true,
+			keyActive: true, keyOther: true,
+			keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}],
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'active'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.notes).toHaveLength(0);
+	});
+
+	// L6-b: scope:'all', only KEY has active on but GLOBAL does NOT → feature-gate deny (AND semantics)
+	it('denies via feature-gate when global allowActiveNote is off and key allowActiveNote is on (AND semantics)', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		// Clear call history from previous tests so we can assert this specific invocation.
+		vi.mocked(enumerateOpenNotes).mockClear();
+		vi.mocked(enumerateOpenNotes).mockReturnValue([]);
+		// Global OFF, Key ON — AND semantics means this must deny
+		const config = makeOpenNotesConfig({
+			globalActive: false, globalOther: false,
+			keyActive: true, keyOther: true,
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'all'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(getFirstText(result));
+		expect(parsed.code).toBe('FORBIDDEN');
+		// Adapter must not have been called — gate fired before enumeration
+		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
+	});
+
+	// L6-c: scope:'other' end-to-end with mixed ACL — active file excluded, only non-active permitted notes returned
+	it('scope:other returns only non-active notes that pass path ACL, excluding active and ACL-filtered notes', async () => {
+		const {enumerateOpenNotes} = await import('../../src/obsidian/open-notes-adapter');
+		const activeNote = makeOpenNotesDescriptor({path: 'notes/active.md', name: 'active', active: true});
+		const permittedOther = makeOpenNotesDescriptor({path: 'notes/other.md', name: 'other', active: false});
+		const filteredOther = makeOpenNotesDescriptor({path: 'private/secret.md', name: 'secret', active: false});
+		vi.mocked(enumerateOpenNotes).mockReturnValue([activeNote, permittedOther, filteredOther]);
+		// Key has whitelist access to notes/** only — private/ is ACL-filtered
+		const config = makeOpenNotesConfig({
+			globalActive: true, globalOther: true,
+			keyActive: true, keyOther: true,
+			keyPaths: [{path: 'notes/**'}], globalPaths: [{path: 'notes/**'}],
+		});
+		const handler = await getHandler(makeDeps({configManager: makeConfigManager(config)}));
+
+		const result = await handler({scope: 'other'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		const parsed = JSON.parse(getFirstText(result));
+		// Only the non-active permitted note survives; active and filtered are both absent
+		expect(parsed.notes).toHaveLength(1);
+		expect(parsed.notes[0].path).toBe('notes/other.md');
+		expect(parsed.notes[0].active).toBe(false);
+		// Neither the active note path nor the ACL-filtered path should appear
+		const paths = parsed.notes.map((n: OpenNoteDescriptor) => n.path);
+		expect(paths).not.toContain('notes/active.md');
+		expect(paths).not.toContain('private/secret.md');
 	});
 });
