@@ -42,6 +42,7 @@ PLAN.tmp.md
 temp/
 _inbox/
 _outbox/
+_archive/
 
 # MCP config (contains API keys)
 .mcp.json
