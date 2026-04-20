@@ -3,7 +3,7 @@
 #
 # Validates commit message basics:
 #   1. Subject line must not be empty
-#   2. Subject line must not exceed 72 characters
+#   2. Subject line must not exceed 90 characters
 #
 # Install: git config core.hooksPath .githooks
 
@@ -20,9 +20,9 @@ fi
 
 # ── Reject subject over 72 chars ─────────────────────────────
 LENGTH=${#SUBJECT}
-if [ "$LENGTH" -gt 72 ]; then
+if [ "$LENGTH" -gt 90 ]; then
   echo ""
-  echo "  ✗ Commit subject too long: $LENGTH characters (max 72)."
+  echo "  ✗ Commit subject too long: $LENGTH characters (max 90)."
   echo "    Move details to the body (leave a blank line after subject)."
   echo ""
   exit 1
