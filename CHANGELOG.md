@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/MMoMM-org/miyo-kado/compare/0.7.0...0.8.0) (2026-04-21)
+
+
+### Features
+
+* **mcp:** enforce strict extension/operation separation ([#29](https://github.com/MMoMM-org/miyo-kado/issues/29)) ([9c4bfbe](https://github.com/MMoMM-org/miyo-kado/commit/9c4bfbed0b312be10d98b2846d13cad85b0e007c))
+
 # [0.7.0](https://github.com/MMoMM-org/miyo-kado/compare/0.6.2...0.7.0) (2026-04-20)
 
 

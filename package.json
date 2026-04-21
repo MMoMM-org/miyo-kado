@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-kado",
-	"version": "0.7.0",
+	"version": "0.8.0",
 	"description": "Security-first MCP gateway with default-deny permissions and audit logging.",
 	"main": "main.js",
 	"type": "module",
