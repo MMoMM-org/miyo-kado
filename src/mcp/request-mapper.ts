@@ -23,6 +23,40 @@ import {validatePath} from '../core/gates/path-access';
 
 type Args = Record<string, unknown>;
 
+/** Operations that require a markdown (.md) target — they parse YAML frontmatter or note body. */
+const MARKDOWN_ONLY_OPS = new Set(['note', 'frontmatter', 'dataview-inline-field', 'tags']);
+
+/** Returns true when the path ends with `.md` (case-insensitive). */
+function isMarkdownPath(path: string): boolean {
+	return path.toLowerCase().endsWith('.md');
+}
+
+/**
+ * Enforces strict separation between markdown-targeting operations and the raw
+ * binary `file` operation. Markdown operations (note/frontmatter/inline-field/tags)
+ * only make sense on `.md` files; `file` is for everything else (images, PDFs,
+ * JSON, etc.). Catching this at the boundary gives the client an actionable
+ * VALIDATION_ERROR instead of a downstream INTERNAL_ERROR when Obsidian rejects
+ * the combination.
+ */
+function validateOperationExtension(operation: string, path: string, context: string): void {
+	if (MARKDOWN_ONLY_OPS.has(operation)) {
+		if (!isMarkdownPath(path)) {
+			throw new Error(
+				`${context}: operation="${operation}" requires a .md path (got "${path}"). ` +
+				'Use operation="file" with base64 content for non-markdown files.',
+			);
+		}
+		return;
+	}
+	if (operation === 'file' && isMarkdownPath(path)) {
+		throw new Error(
+			`${context}: operation="file" must not target a .md path (got "${path}"). ` +
+			'Use operation="note" for markdown files.',
+		);
+	}
+}
+
 function requireString(args: Args, field: string, context: string): string {
 	const value = args[field];
 	if (typeof value !== 'string' || value.length === 0) {
@@ -47,6 +81,7 @@ function requirePresent(args: Args, field: string, context: string): unknown {
 export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	const operation = requireString(args, 'operation', 'mapReadRequest') as CoreReadRequest['operation'];
 	const path = requireString(args, 'path', 'mapReadRequest');
+	validateOperationExtension(operation, path, 'mapReadRequest');
 
 	return {apiKeyId: keyId, operation, path};
 }
@@ -80,6 +115,7 @@ function coerceContent(content: unknown, operation: string): CoreWriteRequest['c
 export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	const operation = requireString(args, 'operation', 'mapWriteRequest') as CoreWriteRequest['operation'];
 	const path = requireString(args, 'path', 'mapWriteRequest');
+	validateOperationExtension(operation, path, 'mapWriteRequest');
 	const rawContent = requirePresent(args, 'content', 'mapWriteRequest');
 	const content = coerceContent(rawContent, operation);
 
@@ -114,6 +150,7 @@ export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
 		throw new Error(`mapDeleteRequest: operation must be one of note|frontmatter|file (got '${operation}')`);
 	}
 	const path = requireString(args, 'path', 'mapDeleteRequest');
+	validateOperationExtension(operation, path, 'mapDeleteRequest');
 
 	const rawExpected = requirePresent(args, 'expectedModified', 'mapDeleteRequest');
 	if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
