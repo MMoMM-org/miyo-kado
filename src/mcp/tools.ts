@@ -65,22 +65,22 @@ type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 // ============================================================
 
 const kadoReadShape = {
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']).describe('What to read: note (full markdown), frontmatter (YAML metadata as JSON), file (binary as base64), dataview-inline-field (inline fields as JSON), tags (frontmatter + inline tags as JSON — requires note.read OR frontmatter.read; with only frontmatter.read, inline tags are omitted and returnedTags="FrontmatterOnly")'),
-	path: z.string().describe('Vault-relative path e.g. "Calendar/2026-03-31.md"'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']).describe('What to read. Extension-strict: note/frontmatter/dataview-inline-field/tags require a .md path; file requires a non-.md path. note = full markdown body. frontmatter = YAML metadata as JSON object. dataview-inline-field = inline "key:: value" fields as JSON. tags = frontmatter + inline tags as JSON (requires note.read OR frontmatter.read; with only frontmatter.read, inline tags are omitted and returnedTags="FrontmatterOnly"). file = raw bytes returned as base64 (use for .json/.pdf/.png/…).'),
+	path: z.string().describe('Vault-relative path, e.g. "Calendar/2026-03-31.md" for markdown operations or "Attachments/diagram.png" for file.'),
 };
 
 const kadoWriteShape = {
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to write: note (string), frontmatter (JSON object), file (base64 string), dataview-inline-field (JSON object of key-value pairs)'),
-	path: z.string().describe('Vault-relative path e.g. "100 Inbox/new-note.md"'),
-	content: z.unknown().describe('The content to write. String for note/file, JSON object for frontmatter/dataview-inline-field'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to write. Extension-strict: note/frontmatter/dataview-inline-field require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = full markdown body (string). frontmatter = YAML metadata (JSON object). dataview-inline-field = inline "key:: value" fields (JSON object). file = raw bytes as a base64 string, for any non-markdown file (.json/.pdf/.png/…).'),
+	path: z.string().describe('Vault-relative path. Must end in ".md" for note/frontmatter/dataview-inline-field (e.g. "100 Inbox/new-note.md"); must NOT end in ".md" for file (e.g. "100 Inbox/data.json").'),
+	content: z.unknown().describe('The content to write. String (markdown body) for note; JSON object for frontmatter and dataview-inline-field; base64-encoded string for file.'),
 	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file.'),
 };
 
 const kadoDeleteShape = {
 	// Accept all 4 DataType values at the SDK boundary; mapDeleteRequest rejects
 	// 'dataview-inline-field' with a canonical VALIDATION_ERROR the client can parse.
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to delete: note (trash markdown file), file (trash binary file), frontmatter (remove specific keys from YAML). dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
-	path: z.string().describe('Vault-relative path.'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to delete. Extension-strict: note/frontmatter require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = trash the markdown file. file = trash a non-markdown file. frontmatter = remove specific keys from a markdown file\'s YAML. dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
+	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file.'),
 	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
 	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
 };
@@ -358,11 +358,16 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 // ============================================================
 
 function registerReadTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-read', {description: 'Read from the Obsidian vault. Returns content + created/modified/size metadata. Use the "modified" timestamp from the response as expectedModified when writing updates. operation="tags" returns {frontmatter: string[], inline: string[], all: string[], returnedTags: "All" | "FrontmatterOnly"} — tags deduplicated, no leading "#". When the key has only frontmatter.read (no note.read), inline tags are omitted and returnedTags="FrontmatterOnly" signals that additional inline tags may exist but require note.read.', inputSchema: kadoReadShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-read', {description: 'Read from the Obsidian vault. Strict extension separation: operation "note" / "frontmatter" / "dataview-inline-field" / "tags" only accept .md paths; operation "file" is for any non-markdown file (.json, .pdf, .png, …) and returns base64. Returns content + created/modified/size metadata. Use the "modified" timestamp from the response as expectedModified when writing updates. operation="tags" returns {frontmatter: string[], inline: string[], all: string[], returnedTags: "All" | "FrontmatterOnly"} — tags deduplicated, no leading "#". When the key has only frontmatter.read (no note.read), inline tags are omitted and returnedTags="FrontmatterOnly" signals that additional inline tags may exist but require note.read.', inputSchema: kadoReadShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 
-		const request = mapReadRequest(args as Record<string, unknown>, keyId);
+		let request;
+		try {
+			request = mapReadRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-read', deps.auditLogger, keyId, request, perm.error.gate);
@@ -394,11 +399,16 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 }
 
 function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-write', {description: 'Write to the Obsidian vault. To CREATE a new file: omit expectedModified. To UPDATE an existing file: first read it with kado-read, then pass the "modified" value as expectedModified. Returns CONFLICT if the file changed since your read.', inputSchema: kadoWriteShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-write', {description: 'Write to the Obsidian vault. Strict extension separation — pick the operation that matches the target path: operation="note" writes a full markdown body (path MUST end in .md); operation="frontmatter" writes a YAML frontmatter object onto a markdown file (.md only); operation="dataview-inline-field" writes Dataview inline "key:: value" fields onto a markdown file (.md only); operation="file" writes raw bytes via base64 for any NON-markdown file (.json, .pdf, .png, …) and REJECTS .md paths. Mismatched combinations (e.g. operation="note" with a .json path, or operation="file" with a .md path) return VALIDATION_ERROR — switch to the correct operation rather than renaming the file. To CREATE a new file: omit expectedModified. To UPDATE an existing file: first read it with kado-read and pass the "modified" value as expectedModified. Returns CONFLICT if the file changed since your read.', inputSchema: kadoWriteShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 
-		const request = mapWriteRequest(args as Record<string, unknown>, keyId);
+		let request;
+		try {
+			request = mapWriteRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-write', deps.auditLogger, keyId, request, perm.error.gate);

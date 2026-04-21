@@ -576,7 +576,7 @@ describe('End-to-end tool call pipeline', () => {
 			const result = await runPipeline(
 				config,
 				app,
-				{operation: 'note', path: 'projects/../etc/passwd'},
+				{operation: 'note', path: 'projects/../etc/passwd.md'},
 				'test-key',
 				'kado-read',
 			);

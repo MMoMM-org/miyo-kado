@@ -160,6 +160,109 @@ describe('mapWriteRequest()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// mapWriteRequest — extension/operation strict separation
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — extension/operation strict separation', () => {
+	it('operation="note" + .json path → throws with "use operation=file"', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: '100 Inbox/data.json', content: '{}'},
+			KEY_ID,
+		)).toThrow(/operation="note" requires a \.md path.*use operation="file"/i);
+	});
+
+	it('operation="frontmatter" + .json path → throws', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'frontmatter', path: 'a.json', content: {x: 1}, expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/operation="frontmatter" requires a \.md path/i);
+	});
+
+	it('operation="dataview-inline-field" + .json path → throws', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'dataview-inline-field', path: 'a.json', content: {x: 1}, expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/operation="dataview-inline-field" requires a \.md path/i);
+	});
+
+	it('operation="file" + .md path → throws with "use operation=note"', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'file', path: 'a.md', content: 'base64=='},
+			KEY_ID,
+		)).toThrow(/operation="file" must not target a \.md path.*use operation="note"/i);
+	});
+
+	it('operation="note" + .md path → accepts', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body'},
+			KEY_ID,
+		) as CoreWriteRequest;
+		expect(result.operation).toBe('note');
+	});
+
+	it('operation="file" + .png path → accepts', () => {
+		const result = mapWriteRequest(
+			{operation: 'file', path: 'img.png', content: 'base64=='},
+			KEY_ID,
+		) as CoreWriteRequest;
+		expect(result.operation).toBe('file');
+	});
+
+	it('extension check is case-insensitive (.MD → treated as markdown)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'file', path: 'A.MD', content: 'base64=='},
+			KEY_ID,
+		)).toThrow(/must not target a \.md path/i);
+	});
+
+	it('operation="note" + path without extension → throws', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'noext', content: 'body'},
+			KEY_ID,
+		)).toThrow(/operation="note" requires a \.md path/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapReadRequest — extension/operation strict separation
+// ---------------------------------------------------------------------------
+
+describe('mapReadRequest — extension/operation strict separation', () => {
+	it('operation="note" + .json path → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'note', path: 'a.json'},
+			KEY_ID,
+		)).toThrow(/operation="note" requires a \.md path/i);
+	});
+
+	it('operation="frontmatter" + .json path → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'frontmatter', path: 'a.json'},
+			KEY_ID,
+		)).toThrow(/operation="frontmatter" requires a \.md path/i);
+	});
+
+	it('operation="tags" + .json path → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'tags', path: 'a.json'},
+			KEY_ID,
+		)).toThrow(/operation="tags" requires a \.md path/i);
+	});
+
+	it('operation="file" + .md path → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'file', path: 'a.md'},
+			KEY_ID,
+		)).toThrow(/operation="file" must not target a \.md path/i);
+	});
+
+	it('operation="note" + .md path → accepts', () => {
+		const result = mapReadRequest({operation: 'note', path: 'a.md'}, KEY_ID);
+		expect(result.operation).toBe('note');
+	});
+});
+
+// ---------------------------------------------------------------------------
 // mapSearchRequest
 // ---------------------------------------------------------------------------
 
@@ -493,6 +596,35 @@ describe('mapDeleteRequest()', () => {
 			makeDeleteArgs({operation: 'frontmatter', keys: ['', 'valid']}),
 			KEY_ID,
 		)).toThrow(/all items in "keys"/);
+	});
+
+	it('operation="note" + .json path → throws', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'note', path: 'a.json'}),
+			KEY_ID,
+		)).toThrow(/operation="note" requires a \.md path/i);
+	});
+
+	it('operation="frontmatter" + .json path → throws', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'frontmatter', path: 'a.json', keys: ['k']}),
+			KEY_ID,
+		)).toThrow(/operation="frontmatter" requires a \.md path/i);
+	});
+
+	it('operation="file" + .md path → throws', () => {
+		expect(() => mapDeleteRequest(
+			makeDeleteArgs({operation: 'file', path: 'a.md'}),
+			KEY_ID,
+		)).toThrow(/operation="file" must not target a \.md path/i);
+	});
+
+	it('operation="file" + .png path → accepts', () => {
+		const result = mapDeleteRequest(
+			makeDeleteArgs({operation: 'file', path: 'img.png'}),
+			KEY_ID,
+		) as CoreDeleteRequest;
+		expect(result.operation).toBe('file');
 	});
 
 	it('ignores keys field when operation is note', () => {
