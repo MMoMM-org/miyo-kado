@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through four tools: `kado-read`, `kado-write`, `kado-delete`, and `kado-search`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through five tools: `kado-read`, `kado-write`, `kado-delete`, `kado-search`, and `kado-open-notes`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
