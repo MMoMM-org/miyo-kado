@@ -19,7 +19,8 @@
 			"assets": [
 				{"path": "build/main.js", "label": "main.js"},
 				{"path": "build/manifest.json", "label": "manifest.json"},
-				{"path": "build/styles.css", "label": "styles.css"}
+				{"path": "build/styles.css", "label": "styles.css"},
+				{"path": "build/assets/MiYo-Kado.png", "label": "MiYo-Kado.png"}
 			]
 		}]
 	]

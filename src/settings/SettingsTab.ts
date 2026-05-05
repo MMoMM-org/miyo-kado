@@ -1,8 +1,8 @@
 /**
  * KadoSettingsTab — tab-based settings UI shell.
  *
- * Renders a version header, horizontal tab bar with scroll overflow,
- * and routes to GeneralTab, GlobalSecurityTab, or ApiKeyTab.
+ * Renders a manifest-driven header (HeaderSection), a horizontal tab bar with
+ * scroll overflow, and routes to GeneralTab, GlobalSecurityTab, or ApiKeyTab.
  */
 
 import {App, PluginSettingTab} from 'obsidian';
@@ -10,14 +10,26 @@ import type KadoPlugin from '../main';
 import {renderGeneralTab} from './tabs/GeneralTab';
 import {renderGlobalSecurityTab} from './tabs/GlobalSecurityTab';
 import {renderApiKeyTab} from './tabs/ApiKeyTab';
+import {HeaderSection} from './HeaderSection';
 
 export class KadoSettingsTab extends PluginSettingTab {
 	plugin: KadoPlugin;
 	private activeTab = 'general';
+	private readonly headerSection: HeaderSection;
 
 	constructor(app: App, plugin: KadoPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+		this.headerSection = new HeaderSection({
+			plugin,
+			resolveAsset: (rel: string): string => {
+				// Obsidian gives each plugin a vault-relative install dir at
+				// runtime; getResourcePath turns that into a URL the browser
+				// can load (vault://-style or http://localhost/...).
+				const dir = plugin.manifest.dir ?? '';
+				return app.vault.adapter.getResourcePath(`${dir}/${rel}`);
+			},
+		});
 	}
 
 	display(): void {
@@ -25,17 +37,10 @@ export class KadoSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.classList.add('kado-settings');
 
-		// Version header
-		const manifest = this.plugin.manifest as typeof this.plugin.manifest & {authorUrl?: string};
-		const rawAuthor = manifest.author ?? '';
-		const authorName = (rawAuthor.split('<')[0] ?? rawAuthor).trim();
-		const header = containerEl.createDiv({cls: 'kado-version-header'});
-		header.createSpan({text: `${manifest.name} `, cls: 'kado-plugin-name'});
-		header.createSpan({text: `v${manifest.version}`});
-		header.createSpan({text: ' · ', cls: 'kado-header-sep'});
-		header.createEl('a', {text: authorName, href: manifest.authorUrl ?? 'https://www.mmomm.org'});
-		header.createSpan({text: ' · ', cls: 'kado-header-sep'});
-		header.createEl('a', {text: 'Documentation', href: 'https://github.com/MMoMM-org/miyo-kado'});
+		// Manifest-driven header (name, version, author, documentation, tagline,
+		// hanko image). Rendered once per display() call.
+		const headerContainer = containerEl.createDiv({cls: 'kado-settings-header'});
+		this.headerSection.render(headerContainer);
 
 		// Tab bar
 		const config = this.plugin.configManager.getConfig();
