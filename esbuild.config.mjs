@@ -38,8 +38,9 @@ function bumpPatchVersion() {
 	return newVersion;
 }
 
-/** Plugin-relative asset paths consumed by the runtime UI. */
-const RUNTIME_ASSETS = ["assets/MiYo-Kado.png"];
+/** Plugin-relative asset paths consumed by the runtime UI. Pre-scaled to
+ *  reasonable sizes — never ship raw README-grade originals. */
+const RUNTIME_ASSETS = ["assets/kado_hanko_144.png"];
 
 // Copy plugin assets to build/ and test vault
 const copyAssets = {

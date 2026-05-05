@@ -42,8 +42,10 @@ interface HeaderSectionDeps {
 /** Hardcoded GitHub repository URL — used as the Documentation link. */
 const REPO_URL = 'https://github.com/MMoMM-org/miyo-kado';
 
-/** Plugin-relative path to the hanko image (rendered at 72×72 CSS pixels). */
-const HANKO_REL_PATH = 'assets/MiYo-Kado.png';
+/** Plugin-relative path to the hanko image. The asset is pre-scaled to
+ *  144×144 (2× HiDPI source), rendered natively at 72×72 by CSS so the
+ *  shipped binary stays under ~30 KB. */
+const HANKO_REL_PATH = 'assets/kado_hanko_144.png';
 
 /** In-plugin header tagline. Curated identity copy, not the verbose manifest
  *  description used by Obsidian's plugin listing. */
