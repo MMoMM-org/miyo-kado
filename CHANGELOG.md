@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/MMoMM-org/miyo-kado/compare/0.8.0...0.9.0) (2026-05-07)
+
+
+### Features
+
+* **settings:** manifest-driven header with hanko + tagline ([#34](https://github.com/MMoMM-org/miyo-kado/issues/34)) ([68b372e](https://github.com/MMoMM-org/miyo-kado/commit/68b372efa38f877cb44f1c6be0fde0a6c2a7a40a))
+
 # [0.8.0](https://github.com/MMoMM-org/miyo-kado/compare/0.7.0...0.8.0) (2026-04-21)
 
 
