@@ -47,7 +47,7 @@ export class App {
 		getMarkdownFiles: vi.fn(() => [] as TFile[]),
 		getFiles: vi.fn(() => [] as TFile[]),
 		getAllLoadedFiles: vi.fn(() => [] as (TFile | TFolder)[]),
-		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn(), stat: vi.fn(async () => null), rename: vi.fn(), remove: vi.fn()},
+		adapter: {read: vi.fn(), write: vi.fn(), exists: vi.fn(), stat: vi.fn(async () => null), rename: vi.fn(), remove: vi.fn(), getResourcePath: vi.fn((path: string) => `app://test/${path}`)},
 		configDir: '.obsidian',
 	};
 	fileManager = {

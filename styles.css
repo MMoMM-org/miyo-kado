@@ -5,13 +5,28 @@
 	padding: 0 16px;
 }
 
-.kado-version-header {
+.kado-settings-header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
 	padding: 12px 0 14px 16px;
-	font-size: var(--font-small);
-	color: var(--text-muted);
 }
 
-.kado-version-header a {
+.kado-header-text {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.kado-header-identity {
+	font-size: var(--font-small);
+	color: var(--text-muted);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0 6px;
+}
+
+.kado-header-identity a {
 	color: var(--text-accent);
 }
 
@@ -22,6 +37,20 @@
 
 .kado-header-sep {
 	color: var(--text-faint);
+}
+
+.kado-tagline {
+	margin: 4px 0 0 0;
+	font-size: var(--font-small);
+	color: var(--text-muted);
+}
+
+.kado-header-hanko {
+	flex: 0 0 auto;
+	display: block;
+	margin-left: auto;
+	width: 72px;
+	height: 72px;
 }
 
 .kado-tab-bar {

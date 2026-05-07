@@ -38,6 +38,10 @@ function bumpPatchVersion() {
 	return newVersion;
 }
 
+/** Plugin-relative asset paths consumed by the runtime UI. Pre-scaled to
+ *  reasonable sizes — never ship raw README-grade originals. */
+const RUNTIME_ASSETS = ["assets/kado_hanko_144.png"];
+
 // Copy plugin assets to build/ and test vault
 const copyAssets = {
 	name: 'copy-assets',
@@ -47,14 +51,27 @@ const copyAssets = {
 				mkdirSync("build", { recursive: true });
 				copyFileSync("manifest.json", "build/manifest.json");
 				copyFileSync("styles.css", "build/styles.css");
+				mkdirSync("build/assets", { recursive: true });
+				for (const rel of RUNTIME_ASSETS) {
+					copyFileSync(rel, `build/${rel}`);
+				}
 
 				// Copy to test vault (replaces old symlinks)
 				if (existsSync(VAULT_PLUGIN_DIR)) {
 					copyFileSync(`${outdir}/main.js`, `${VAULT_PLUGIN_DIR}/main.js`);
 					copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
 					copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
+					mkdirSync(`${VAULT_PLUGIN_DIR}/assets`, { recursive: true });
+					for (const rel of RUNTIME_ASSETS) {
+						copyFileSync(rel, `${VAULT_PLUGIN_DIR}/${rel}`);
+					}
 					console.log(`  Copied build to ${VAULT_PLUGIN_DIR}/`);
 				}
+			} else {
+				// Dev/watch builds emit main.js to repo root (outdir = ".")
+				// alongside manifest.json and styles.css already on disk; we
+				// only need to ensure the asset exists at the expected path,
+				// which it already does in repo `assets/`.
 			}
 		});
 	},
