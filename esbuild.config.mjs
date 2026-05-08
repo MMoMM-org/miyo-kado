@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from 'node:module';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 
 const banner =
 `/*
@@ -38,11 +38,11 @@ function bumpPatchVersion() {
 	return newVersion;
 }
 
-/** Plugin-relative asset paths consumed by the runtime UI. Pre-scaled to
- *  reasonable sizes — never ship raw README-grade originals. */
-const RUNTIME_ASSETS = ["assets/kado_hanko_144.png"];
-
-// Copy plugin assets to build/ and test vault
+// Copy the canonical plugin files (main.js, manifest.json, styles.css) to
+// build/ and the test vault. Binary assets like the hanko PNG are NOT copied —
+// they are inlined into main.js via esbuild's `dataurl` loader, because the
+// official Community Plugins installer and BRAT both fetch only those three
+// files from a release and ignore any sibling `assets/` directory.
 const copyAssets = {
 	name: 'copy-assets',
 	setup(build) {
@@ -51,27 +51,14 @@ const copyAssets = {
 				mkdirSync("build", { recursive: true });
 				copyFileSync("manifest.json", "build/manifest.json");
 				copyFileSync("styles.css", "build/styles.css");
-				mkdirSync("build/assets", { recursive: true });
-				for (const rel of RUNTIME_ASSETS) {
-					copyFileSync(rel, `build/${rel}`);
-				}
 
 				// Copy to test vault (replaces old symlinks)
 				if (existsSync(VAULT_PLUGIN_DIR)) {
 					copyFileSync(`${outdir}/main.js`, `${VAULT_PLUGIN_DIR}/main.js`);
 					copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
 					copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
-					mkdirSync(`${VAULT_PLUGIN_DIR}/assets`, { recursive: true });
-					for (const rel of RUNTIME_ASSETS) {
-						copyFileSync(rel, `${VAULT_PLUGIN_DIR}/${rel}`);
-					}
 					console.log(`  Copied build to ${VAULT_PLUGIN_DIR}/`);
 				}
-			} else {
-				// Dev/watch builds emit main.js to repo root (outdir = ".")
-				// alongside manifest.json and styles.css already on disk; we
-				// only need to ensure the asset exists at the expected path,
-				// which it already does in repo `assets/`.
 			}
 		});
 	},
@@ -107,6 +94,12 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: `${outdir}/main.js`,
 	minify: prod,
+	loader: {
+		// Inline binary assets as base64 data URIs. See copy-assets plugin
+		// header for why the alternative (sibling `assets/` in the release)
+		// does not survive the official installer or BRAT.
+		".png": "dataurl",
+	},
 	plugins: [copyAssets],
 });
 
