@@ -176,7 +176,9 @@ export class Setting {
 }
 
 // Extend HTMLElement with Obsidian-specific DOM helpers used by setting tabs.
-function augmentEl(el: HTMLElement): HTMLElement {
+// Exported so unit tests can build augmented containers without instantiating
+// a full PluginSettingTab.
+export function augmentEl(el: HTMLElement): HTMLElement {
 	const any = el as unknown as Record<string, unknown>;
 
 	any['createEl'] = (childTag: string, opts?: {text?: string; cls?: string; type?: string; placeholder?: string; value?: string; href?: string; attr?: Record<string, string>; title?: string}): HTMLElement => {
