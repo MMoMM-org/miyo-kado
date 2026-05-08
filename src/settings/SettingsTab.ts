@@ -20,16 +20,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 	constructor(app: App, plugin: KadoPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
-		this.headerSection = new HeaderSection({
-			plugin,
-			resolveAsset: (rel: string): string => {
-				// Obsidian gives each plugin a vault-relative install dir at
-				// runtime; getResourcePath turns that into a URL the browser
-				// can load (vault://-style or http://localhost/...).
-				const dir = plugin.manifest.dir ?? '';
-				return app.vault.adapter.getResourcePath(`${dir}/${rel}`);
-			},
-		});
+		this.headerSection = new HeaderSection({plugin});
 	}
 
 	display(): void {

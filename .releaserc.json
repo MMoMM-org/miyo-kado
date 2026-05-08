@@ -19,8 +19,7 @@
 			"assets": [
 				{"path": "build/main.js", "label": "main.js"},
 				{"path": "build/manifest.json", "label": "manifest.json"},
-				{"path": "build/styles.css", "label": "styles.css"},
-				{"path": "build/assets/kado_hanko_144.png", "label": "kado_hanko_144.png"}
+				{"path": "build/styles.css", "label": "styles.css"}
 			]
 		}]
 	]
