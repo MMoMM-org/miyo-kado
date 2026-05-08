@@ -1,3 +1,10 @@
+## [0.9.1](https://github.com/MMoMM-org/miyo-kado/compare/0.9.0...0.9.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **settings:** inline hanko as data URI for BRAT/manual install compat ([#36](https://github.com/MMoMM-org/miyo-kado/issues/36)) ([230d42d](https://github.com/MMoMM-org/miyo-kado/commit/230d42db675be62b748ad45f5c2e4884ff20f67d))
+
 # [0.9.0](https://github.com/MMoMM-org/miyo-kado/compare/0.8.0...0.9.0) (2026-05-07)
 
 
