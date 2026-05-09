@@ -1,3 +1,10 @@
+## [0.9.2](https://github.com/MMoMM-org/miyo-kado/compare/0.9.1...0.9.2) (2026-05-09)
+
+
+### Bug Fixes
+
+* **permissions:** resolve scope by pattern specificity, not declaration order ([#38](https://github.com/MMoMM-org/miyo-kado/issues/38)) ([13e2364](https://github.com/MMoMM-org/miyo-kado/commit/13e2364259858ac564d044964b04a62e94c866fc))
+
 ## [0.9.1](https://github.com/MMoMM-org/miyo-kado/compare/0.9.0...0.9.1) (2026-05-08)
 
 
