@@ -174,21 +174,157 @@ describe('resolveScope() — whitelist mode', () => {
 		expect(result).toBeNull();
 	});
 
-	it('returns the first matching entry when multiple paths are listed', () => {
+	it('returns the most specific matching entry regardless of declaration order', () => {
 		const readPerms = makeReadOnlyPermissions();
 		const allPerms = createAllPermissions();
 		const scope = {
 			listMode: 'whitelist' as const,
 			paths: [
+				// Broad pattern declared FIRST — the specificity rule must still
+				// pick the more literal entry below.
 				makePathPermission('notes/**', readPerms),
 				makePathPermission('notes/special.md', allPerms),
 			],
 		};
 
-		// First match wins — the glob 'notes/**' matches before 'notes/special.md'
 		const result = resolveScope(scope, 'notes/special.md');
 
-		expect(result).toEqual(readPerms);
+		expect(result).toEqual(allPerms);
+	});
+
+	it('falls back to the first match when two matching patterns have equal specificity', () => {
+		const a = makeReadOnlyPermissions();
+		const b = createAllPermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('a/*', a),
+				makePathPermission('*/b', b),
+			],
+		};
+
+		// Both patterns have 2 literal characters ("a/" vs "/b").
+		// The deterministic tie-breaker keeps the first declared entry.
+		const result = resolveScope(scope, 'a/b');
+
+		expect(result).toEqual(a);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// resolveScope() — specificity-based matching (path-overlap regression)
+// ---------------------------------------------------------------------------
+
+describe('resolveScope() — specificity-based matching', () => {
+	function makeWritePermissions(): DataTypePermissions {
+		return {
+			note: {create: true, read: true, update: true, delete: true},
+			frontmatter: {create: false, read: false, update: false, delete: false},
+			file: {create: true, read: true, update: true, delete: true},
+			dataviewInlineField: {create: false, read: false, update: false, delete: false},
+		};
+	}
+
+	it('whitelist: a deeper pattern wins over a broader one even when declared later', () => {
+		// Mirrors the user-facing bug: a vault-wide read-only `**` rule must not
+		// override an explicit write rule for `X/900 Support/**`.
+		const readOnly = makeReadOnlyPermissions();
+		const writeOk = makeWritePermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('**', readOnly),
+				makePathPermission('X/900 Support/**', writeOk),
+			],
+		};
+
+		const result = resolveScope(scope, 'X/900 Support/953 Metabind Scripts/foo.js');
+
+		expect(result).toEqual(writeOk);
+	});
+
+	it('whitelist: a deeper pattern wins regardless of declaration order (reversed)', () => {
+		const readOnly = makeReadOnlyPermissions();
+		const writeOk = makeWritePermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('X/900 Support/**', writeOk),
+				makePathPermission('**', readOnly),
+			],
+		};
+
+		const result = resolveScope(scope, 'X/900 Support/953 Metabind Scripts/foo.js');
+
+		expect(result).toEqual(writeOk);
+	});
+
+	it('whitelist: broader pattern still applies to paths the deeper one does not cover', () => {
+		const readOnly = makeReadOnlyPermissions();
+		const writeOk = makeWritePermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('**', readOnly),
+				makePathPermission('X/900 Support/**', writeOk),
+			],
+		};
+
+		const result = resolveScope(scope, 'Y/some other folder/note.md');
+
+		expect(result).toEqual(readOnly);
+	});
+
+	it('whitelist: an exact-path entry wins over both a deep-glob and a vault-wide entry', () => {
+		const broad = makeReadOnlyPermissions();
+		const folderOnly = makeWritePermissions();
+		const exact = createAllPermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('**', broad),
+				makePathPermission('notes/**', folderOnly),
+				makePathPermission('notes/special.md', exact),
+			],
+		};
+
+		const result = resolveScope(scope, 'notes/special.md');
+
+		expect(result).toEqual(exact);
+	});
+
+	it('blacklist: a deeper pattern wins over a broader one (specificity rule applies in both modes)', () => {
+		const broadBlock = makeReadOnlyPermissions();
+		const narrowAllow = makeWritePermissions();
+		const scope = {
+			listMode: 'blacklist' as const,
+			paths: [
+				makePathPermission('**', broadBlock),
+				makePathPermission('X/900 Support/**', narrowAllow),
+			],
+		};
+
+		const result = resolveScope(scope, 'X/900 Support/953 Metabind Scripts/foo.js');
+
+		expect(result).toEqual(narrowAllow);
+	});
+
+	it('whitelist: directory-prefix matches also obey specificity', () => {
+		// Both '**' and 'X/900 Support/**' would match the directory path
+		// 'X/900 Support/' via dirCouldContainMatches; the deeper one must win.
+		const broad = makeReadOnlyPermissions();
+		const narrow = makeWritePermissions();
+		const scope = {
+			listMode: 'whitelist' as const,
+			paths: [
+				makePathPermission('**', broad),
+				makePathPermission('X/900 Support/**', narrow),
+			],
+		};
+
+		const result = resolveScope(scope, 'X/900 Support/');
+
+		expect(result).toEqual(narrow);
 	});
 });
 

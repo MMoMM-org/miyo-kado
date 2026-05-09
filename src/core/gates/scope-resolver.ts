@@ -38,6 +38,22 @@ export function invertPermissions(p: DataTypePermissions): DataTypePermissions {
 }
 
 /**
+ * Returns a specificity score for a glob pattern: the count of literal
+ * (non-wildcard) characters. Higher = more specific.
+ *
+ * Used to pick the most specific matching entry when several patterns
+ * overlap (e.g. `**` and `X/900 Support/**` both match the same path).
+ * Stable for ties: callers fall back to declaration order.
+ */
+function patternSpecificity(pattern: string): number {
+	let count = 0;
+	for (const c of pattern) {
+		if (c !== '*' && c !== '?') count++;
+	}
+	return count;
+}
+
+/**
  * Resolves effective permissions for a path within a scope.
  *
  * Per-entry CRUD flags always have the SAME meaning across modes:
@@ -47,21 +63,36 @@ export function invertPermissions(p: DataTypePermissions): DataTypePermissions {
  * - Whitelist: unlisted path → null (no access at all).
  * - Blacklist: unlisted path → full access.
  *
+ * When several patterns match the same request path, the **most specific**
+ * pattern wins (longest run of literal characters). Declaration order is
+ * the deterministic tie-breaker — first declared wins on equal specificity.
+ * This lets a vault-wide `**` rule coexist with narrower exceptions like
+ * `X/900 Support/**` regardless of the order they appear in the config.
+ *
  * Directory paths (ending with '/') also match patterns that would contain files
  * under that directory, e.g. 'allowed/' matches 'allowed/**'.
  */
 export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypePermissions | null {
 	const isDir = requestPath.endsWith('/');
-	const match = scope.paths.find((p) =>
-		matchGlob(p.path, requestPath) || (isDir && dirCouldContainMatches(p.path, requestPath)),
-	);
-
-	if (scope.listMode === 'whitelist') {
-		return match ? match.permissions : null;
+	let best: PathPermission | undefined;
+	let bestScore = -1;
+	for (const entry of scope.paths) {
+		const matches = matchGlob(entry.path, requestPath)
+			|| (isDir && dirCouldContainMatches(entry.path, requestPath));
+		if (!matches) continue;
+		const score = patternSpecificity(entry.path);
+		if (score > bestScore) {
+			best = entry;
+			bestScore = score;
+		}
 	}
 
-	if (!match) return createAllPermissions();
-	return match.permissions;
+	if (scope.listMode === 'whitelist') {
+		return best ? best.permissions : null;
+	}
+
+	if (!best) return createAllPermissions();
+	return best.permissions;
 }
 
 /**
