@@ -107,9 +107,9 @@ export class KadoMcpServer {
 	private running = false;
 	private activeRequests = 0;
 	/** Pending retry timeout handle — cleared by stop() to prevent orphaned retries. */
-	private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+	private retryTimeout: number | null = null;
 	/** Periodic rate-limit eviction handle — started by start(), cleared by stop(). */
-	private evictionInterval: ReturnType<typeof setInterval> | null = null;
+	private evictionInterval: number | null = null;
 	/** In-flight stop() promise — ensures double-stop is idempotent. */
 	private stopping: Promise<void> | null = null;
 	constructor(
@@ -163,7 +163,7 @@ export class KadoMcpServer {
 		// Start periodic eviction only after the listener is wired up so a
 		// failed start (EADDRINUSE) does not leave an orphaned interval.
 		if (this.evictionInterval === null) {
-			this.evictionInterval = setInterval(() => {
+			this.evictionInterval = window.setInterval(() => {
 				evictExpiredEntries(Date.now());
 			}, EVICTION_INTERVAL_MS);
 		}
@@ -184,7 +184,7 @@ export class KadoMcpServer {
 					kadoLog('Port in use, retrying after delay', {port: config.port});
 					this.httpServer?.close();
 					this.httpServer = null;
-					this.retryTimeout = setTimeout(() => {
+					this.retryTimeout = window.setTimeout(() => {
 						this.retryTimeout = null;
 						void this.tryListen(config, true).then(resolve);
 					}, 500);
@@ -218,13 +218,13 @@ export class KadoMcpServer {
 	private async doStop(): Promise<void> {
 		// Cancel any pending EADDRINUSE retry so it doesn't fire after stop
 		if (this.retryTimeout !== null) {
-			clearTimeout(this.retryTimeout);
+			window.clearTimeout(this.retryTimeout);
 			this.retryTimeout = null;
 		}
 
 		// Cancel periodic rate-limit eviction timer
 		if (this.evictionInterval !== null) {
-			clearInterval(this.evictionInterval);
+			window.clearInterval(this.evictionInterval);
 			this.evictionInterval = null;
 		}
 
