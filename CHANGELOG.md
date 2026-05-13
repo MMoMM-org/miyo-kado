@@ -1,3 +1,10 @@
+## [0.9.6](https://github.com/MMoMM-org/miyo-kado/compare/0.9.5...0.9.6) (2026-05-13)
+
+
+### Bug Fixes
+
+* **perm-matrix:** drop display:contents row wrapper for popout compat ([#48](https://github.com/MMoMM-org/miyo-kado/issues/48)) ([e4025b4](https://github.com/MMoMM-org/miyo-kado/commit/e4025b4fc002307ea28a5dae700083f465ae08e1))
+
 ## [0.9.5](https://github.com/MMoMM-org/miyo-kado/compare/0.9.4...0.9.5) (2026-05-13)
 
 
