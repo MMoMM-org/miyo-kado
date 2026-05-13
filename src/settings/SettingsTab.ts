@@ -50,11 +50,11 @@ export class KadoSettingsTab extends PluginSettingTab {
 		};
 		scrollLeft.addEventListener('click', () => {
 			tabStrip.scrollLeft -= 120;
-			setTimeout(updateScrollButtons, 150);
+			window.setTimeout(updateScrollButtons, 150);
 		});
 		scrollRight.addEventListener('click', () => {
 			tabStrip.scrollLeft += 120;
-			setTimeout(updateScrollButtons, 150);
+			window.setTimeout(updateScrollButtons, 150);
 		});
 		tabStrip.addEventListener('scroll', updateScrollButtons);
 
@@ -70,7 +70,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 		this.renderActiveTab(contentEl);
 
 		// Defer scroll button check to after render
-		setTimeout(updateScrollButtons, 50);
+		window.setTimeout(updateScrollButtons, 50);
 	}
 
 	private addTab(tabStrip: HTMLElement, id: string, label: string): void {

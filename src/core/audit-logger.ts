@@ -63,7 +63,7 @@ export class AuditLogger {
 	private buffer: string[] = [];
 
 	/** Pending flush timer; null when idle. */
-	private flushTimer: ReturnType<typeof setTimeout> | null = null;
+	private flushTimer: number | null = null;
 
 	/** In-flight flush promise; ensures flush() is reentrant / idempotent. */
 	private flushingPromise: Promise<void> | null = null;
@@ -107,7 +107,7 @@ export class AuditLogger {
 
 		// Cancel any scheduled auto-flush — we're flushing now.
 		if (this.flushTimer !== null) {
-			clearTimeout(this.flushTimer);
+			window.clearTimeout(this.flushTimer);
 			this.flushTimer = null;
 		}
 
@@ -135,7 +135,7 @@ export class AuditLogger {
 	/** Arms the 500ms auto-flush timer if not already armed. */
 	private scheduleFlush(): void {
 		if (this.flushTimer !== null) return;
-		this.flushTimer = setTimeout(() => {
+		this.flushTimer = window.setTimeout(() => {
 			this.flushTimer = null;
 			void this.flush();
 		}, FLUSH_INTERVAL_MS);

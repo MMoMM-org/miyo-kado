@@ -71,7 +71,7 @@ function renderKeyManagement(
 			void navigator.clipboard.writeText(key.id).then(
 				() => {
 					btn.setButtonText('Copied!');
-					setTimeout(() => { btn.setButtonText('Copy'); }, 1500);
+					window.setTimeout(() => { btn.setButtonText('Copy'); }, 1500);
 				},
 				() => {
 					new Notice('Failed to copy to clipboard');
