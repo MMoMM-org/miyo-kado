@@ -1,3 +1,10 @@
+## [0.9.3](https://github.com/MMoMM-org/miyo-kado/compare/0.9.2...0.9.3) (2026-05-13)
+
+
+### Bug Fixes
+
+* **manifest:** remove email from author field ([#39](https://github.com/MMoMM-org/miyo-kado/issues/39)) ([942121a](https://github.com/MMoMM-org/miyo-kado/commit/942121a4a6e69cbfeed8799b615a5ddd12b7cc55))
+
 ## [0.9.2](https://github.com/MMoMM-org/miyo-kado/compare/0.9.1...0.9.2) (2026-05-09)
 
 
