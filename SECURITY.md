@@ -44,13 +44,21 @@ GitHub Dependabot scans the full `package-lock.json` and may surface alerts for 
 | Transitive of production dep, unused feature | Low | Track, upgrade via parent dep |
 | Build/test/CI tooling (e.g. vite, lodash-es from semantic-release) | None | Auto-merge Dependabot patch bumps |
 
-### Currently open alerts (as of last review)
+### Currently open alerts (last reviewed 2026-05-13)
 
-Most open alerts are in build/test tooling and do **not** affect users. Notable categories:
+Most open alerts are in build/test tooling and do **not** affect users. The live tracking ticket is **[#40](https://github.com/MMoMM-org/miyo-kado/issues/40)** — see it for current status. Categories:
 
-- **`vite` (transitive of `vitest`)** — Vite vulnerabilities affect the dev server (file traversal, websocket file read). Vite is used only when running unit tests; never bundled.
-- **`lodash-es` / `lodash` (transitive of `semantic-release`)** — Code injection via `_.template`. Used only in the release pipeline; never bundled.
-- **`hono` / `@hono/node-server` (transitive of MCP SDK)** — Cookie name validation, IPv4-mapped IPv6 in `ipRestriction`, path traversal in `toSSG`, repeated-slash bypass in `serveStatic`. Kado does not use any of these features. The MCP SDK uses Hono internally for its own HTTP handling, but the vulnerable code paths are not on Kado's request surface.
+**Transitive of `@modelcontextprotocol/sdk@1.29.0` (latest available)** — bundled into `main.js`, but vulnerable code paths are not on Kado's request surface:
+- `hono` — JSX HTML/CSS injection, JWT date claim validation, cache middleware `Vary` handling, `bodyLimit()` bypass. Kado uses `express`, never Hono directly; the MCP SDK uses Hono internally for its own transports.
+- `fast-uri` (via `ajv`) — path traversal and host confusion via percent-encoded segments. `ajv` is used for JSON-schema validation against trusted internal schemas, not user-supplied URLs.
+- `ip-address` (via `express-rate-limit`) — XSS in `Address6` HTML-emitting methods. Kado never renders IP addresses as HTML.
+
+**Bundled inside `npm@10.9.8` (a transitive of `semantic-release`) — CI-only, never shipped:**
+- `brace-expansion` — ReDoS via zero-step sequence.
+- `picomatch` — ReDoS via extglob quantifiers; POSIX character-class glob mismatch.
+- `ip-address` (second copy) — same XSS as above.
+
+`npm audit fix` without `--force` is a no-op for all of the above: the vulnerable versions are pinned by upstream parents. A `--force` fix would downgrade MCP SDK and pull `semantic-release`'s `npm` dep, both regressions. The plan is to upgrade when MCP SDK ≥ 1.30 (carries the dep bumps) and when `semantic-release` ships against `npm@11+`.
 
 ### What you can do as a user
 
@@ -90,5 +98,5 @@ Only the latest minor version receives security patches. Kado follows semantic v
 
 | Version | Supported |
 |---|---|
-| 0.4.x | ✅ |
-| < 0.4.0 | ❌ Please upgrade |
+| 0.9.x | ✅ |
+| < 0.9.0 | ❌ Please upgrade |
