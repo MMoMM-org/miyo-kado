@@ -21,6 +21,7 @@ export default tseslint.config(
 			},
 		},
 	},
+	...tseslint.configs.recommendedTypeChecked,
 	...obsidianmd.configs.recommended,
 	globalIgnores([
 		"node_modules",
