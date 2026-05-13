@@ -1,3 +1,10 @@
+## [0.9.4](https://github.com/MMoMM-org/miyo-kado/compare/0.9.3...0.9.4) (2026-05-13)
+
+
+### Bug Fixes
+
+* **manifest:** bump minAppVersion to 1.6.6 for fileManager.trashFile ([#45](https://github.com/MMoMM-org/miyo-kado/issues/45)) ([d152128](https://github.com/MMoMM-org/miyo-kado/commit/d15212807c4fb205d316dfe5fb0638dc94beffb2))
+
 ## [0.9.3](https://github.com/MMoMM-org/miyo-kado/compare/0.9.2...0.9.3) (2026-05-13)
 
 
