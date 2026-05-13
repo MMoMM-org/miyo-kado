@@ -1,3 +1,10 @@
+## [0.9.5](https://github.com/MMoMM-org/miyo-kado/compare/0.9.4...0.9.5) (2026-05-13)
+
+
+### Bug Fixes
+
+* **popout:** qualify timers and document for popout window compatibility ([#46](https://github.com/MMoMM-org/miyo-kado/issues/46)) ([c728c56](https://github.com/MMoMM-org/miyo-kado/commit/c728c56a644d5c6461d67549a89a549dd418f2ec))
+
 ## [0.9.4](https://github.com/MMoMM-org/miyo-kado/compare/0.9.3...0.9.4) (2026-05-13)
 
 
