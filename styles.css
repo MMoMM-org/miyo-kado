@@ -118,10 +118,6 @@
 	align-items: center;
 }
 
-.kado-perm-row {
-	display: contents;
-}
-
 .kado-perm-label {
 	font-size: var(--font-smallest);
 	color: var(--text-muted);

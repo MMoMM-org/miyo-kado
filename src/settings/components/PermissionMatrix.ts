@@ -58,23 +58,23 @@ export function renderPermissionMatrix(
 	fieldset.createEl('legend', {cls: 'kado-perm-legend sr-only', text: 'Data type permissions'});
 	const grid = fieldset.createDiv({cls: 'kado-perm-matrix'});
 
-	// Header row: corner + C R U D
-	const header = grid.createDiv({cls: 'kado-perm-row kado-perm-header'});
-	header.createDiv({cls: 'kado-perm-label'});
+	// Header row: corner spacer + C R U D — appended directly as grid items
+	// (no row wrapper; `display: contents` is only partially supported in some
+	//  Obsidian/Electron builds, so we lay out each grid item directly).
+	grid.createDiv({cls: 'kado-perm-label'});
 	for (const op of CRUD_OPS) {
-		header.createDiv({cls: 'kado-perm-col-label', text: CRUD_LABELS[op], title: op});
+		grid.createDiv({cls: 'kado-perm-col-label', text: CRUD_LABELS[op], title: op});
 	}
 
-	// One row per resource
+	// One row per resource — same flat-grid pattern: label + 4 cells.
 	for (const resource of RESOURCES) {
-		const row = grid.createDiv({cls: 'kado-perm-row'});
-		row.createDiv({cls: 'kado-perm-label', text: RESOURCE_LABELS[resource]});
+		grid.createDiv({cls: 'kado-perm-label', text: RESOURCE_LABELS[resource]});
 
 		const flags = permissions[resource];
 		const maxFlags = options.maxPermissions?.[resource];
 
 		for (const op of CRUD_OPS) {
-			const cell = row.createDiv({cls: 'kado-perm-cell'});
+			const cell = grid.createDiv({cls: 'kado-perm-cell'});
 			const isOn = flags[op];
 			const isAllowed = !maxFlags || maxFlags[op];
 			const isBlacklist = options.listMode === 'blacklist';
