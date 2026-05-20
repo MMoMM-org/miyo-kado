@@ -270,6 +270,36 @@ describe('audit integration — allowed kado-write call', () => {
 
 		expect(entries[0].durationMs).toBeGreaterThan(0);
 	});
+
+	it('marks bodyTouched=false on allowed frontmatter write', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/w.md'}));
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
+
+		await handler(
+			{operation: 'frontmatter', path: 'notes/w.md', content: {state: 'done'}},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].bodyTouched).toBe(false);
+	});
+
+	it('omits bodyTouched on note writes (body is touched — no marker)', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/n.md'}));
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
+
+		await handler(
+			{operation: 'note', path: 'notes/n.md', content: 'body'},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0].bodyTouched).toBeUndefined();
+	});
 });
 
 describe('audit integration — allowed kado-search call', () => {

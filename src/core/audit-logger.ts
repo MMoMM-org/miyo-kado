@@ -32,6 +32,13 @@ export interface AuditEntry {
 	durationMs?: number;
 	/** Number of permitted items returned (used by open-notes tool). Only set on allowed decisions. */
 	permittedCount?: number;
+	/**
+	 * Set to `false` for `kado-write operation=frontmatter` (body is preserved
+	 * byte-identical, only the YAML block is mutated). Absent on all other
+	 * entries — the absence is not a signal one way or the other for other
+	 * ops. Lets auditors separate metadata-only writes from content writes.
+	 */
+	bodyTouched?: boolean;
 }
 
 /** I/O callbacks injected into AuditLogger for file operations (no Obsidian dependency). */

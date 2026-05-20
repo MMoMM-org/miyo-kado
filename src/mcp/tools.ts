@@ -17,7 +17,7 @@ import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protoco
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
 import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
-import {isCoreSearchRequest, isCoreOpenNotesRequest} from '../types/canonical';
+import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError, mapOpenNotesResult} from './response-mapper';
@@ -74,6 +74,7 @@ const kadoWriteShape = {
 	path: z.string().describe('Vault-relative path. Must end in ".md" for note/frontmatter/dataview-inline-field (e.g. "100 Inbox/new-note.md"); must NOT end in ".md" for file (e.g. "100 Inbox/data.json").'),
 	content: z.unknown().describe('The content to write. String (markdown body) for note; JSON object for frontmatter and dataview-inline-field; base64-encoded string for file.'),
 	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file.'),
+	mode: z.enum(['merge', 'replace']).optional().describe('Only honoured for operation="frontmatter" (ignored otherwise). "merge" (default): deep-merge supplied keys with existing frontmatter — objects recurse, arrays REPLACE (no concat), scalars replace; untouched keys preserved. "replace": clear the existing frontmatter block, then write the supplied object as-is. Body content is byte-identical to before in both modes.'),
 };
 
 const kadoDeleteShape = {
@@ -301,7 +302,8 @@ async function logAllowed(
 		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
 		const operation = String(coreReq.operation ?? '');
 		const dataType = extractDataType(coreReq);
-		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs}));
+		const bodyTouched = isCoreWriteRequest(coreReq) && coreReq.operation === 'frontmatter' ? false : undefined;
+		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs, bodyTouched}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
 	}
@@ -399,7 +401,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 }
 
 function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-write', {description: 'Write to the Obsidian vault. Strict extension separation — pick the operation that matches the target path: operation="note" writes a full markdown body (path MUST end in .md); operation="frontmatter" writes a YAML frontmatter object onto a markdown file (.md only); operation="dataview-inline-field" writes Dataview inline "key:: value" fields onto a markdown file (.md only); operation="file" writes raw bytes via base64 for any NON-markdown file (.json, .pdf, .png, …) and REJECTS .md paths. Mismatched combinations (e.g. operation="note" with a .json path, or operation="file" with a .md path) return VALIDATION_ERROR — switch to the correct operation rather than renaming the file. To CREATE a new file: omit expectedModified. To UPDATE an existing file: first read it with kado-read and pass the "modified" value as expectedModified. Returns CONFLICT if the file changed since your read.', inputSchema: kadoWriteShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-write', {description: 'Write to the Obsidian vault. Strict extension separation — pick the operation that matches the target path: operation="note" writes a full markdown body (path MUST end in .md); operation="frontmatter" writes a YAML frontmatter object onto a markdown file (.md only); operation="dataview-inline-field" writes Dataview inline "key:: value" fields onto a markdown file (.md only); operation="file" writes raw bytes via base64 for any NON-markdown file (.json, .pdf, .png, …) and REJECTS .md paths. Mismatched combinations (e.g. operation="note" with a .json path, or operation="file" with a .md path) return VALIDATION_ERROR — switch to the correct operation rather than renaming the file. To CREATE a new file: omit expectedModified. To UPDATE an existing file: first read it with kado-read and pass the "modified" value as expectedModified. Returns CONFLICT if the file changed since your read. For operation="frontmatter" the body is never touched — only the YAML block changes; use mode="merge" (default) to deep-merge supplied keys with existing frontmatter (objects recurse, arrays REPLACE, scalars replace, untouched keys preserved) or mode="replace" to clear the existing block and write the supplied object as-is.', inputSchema: kadoWriteShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 

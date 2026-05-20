@@ -17,6 +17,7 @@ import type {
 	CoreOpenNotesRequest,
 	OpenNotesScope,
 	DeleteDataType,
+	FrontmatterWriteMode,
 	SearchFilter,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
@@ -123,6 +124,18 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 
 	if ('expectedModified' in args && args['expectedModified'] !== undefined) {
 		result.expectedModified = args['expectedModified'] as number;
+	}
+
+	if ('mode' in args && args['mode'] !== undefined) {
+		const mode = args['mode'];
+		if (mode !== 'merge' && mode !== 'replace') {
+			const shown = typeof mode === 'string' ? mode : typeof mode;
+			throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
+		}
+		if (operation !== 'frontmatter') {
+			throw new Error(`mapWriteRequest: mode is only valid for operation="frontmatter" (got operation='${operation}')`);
+		}
+		result.mode = mode as FrontmatterWriteMode;
 	}
 
 	return result;

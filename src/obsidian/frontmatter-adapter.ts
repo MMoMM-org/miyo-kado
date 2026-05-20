@@ -9,6 +9,7 @@ import type {App, TFile} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult} from '../types/canonical';
 import {NoteAdapterError} from './note-adapter';
+import {deepMerge} from '../core/deep-merge';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -70,8 +71,14 @@ export function createFrontmatterAdapter(app: App): ReadWriteAdapter {
 				throw notFoundError(request.path);
 			}
 			const content = request.content as Record<string, unknown>;
+			const mode = request.mode ?? 'merge';
 			await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-				Object.assign(fm, content);
+				if (mode === 'replace') {
+					for (const key of Object.keys(fm)) delete fm[key];
+					Object.assign(fm, content);
+				} else {
+					deepMerge(fm, content);
+				}
 			});
 			return buildWriteResult(request.path, file);
 		},

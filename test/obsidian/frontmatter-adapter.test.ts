@@ -244,3 +244,94 @@ describe('createFrontmatterAdapter() — write()', () => {
 		});
 	});
 });
+
+// ---------------------------------------------------------------------------
+// write() — mode=merge (default): deep-merge semantics
+// ---------------------------------------------------------------------------
+
+describe('createFrontmatterAdapter() — write() mode=merge', () => {
+	function captureProcessFrontMatter(initial: Record<string, unknown>) {
+		let captured: Record<string, unknown> = {};
+		const fn = vi.fn().mockImplementation(
+			async (_file: unknown, mutator: (fm: Record<string, unknown>) => void) => {
+				const fm: Record<string, unknown> = JSON.parse(JSON.stringify(initial)) as Record<string, unknown>;
+				mutator(fm);
+				captured = fm;
+			},
+		);
+		return {fn, get: () => captured};
+	}
+
+	it('deep-merges nested objects instead of replacing them (default mode)', async () => {
+		const file = makeTFile();
+		const proc = captureProcessFrontMatter({tomo: {state: 'pending', doc_type: 'suggestion'}});
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), processFrontMatter: proc.fn});
+
+		const adapter = createFrontmatterAdapter(app as never);
+		await adapter.write(makeWriteRequest({tomo: {state: 'approved'}}));
+
+		expect(proc.get()).toEqual({tomo: {state: 'approved', doc_type: 'suggestion'}});
+	});
+
+	it('replaces arrays at every level (no concat)', async () => {
+		const file = makeTFile();
+		const proc = captureProcessFrontMatter({tags: ['#a', '#b'], tomo: {tags: ['x']}});
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), processFrontMatter: proc.fn});
+
+		const adapter = createFrontmatterAdapter(app as never);
+		await adapter.write(makeWriteRequest({tags: ['#c'], tomo: {tags: ['y', 'z']}}));
+
+		expect(proc.get()).toEqual({tags: ['#c'], tomo: {tags: ['y', 'z']}});
+	});
+
+	it('preserves untouched top-level keys', async () => {
+		const file = makeTFile();
+		const proc = captureProcessFrontMatter({title: 'Keep me', tomo: {state: 'pending'}, count: 7});
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), processFrontMatter: proc.fn});
+
+		const adapter = createFrontmatterAdapter(app as never);
+		await adapter.write(makeWriteRequest({tomo: {state: 'approved'}}, {mode: 'merge'}));
+
+		expect(proc.get()).toEqual({title: 'Keep me', tomo: {state: 'approved'}, count: 7});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// write() — mode=replace: clear-then-set semantics
+// ---------------------------------------------------------------------------
+
+describe('createFrontmatterAdapter() — write() mode=replace', () => {
+	function captureProcessFrontMatter(initial: Record<string, unknown>) {
+		let captured: Record<string, unknown> = {};
+		const fn = vi.fn().mockImplementation(
+			async (_file: unknown, mutator: (fm: Record<string, unknown>) => void) => {
+				const fm: Record<string, unknown> = JSON.parse(JSON.stringify(initial)) as Record<string, unknown>;
+				mutator(fm);
+				captured = fm;
+			},
+		);
+		return {fn, get: () => captured};
+	}
+
+	it('clears all existing keys before writing supplied keys', async () => {
+		const file = makeTFile();
+		const proc = captureProcessFrontMatter({title: 'Old', tomo: {state: 'pending'}, tags: ['#a']});
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), processFrontMatter: proc.fn});
+
+		const adapter = createFrontmatterAdapter(app as never);
+		await adapter.write(makeWriteRequest({tomo: {state: 'approved'}}, {mode: 'replace'}));
+
+		expect(proc.get()).toEqual({tomo: {state: 'approved'}});
+	});
+
+	it('produces an empty frontmatter block when supplied object is empty', async () => {
+		const file = makeTFile();
+		const proc = captureProcessFrontMatter({title: 'Old', tags: ['#a']});
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), processFrontMatter: proc.fn});
+
+		const adapter = createFrontmatterAdapter(app as never);
+		await adapter.write(makeWriteRequest({}, {mode: 'replace'}));
+
+		expect(proc.get()).toEqual({});
+	});
+});

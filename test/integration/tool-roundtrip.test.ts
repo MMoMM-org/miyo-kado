@@ -408,6 +408,114 @@ describe('End-to-end tool call pipeline', () => {
 	});
 
 	// --------------------------------------------------------
+	// kado-write: frontmatter mode (merge default + explicit replace)
+	// --------------------------------------------------------
+
+	describe('kado-write frontmatter (mode)', () => {
+		function setupFrontmatterWrite(initial: Record<string, unknown>) {
+			const config = makeTestConfig();
+			// Grant key the update permission for frontmatter (default config
+			// gives it on global but not on the test-key for paths).
+			config.apiKeys[0]!.paths[0]!.permissions.frontmatter = {
+				create: true, read: true, update: true, delete: false,
+			};
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: 200},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+
+			let captured: Record<string, unknown> = {};
+			vi.mocked(app.fileManager.processFrontMatter).mockImplementation(
+				async (_f: unknown, mutator: (fm: Record<string, unknown>) => void) => {
+					const fm: Record<string, unknown> = JSON.parse(JSON.stringify(initial)) as Record<string, unknown>;
+					mutator(fm);
+					captured = fm;
+				},
+			);
+
+			return {config, app, getCaptured: () => captured};
+		}
+
+		it('default mode deep-merges nested objects', async () => {
+			const {config, app, getCaptured} = setupFrontmatterWrite({
+				tomo: {state: 'pending', doc_type: 'suggestion'},
+				title: 'Keep me',
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'frontmatter',
+					path: 'projects/plan.md',
+					content: {tomo: {state: 'approved'}},
+					expectedModified: 2000,
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(getCaptured()).toEqual({
+				tomo: {state: 'approved', doc_type: 'suggestion'},
+				title: 'Keep me',
+			});
+		});
+
+		it('mode=replace clears existing keys then writes supplied object', async () => {
+			const {config, app, getCaptured} = setupFrontmatterWrite({
+				tomo: {state: 'pending', doc_type: 'suggestion'},
+				title: 'Old',
+				tags: ['#a'],
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'frontmatter',
+					path: 'projects/plan.md',
+					content: {tomo: {state: 'approved'}},
+					expectedModified: 2000,
+					mode: 'replace',
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(getCaptured()).toEqual({tomo: {state: 'approved'}});
+		});
+
+		it('mode=merge replaces arrays (no concat)', async () => {
+			const {config, app, getCaptured} = setupFrontmatterWrite({
+				tags: ['#captured', '#topic/knowledge'],
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'frontmatter',
+					path: 'projects/plan.md',
+					content: {tags: ['#approved']},
+					expectedModified: 2000,
+					mode: 'merge',
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(getCaptured()).toEqual({tags: ['#approved']});
+		});
+
+	});
+
+	// --------------------------------------------------------
 	// kado-write: wrong timestamp → CONFLICT
 	// --------------------------------------------------------
 
