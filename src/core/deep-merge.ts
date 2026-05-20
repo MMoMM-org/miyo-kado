@@ -16,14 +16,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return proto === Object.prototype || proto === null;
 }
 
-const POLLUTION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
 export function deepMerge(
 	target: Record<string, unknown>,
 	source: Record<string, unknown>,
 ): Record<string, unknown> {
 	for (const key of Object.keys(source)) {
-		if (POLLUTION_KEYS.has(key)) continue;
+		// Inline pollution-key guard. Equivalent to a Set lookup but matches
+		// CodeQL's `js/prototype-polluting-assignment` recognised pattern so
+		// the alert is closed at analysis time rather than dismissed.
+		if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
 		const next = source[key];
 		const current = target[key];
 		if (isPlainObject(current) && isPlainObject(next)) {
