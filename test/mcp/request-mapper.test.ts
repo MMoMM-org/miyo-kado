@@ -224,6 +224,41 @@ describe('mapWriteRequest — extension/operation strict separation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// mapWriteRequest — frontmatter mode field
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — frontmatter mode field', () => {
+	it('passes through mode="merge"', () => {
+		const result = mapWriteRequest(makeWriteArgs({mode: 'merge'}), KEY_ID) as CoreWriteRequest;
+		expect(result.mode).toBe('merge');
+	});
+
+	it('passes through mode="replace"', () => {
+		const result = mapWriteRequest(makeWriteArgs({mode: 'replace'}), KEY_ID) as CoreWriteRequest;
+		expect(result.mode).toBe('replace');
+	});
+
+	it('omits mode when not supplied (adapter default applies)', () => {
+		const result = mapWriteRequest(makeWriteArgs(), KEY_ID) as CoreWriteRequest;
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('rejects an unknown mode value', () => {
+		expect(() => mapWriteRequest(
+			makeWriteArgs({mode: 'overwrite'}),
+			KEY_ID,
+		)).toThrow(/mode must be "merge" or "replace"/i);
+	});
+
+	it('rejects mode on non-frontmatter operations', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
+			KEY_ID,
+		)).toThrow(/mode is only valid for operation="frontmatter"/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // mapReadRequest — extension/operation strict separation
 // ---------------------------------------------------------------------------
 

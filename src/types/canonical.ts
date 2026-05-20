@@ -49,6 +49,9 @@ export interface CoreReadRequest {
 	tagsReturnScope?: 'all' | 'frontmatter-only';
 }
 
+/** Merge strategy for frontmatter writes. Ignored for other operations. */
+export type FrontmatterWriteMode = 'merge' | 'replace';
+
 /** Request to create or update a vault item. Includes optional concurrency guard. */
 export interface CoreWriteRequest {
 	apiKeyId: string;
@@ -56,6 +59,15 @@ export interface CoreWriteRequest {
 	path: string;
 	content: string | ArrayBuffer | Record<string, unknown>;
 	expectedModified?: number;
+	/**
+	 * Frontmatter write strategy. Only honoured for operation='frontmatter'.
+	 * 'merge' (default): deep-merge supplied keys with existing frontmatter
+	 *   (objects recurse, arrays replace, scalars replace). Untouched keys
+	 *   are preserved.
+	 * 'replace': clear the existing frontmatter block, then write the supplied
+	 *   object as-is.
+	 */
+	mode?: FrontmatterWriteMode;
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
 }
