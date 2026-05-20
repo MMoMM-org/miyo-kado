@@ -1,3 +1,10 @@
+## [0.10.1](https://github.com/MMoMM-org/miyo-kado/compare/0.10.0...0.10.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* **deep-merge:** inline pollution-key guard to satisfy CodeQL ([#51](https://github.com/MMoMM-org/miyo-kado/issues/51)) ([1579e5b](https://github.com/MMoMM-org/miyo-kado/commit/1579e5ba40207387a0bbca99021e34fc5dbc8d1e))
+
 # [0.10.0](https://github.com/MMoMM-org/miyo-kado/compare/0.9.6...0.10.0) (2026-05-20)
 
 
