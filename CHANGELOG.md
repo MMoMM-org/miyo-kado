@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/MMoMM-org/miyo-kado/compare/0.9.6...0.10.0) (2026-05-20)
+
+
+### Features
+
+* **mcp:** add kado-write frontmatter mode=merge|replace with deep-merge ([#49](https://github.com/MMoMM-org/miyo-kado/issues/49)) ([71ea690](https://github.com/MMoMM-org/miyo-kado/commit/71ea690842625007ffe8de39b73c79193ac3125c))
+
 ## [0.9.6](https://github.com/MMoMM-org/miyo-kado/compare/0.9.5...0.9.6) (2026-05-13)
 
 
