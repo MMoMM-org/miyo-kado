@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/MMoMM-org/miyo-kado/compare/0.10.1...0.11.0) (2026-05-21)
+
+
+### Features
+
+* **search:** time-range filters for kado-search ([#53](https://github.com/MMoMM-org/miyo-kado/issues/53)) ([e2117c5](https://github.com/MMoMM-org/miyo-kado/commit/e2117c5a36d55930c9c9aaddce922451df919cb8)), closes [#54](https://github.com/MMoMM-org/miyo-kado/issues/54) [#30](https://github.com/MMoMM-org/miyo-kado/issues/30)
+
 ## [0.10.1](https://github.com/MMoMM-org/miyo-kado/compare/0.10.0...0.10.1) (2026-05-20)
 
 
