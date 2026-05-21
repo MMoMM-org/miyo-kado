@@ -24,6 +24,26 @@ import {validatePath} from '../core/gates/path-access';
 
 type Args = Record<string, unknown>;
 
+/**
+ * Parses a single time-bound field (`modifiedAfter`, `modifiedBefore`,
+ * `createdAfter`, `createdBefore`) from raw filter args. Mutates `filter` in
+ * place when the field is a finite, non-negative number. Throws on the
+ * "supplied but invalid" path (non-number, non-finite, negative) so clients
+ * get a clear VALIDATION_ERROR instead of silent drop.
+ */
+function assignTimeBound(
+	raw: Record<string, unknown>,
+	key: 'modifiedAfter' | 'modifiedBefore' | 'createdAfter' | 'createdBefore',
+	filter: SearchFilter,
+): void {
+	const value = raw[key];
+	if (value === undefined) return;
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+		throw new Error(`mapSearchRequest: filter.${key} must be a non-negative finite Unix-ms number`);
+	}
+	filter[key] = value;
+}
+
 /** Operations that require a markdown (.md) target — they parse YAML frontmatter or note body. */
 const MARKDOWN_ONLY_OPS = new Set(['note', 'frontmatter', 'dataview-inline-field', 'tags']);
 
@@ -240,6 +260,16 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 		}
 		if (typeof f['frontmatter'] === 'string' && f['frontmatter'].length > 0) {
 			filter.frontmatter = f['frontmatter'];
+		}
+		assignTimeBound(f, 'modifiedAfter', filter);
+		assignTimeBound(f, 'modifiedBefore', filter);
+		assignTimeBound(f, 'createdAfter', filter);
+		assignTimeBound(f, 'createdBefore', filter);
+		if (filter.modifiedAfter !== undefined && filter.modifiedBefore !== undefined && filter.modifiedAfter > filter.modifiedBefore) {
+			throw new Error('mapSearchRequest: filter.modifiedAfter must be <= filter.modifiedBefore');
+		}
+		if (filter.createdAfter !== undefined && filter.createdBefore !== undefined && filter.createdAfter > filter.createdBefore) {
+			throw new Error('mapSearchRequest: filter.createdAfter must be <= filter.createdBefore');
 		}
 		if (Object.keys(filter).length > 0) result.filter = filter;
 	}

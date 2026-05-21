@@ -103,6 +103,10 @@ export const kadoSearchShape = {
 		path: z.string().optional().describe('Folder prefix filter — only items whose path starts with this value. Works with all operations.'),
 		tags: z.array(z.string()).optional().describe('Tag filter — item must carry at least one matching tag. Supports * and ? glob wildcards. Ignored by listDir.'),
 		frontmatter: z.string().optional().describe('Frontmatter filter — key=value (match value) or key-only (key exists). Same syntax as byFrontmatter query. Ignored by listDir.'),
+		modifiedAfter: z.number().int().nonnegative().optional().describe('Inclusive lower bound on file mtime (Unix milliseconds). Drops folder items. Combine with modifiedBefore for a range; use Date.now() - 7*86400000 for "last 7 days".'),
+		modifiedBefore: z.number().int().nonnegative().optional().describe('Inclusive upper bound on file mtime (Unix milliseconds). Drops folder items.'),
+		createdAfter: z.number().int().nonnegative().optional().describe('Inclusive lower bound on file ctime (Unix milliseconds). Drops folder items.'),
+		createdBefore: z.number().int().nonnegative().optional().describe('Inclusive upper bound on file ctime (Unix milliseconds). Drops folder items.'),
 	}).optional().describe('Universal cross-operation filters to narrow results. All filters are AND-combined.'),
 };
 
@@ -114,7 +118,7 @@ export const KADO_SEARCH_TOOL_DESCRIPTION =
 	'byFrontmatter (key=value or key-only), ' +
 	'listDir (folder contents with type: "file" | "folder" discriminator; folder items carry childCount; results sort folders-first then alphabetically; use depth=1 for a shallow scan of direct children only, omit depth for unlimited recursion; "/" is the canonical vault-root marker; missing paths return NOT_FOUND, file targets return VALIDATION_ERROR), ' +
 	'listTags (all permitted tags with counts). ' +
-	'Optional "filter" narrows any operation: filter.path (folder prefix), filter.tags (note must have at least one matching tag, glob-capable), filter.frontmatter (key=value or key-only). Filters are AND-combined. filter.tags and filter.frontmatter are ignored by listDir. ' +
+	'Optional "filter" narrows any operation: filter.path (folder prefix), filter.tags (note must have at least one matching tag, glob-capable), filter.frontmatter (key=value or key-only), filter.modifiedAfter / filter.modifiedBefore / filter.createdAfter / filter.createdBefore (Unix-ms time bounds, inclusive; folder items are dropped when any time bound is set). Filters are AND-combined. filter.tags and filter.frontmatter are ignored by listDir; time filters apply to listDir file items. ' +
 	'Results are scoped to this key\'s permissions and paginated (default 50, max 500). ' +
 	'Hidden entries (names starting with ".") are never returned.';
 

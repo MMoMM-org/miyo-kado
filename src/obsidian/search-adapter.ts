@@ -480,15 +480,39 @@ function listTags(app: App, scopePatterns?: string[], allowedTags?: string[], fi
 // Cross-operation filters (single-pass, no operation awareness — H3/H4)
 // -----------------------------------------------------------------------
 
+function hasTimeBounds(filter: SearchFilter): boolean {
+	return filter.modifiedAfter !== undefined
+		|| filter.modifiedBefore !== undefined
+		|| filter.createdAfter !== undefined
+		|| filter.createdBefore !== undefined;
+}
+
+/**
+ * Time-bound check against item's created/modified (Unix ms). Folder items
+ * (type='folder', created=0, modified=0) are excluded when ANY time bound is
+ * set — their stat values are placeholders, not real timestamps, so applying
+ * the comparison would produce nonsense (0 < modifiedBefore is always true).
+ */
+function matchesTimeBounds(item: CoreSearchItem, filter: SearchFilter): boolean {
+	if (item.type === 'folder') return false;
+	if (filter.modifiedAfter !== undefined && item.modified < filter.modifiedAfter) return false;
+	if (filter.modifiedBefore !== undefined && item.modified > filter.modifiedBefore) return false;
+	if (filter.createdAfter !== undefined && item.created < filter.createdAfter) return false;
+	if (filter.createdBefore !== undefined && item.created > filter.createdBefore) return false;
+	return true;
+}
+
 function applyFilters(items: CoreSearchItem[], filter: SearchFilter, app: App, allowedTags?: string[]): CoreSearchItem[] {
 	const parsedFm = filter.frontmatter ? parseFrontmatterFilter(filter.frontmatter) : undefined;
 	const tagPatterns = filter.tags
 		? enforceTagPermissions(filter.tags, allowedTags)
 		: undefined;
 	if (tagPatterns !== undefined && tagPatterns.length === 0) return [];
+	const timeActive = hasTimeBounds(filter);
 
 	return items.filter((item) => {
 		if (filter.path && !item.path.startsWith(filter.path)) return false;
+		if (timeActive && !matchesTimeBounds(item, filter)) return false;
 
 		if (!tagPatterns && !parsedFm) return true;
 		if (item.type === 'folder') return false;
@@ -554,12 +578,27 @@ export function createSearchAdapter(app: App): SearchAdapter {
 			if (request.filter && request.operation !== 'listTags') {
 				let filter = request.filter;
 				if (request.operation === 'listDir') {
-					filter = {path: filter.path};
+					// listDir items lack tag/frontmatter metadata, but DO carry mtime/ctime,
+					// so time bounds and path filter apply; tags/frontmatter are dropped.
+					filter = {
+						path: filter.path,
+						modifiedAfter: filter.modifiedAfter,
+						modifiedBefore: filter.modifiedBefore,
+						createdAfter: filter.createdAfter,
+						createdBefore: filter.createdBefore,
+					};
 				} else if (request.operation === 'byContent') {
 					// byContent already pre-filters by filter.path before reading files
-					filter = {tags: filter.tags, frontmatter: filter.frontmatter};
+					filter = {
+						tags: filter.tags,
+						frontmatter: filter.frontmatter,
+						modifiedAfter: filter.modifiedAfter,
+						modifiedBefore: filter.modifiedBefore,
+						createdAfter: filter.createdAfter,
+						createdBefore: filter.createdBefore,
+					};
 				}
-				if (filter.path || filter.tags || filter.frontmatter) {
+				if (filter.path || filter.tags || filter.frontmatter || hasTimeBounds(filter)) {
 					items = applyFilters(items, filter, app, request.allowedTags);
 				}
 			}
