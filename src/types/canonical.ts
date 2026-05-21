@@ -80,6 +80,14 @@ export interface SearchFilter {
 	tags?: string[];
 	/** Frontmatter filter — key=value or key-only, same syntax as byFrontmatter query. */
 	frontmatter?: string;
+	/** Inclusive lower bound on file mtime (Unix ms). Excludes folder items (no meaningful mtime). */
+	modifiedAfter?: number;
+	/** Inclusive upper bound on file mtime (Unix ms). Excludes folder items (no meaningful mtime). */
+	modifiedBefore?: number;
+	/** Inclusive lower bound on file ctime (Unix ms). Excludes folder items (no meaningful ctime). */
+	createdAfter?: number;
+	/** Inclusive upper bound on file ctime (Unix ms). Excludes folder items (no meaningful ctime). */
+	createdBefore?: number;
 }
 
 /** Request to search the vault by tag, name, content, frontmatter, or directory listing. */

@@ -2574,3 +2574,183 @@ describe('SearchAdapter — filter.frontmatter ignored for listDir', () => {
 		expect(result.items.length).toBeGreaterThan(0);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Time-range filters (modifiedAfter / modifiedBefore / createdAfter / createdBefore)
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — time-range filters', () => {
+	it('byName drops items below modifiedAfter (inclusive)', async () => {
+		const fresh = makeTFile({path: 'a.md', mtime: 2000});
+		const stale = makeTFile({path: 'b.md', mtime: 500});
+		const onBoundary = makeTFile({path: 'c.md', mtime: 1000});
+		const app = makeApp({markdownFiles: [fresh, stale, onBoundary]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+			filter: {modifiedAfter: 1000},
+		})));
+
+		const paths = result.items.map((i) => i.path).sort();
+		expect(paths).toEqual(['a.md', 'c.md']);
+	});
+
+	it('byName drops items above modifiedBefore (inclusive)', async () => {
+		const fresh = makeTFile({path: 'a.md', mtime: 2000});
+		const stale = makeTFile({path: 'b.md', mtime: 500});
+		const onBoundary = makeTFile({path: 'c.md', mtime: 1000});
+		const app = makeApp({markdownFiles: [fresh, stale, onBoundary]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+			filter: {modifiedBefore: 1000},
+		})));
+
+		const paths = result.items.map((i) => i.path).sort();
+		expect(paths).toEqual(['b.md', 'c.md']);
+	});
+
+	it('byName combines modifiedAfter and modifiedBefore as a closed range', async () => {
+		const inRange = makeTFile({path: 'a.md', mtime: 1500});
+		const tooOld = makeTFile({path: 'b.md', mtime: 500});
+		const tooNew = makeTFile({path: 'c.md', mtime: 5000});
+		const app = makeApp({markdownFiles: [inRange, tooOld, tooNew]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+			filter: {modifiedAfter: 1000, modifiedBefore: 2000},
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['a.md']);
+	});
+
+	it('byName applies createdAfter on ctime independently of mtime', async () => {
+		const newish = makeTFile({path: 'a.md', ctime: 2000, mtime: 0});
+		const oldish = makeTFile({path: 'b.md', ctime: 100, mtime: 9999});
+		const app = makeApp({markdownFiles: [newish, oldish]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+			filter: {createdAfter: 1000},
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['a.md']);
+	});
+
+	it('byFrontmatter AND-combines time bounds with frontmatter match', async () => {
+		const fileA = makeTFile({path: 'a.md', mtime: 2000});
+		const fileB = makeTFile({path: 'b.md', mtime: 2000});
+		const fileC = makeTFile({path: 'c.md', mtime: 100});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {status: 'active'}}],
+			[fileB, {frontmatter: {status: 'archived'}}],
+			[fileC, {frontmatter: {status: 'active'}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB, fileC], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byFrontmatter',
+			query: 'status=active',
+			filter: {modifiedAfter: 1000},
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['a.md']);
+	});
+
+	it('listDir drops folder items when any time bound is set', async () => {
+		const fresh = makeMockFile('inbox/a.md', {mtime: 2000});
+		const stale = makeMockFile('inbox/b.md', {mtime: 100});
+		const subFolder = makeMockFolder('inbox/sub', []);
+		const inbox = makeMockFolder('inbox', [fresh, stale, subFolder]);
+		const root = makeMockFolder('', [inbox]);
+		const app = makeAppWithTree(root);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'inbox',
+			filter: {modifiedAfter: 1000},
+		})));
+
+		expect(result.items.map((i) => i.path).sort()).toEqual(['inbox/a.md']);
+		expect(result.items.every((i) => i.type === 'file')).toBe(true);
+	});
+
+	it('listDir keeps folder items when only path filter is set', async () => {
+		const file = makeMockFile('inbox/a.md');
+		const subFolder = makeMockFolder('inbox/sub', []);
+		const inbox = makeMockFolder('inbox', [file, subFolder]);
+		const root = makeMockFolder('', [inbox]);
+		const app = makeAppWithTree(root);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir',
+			path: 'inbox',
+			filter: {path: 'inbox/'},
+		})));
+
+		const types = result.items.map((i) => i.type).sort();
+		expect(types).toContain('folder');
+		expect(types).toContain('file');
+	});
+
+	it('byContent applies time bounds after content match', async () => {
+		const fresh = makeTFile({path: 'a.md', mtime: 2000});
+		const stale = makeTFile({path: 'b.md', mtime: 100});
+		const app = makeApp({
+			markdownFiles: [fresh, stale],
+			readFile: new Map([
+				[fresh, 'needle in haystack'],
+				[stale, 'needle in haystack'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byContent',
+			query: 'needle',
+			filter: {modifiedAfter: 1000},
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['a.md']);
+	});
+
+	it('time bound that excludes everything returns empty items', async () => {
+		const fileA = makeTFile({path: 'a.md', mtime: 100});
+		const fileB = makeTFile({path: 'b.md', mtime: 200});
+		const app = makeApp({markdownFiles: [fileA, fileB]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+			filter: {modifiedAfter: 999999},
+		})));
+
+		expect(result.items).toEqual([]);
+	});
+
+	it('no time filter behaves identically to before', async () => {
+		const fileA = makeTFile({path: 'a.md', mtime: 100});
+		const fileB = makeTFile({path: 'b.md', mtime: 200});
+		const app = makeApp({markdownFiles: [fileA, fileB]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '*',
+		})));
+
+		expect(result.items.map((i) => i.path).sort()).toEqual(['a.md', 'b.md']);
+	});
+});

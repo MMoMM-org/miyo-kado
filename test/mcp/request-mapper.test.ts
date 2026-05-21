@@ -525,6 +525,66 @@ describe('mapSearchRequest — filter parsing', () => {
 
 		expect(result.filter).toBeUndefined();
 	});
+
+	it('filter.modifiedAfter accepts a non-negative integer (Unix ms)', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {modifiedAfter: 1747000000000}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.modifiedAfter).toBe(1747000000000);
+	});
+
+	it('filter.modifiedAfter accepts zero (epoch)', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {modifiedAfter: 0}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.modifiedAfter).toBe(0);
+	});
+
+	it('filter with all four time bounds passes through', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {
+			modifiedAfter: 1000,
+			modifiedBefore: 2000,
+			createdAfter: 500,
+			createdBefore: 3000,
+		}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter).toMatchObject({
+			modifiedAfter: 1000,
+			modifiedBefore: 2000,
+			createdAfter: 500,
+			createdBefore: 3000,
+		});
+	});
+
+	it('filter.modifiedAfter as non-number → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {modifiedAfter: '1747000000000'}}), KEY_ID))
+			.toThrow(/filter\.modifiedAfter.*non-negative finite/);
+	});
+
+	it('filter.modifiedAfter negative → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {modifiedAfter: -1}}), KEY_ID))
+			.toThrow(/filter\.modifiedAfter.*non-negative finite/);
+	});
+
+	it('filter.createdBefore not finite → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {createdBefore: Infinity}}), KEY_ID))
+			.toThrow(/filter\.createdBefore.*non-negative finite/);
+	});
+
+	it('filter.modifiedAfter > modifiedBefore → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {modifiedAfter: 2000, modifiedBefore: 1000}}), KEY_ID))
+			.toThrow(/modifiedAfter must be <= filter\.modifiedBefore/);
+	});
+
+	it('filter.createdAfter > createdBefore → throws', () => {
+		expect(() => mapSearchRequest(makeSearchArgs({filter: {createdAfter: 2000, createdBefore: 1000}}), KEY_ID))
+			.toThrow(/createdAfter must be <= filter\.createdBefore/);
+	});
+
+	it('filter.modifiedAfter combines with existing path filter', () => {
+		const result = mapSearchRequest(makeSearchArgs({filter: {path: 'inbox', modifiedAfter: 1000}}), KEY_ID) as CoreSearchRequest;
+
+		expect(result.filter?.path).toBe('inbox/');
+		expect(result.filter?.modifiedAfter).toBe(1000);
+	});
 });
 
 // ---------------------------------------------------------------------------
