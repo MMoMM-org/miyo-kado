@@ -551,7 +551,7 @@ Search the Obsidian vault. Results are scoped to the calling key's permissions a
 | `byName` | Find files by name substring or glob pattern | Yes | No |
 | `byTag` | Find files with a specific tag (exact or glob) | Yes | No |
 | `byContent` | Find files containing a substring in the note body | Yes | No |
-| `byFrontmatter` | Find files by frontmatter key=value or key-only | Yes | No |
+| `byFrontmatter` | Find files by frontmatter key=value or key-only. Supports dot-notation for nested keys (`tomo.state=pending-approval`). | Yes | No |
 | `listDir` | List contents of a folder | No | Yes |
 | `listTags` | List all permitted tags with counts | No | No |
 
@@ -575,7 +575,7 @@ The optional `filter` parameter narrows results for any operation. All filter fi
 |---|---|---|
 | `filter.path` | `string` | Folder prefix -- only items whose path starts with this value. Normalized to end with `/`. Max 512 chars. |
 | `filter.tags` | `string[]` | Tag filter -- item must carry at least one matching tag. Supports `*` and `?` glob wildcards. Ignored by `listDir`. Max 128 chars per entry. |
-| `filter.frontmatter` | `string` | Frontmatter filter -- `key=value` (match value) or `key` (key exists). Same syntax as `byFrontmatter` query. Ignored by `listDir`. |
+| `filter.frontmatter` | `string` | Frontmatter filter -- `key=value` (match value) or `key` (key exists). Dot-notation traverses nested keys (`tomo.state=pending-approval`). Same syntax as `byFrontmatter` query. Ignored by `listDir`. |
 | `filter.modifiedAfter` | `number` | Inclusive lower bound on file mtime (Unix milliseconds). Drops folder items. |
 | `filter.modifiedBefore` | `number` | Inclusive upper bound on file mtime (Unix milliseconds). Drops folder items. |
 | `filter.createdAfter` | `number` | Inclusive lower bound on file ctime (Unix milliseconds). Drops folder items. |
@@ -641,7 +641,7 @@ The optional `filter` parameter narrows results for any operation. All filter fi
 | `byName` | Substring or glob with `*` and `?` wildcards | `"meeting"`, `"2026-03-*"`, `"*.canvas"` |
 | `byTag` | Exact tag or glob pattern (include `#`) | `"#project"`, `"#project/*"` |
 | `byContent` | Substring search in note body | `"TODO"`, `"implementation plan"` |
-| `byFrontmatter` | `key=value` pair or key-only | `"status=active"`, `"tags"` |
+| `byFrontmatter` | `key=value` pair or key-only. Dot-notation traverses nested keys. | `"status=active"`, `"tags"`, `"tomo.state=pending-approval"` |
 | `listDir` | Not used | N/A |
 | `listTags` | Not used | N/A |
 
