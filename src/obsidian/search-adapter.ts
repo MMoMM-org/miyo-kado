@@ -358,10 +358,41 @@ function byFrontmatter(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 	const value = eqIndex === -1 ? null : query.slice(eqIndex + 1).toLowerCase();
 	return app.vault.getMarkdownFiles().filter((f) => {
 		const fm = app.metadataCache.getFileCache(f)?.frontmatter;
-		if (!fm || !(key in fm)) return false;
+		const resolved = resolveFrontmatterPath(fm, key);
+		if (!resolved.found) return false;
 		if (value === null) return true;
-		return frontmatterValueMatches(fm[key], value);
+		return frontmatterValueMatches(resolved.value, value);
 	}).map(mapFileToItem);
+}
+
+/**
+ * Resolves a dot-separated key path against a frontmatter object.
+ *
+ * Obsidian's metadataCache preserves nested YAML maps as nested objects, so
+ * `tomo.state` against `{tomo: {state: 'x'}}` traverses one level deep.
+ * A literal flat key wins if it exists (no current YAML path produces a
+ * top-level key with a dot in its name, but the guard keeps behavior
+ * predictable if one ever appears).
+ */
+function resolveFrontmatterPath(fm: Record<string, unknown> | undefined | null, path: string): {found: boolean; value: unknown} {
+	if (!fm) return {found: false, value: undefined};
+	if (Object.prototype.hasOwnProperty.call(fm, path)) {
+		return {found: true, value: fm[path]};
+	}
+	if (!path.includes('.')) return {found: false, value: undefined};
+	const segments = path.split('.');
+	let cursor: unknown = fm;
+	for (const segment of segments) {
+		if (cursor === null || typeof cursor !== 'object' || Array.isArray(cursor)) {
+			return {found: false, value: undefined};
+		}
+		const record = cursor as Record<string, unknown>;
+		if (!Object.prototype.hasOwnProperty.call(record, segment)) {
+			return {found: false, value: undefined};
+		}
+		cursor = record[segment];
+	}
+	return {found: true, value: cursor};
 }
 
 /**
@@ -407,9 +438,10 @@ function parseFrontmatterFilter(query: string): ParsedFrontmatterFilter {
 }
 
 function matchesFrontmatterFilter(fm: Record<string, unknown> | undefined, parsed: ParsedFrontmatterFilter): boolean {
-	if (!fm || !Object.prototype.hasOwnProperty.call(fm, parsed.key)) return false;
+	const resolved = resolveFrontmatterPath(fm, parsed.key);
+	if (!resolved.found) return false;
 	if (parsed.value === null) return true;
-	return frontmatterValueMatches(fm[parsed.key], parsed.value);
+	return frontmatterValueMatches(resolved.value, parsed.value);
 }
 
 function normalizeTagPatterns(patterns: string[]): string[] {

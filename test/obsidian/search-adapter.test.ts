@@ -1418,6 +1418,82 @@ describe('SearchAdapter — byFrontmatter', () => {
 
 		expect(result.items).toEqual([]);
 	});
+
+	it('dot-notation matches nested scalar value', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {tomo: {state: 'pending-approval', doc_type: 'suggestions'}}}],
+			[fileB, {frontmatter: {tomo: {state: 'approved'}}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state=pending-approval'})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('dot-notation key-only matches when nested key exists', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map([
+			[fileA, {frontmatter: {tomo: {state: 'pending-approval'}}}],
+			[fileB, {frontmatter: {tomo: {other: 'x'}}}],
+		]);
+		const app = makeApp({markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state'})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('dot-notation returns empty when parent key missing', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {status: 'active'}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state=pending-approval'})));
+
+		expect(result.items).toEqual([]);
+	});
+
+	it('dot-notation returns empty when parent is scalar (not an object)', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tomo: 'just-a-string'}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state'})));
+
+		expect(result.items).toEqual([]);
+	});
+
+	it('dot-notation traverses two levels deep', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {a: {b: {c: 'deep'}}}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'a.b.c=deep'})));
+
+		expect(result.items).toHaveLength(1);
+	});
+
+	it('dot-notation matches array member at nested path', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const cacheMap = new Map([[file, {frontmatter: {tomo: {tags: ['finance', 'planning']}}}]]);
+		const app = makeApp({markdownFiles: [file], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.tags=planning'})));
+
+		expect(result.items).toHaveLength(1);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -2337,6 +2413,26 @@ describe('SearchAdapter — filter.frontmatter', () => {
 			operation: 'byName',
 			query: '.md',
 			filter: {frontmatter: 'status'},
+		})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].path).toBe('notes/a.md');
+	});
+
+	it('byName with filter.frontmatter dot-notation traverses nested keys', async () => {
+		const fileA = makeTFile({path: 'notes/a.md'});
+		const fileB = makeTFile({path: 'notes/b.md'});
+		const cacheMap = new Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>}>([
+			[fileA, {frontmatter: {tomo: {state: 'pending-approval'}}}],
+			[fileB, {frontmatter: {tomo: {state: 'approved'}}}],
+		]);
+		const app = makeApp({allFiles: [fileA, fileB], markdownFiles: [fileA, fileB], cacheMap});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName',
+			query: '.md',
+			filter: {frontmatter: 'tomo.state=pending-approval'},
 		})));
 
 		expect(result.items).toHaveLength(1);
