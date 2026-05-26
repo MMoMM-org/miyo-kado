@@ -1,3 +1,10 @@
+## [0.11.1](https://github.com/MMoMM-org/miyo-kado/compare/0.11.0...0.11.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* **search:** byFrontmatter dot-notation for nested YAML keys ([#55](https://github.com/MMoMM-org/miyo-kado/issues/55)) ([05b1202](https://github.com/MMoMM-org/miyo-kado/commit/05b1202f81ed2e273f7bd6a66eab999cb1a86a23))
+
 # [0.11.0](https://github.com/MMoMM-org/miyo-kado/compare/0.10.1...0.11.0) (2026-05-21)
 
 
