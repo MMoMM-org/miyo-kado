@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: 2.1.0
-# tcs-git-helpers-bundle: h1
+# tcs-git-helpers: v2.2.2
+# tcs-git-helpers-bundle: h2
 # post-merge — tcs-git-helpers repo-side stale-branch surfacing hook
 #
 # Runs after `git pull` or `git merge`. Queries GitHub for merged PRs whose

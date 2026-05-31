@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: 2.1.0
-# tcs-git-helpers-bundle: h1
+# tcs-git-helpers: v2.2.2
+# tcs-git-helpers-bundle: h2
 # commit-msg — tcs-git-helpers repo-side Conventional Commits enforcement hook
 #
 # Validates commit message subject in two steps:
