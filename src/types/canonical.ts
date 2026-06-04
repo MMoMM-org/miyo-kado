@@ -28,7 +28,7 @@ export type DeleteDataType = 'note' | 'frontmatter' | 'file';
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
 /** Supported search operation identifiers for CoreSearchRequest. */
-export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags' | 'byContent' | 'byFrontmatter';
+export type SearchOperation = 'byTag' | 'byName' | 'listDir' | 'listTags' | 'byContent' | 'byFrontmatter' | 'listNotes';
 
 // ============================================================
 // Core Requests
@@ -95,12 +95,18 @@ export interface CoreSearchRequest {
 	apiKeyId: string;
 	operation: SearchOperation;
 	query?: string;
-	/** Folder path for listDir only. */
+	/** Folder path — walk root for listDir and listNotes. */
 	path?: string;
 	cursor?: string;
 	limit?: number;
 	depth?: number;
 	filter?: SearchFilter;
+	/**
+	 * listNotes projection: which body-derived enrichments to include per item.
+	 * Any of 'links', 'headings', 'tags'. Omitted ⇒ none (base stat item only).
+	 * Ignored by other operations.
+	 */
+	fields?: string[];
 	/** Glob patterns for file-level scope filtering (set by tools layer from key config). */
 	scopePatterns?: string[];
 	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */
@@ -195,6 +201,19 @@ export interface CoreWriteResult {
 	modified: number;
 }
 
+/** A single outlink target as written in a note body. `kind` distinguishes `[[x]]` from `![[x]]`. */
+export interface CoreLinkRef {
+	/** Raw link target as written (e.g. `Folder/Note`, `Note#heading`). Never resolved to a path. */
+	target: string;
+	kind: 'link' | 'embed';
+}
+
+/** A single heading from a note's outline. */
+export interface CoreHeadingRef {
+	heading: string;
+	level: number;
+}
+
 /** A single item in a search result set. */
 export interface CoreSearchItem {
 	path: string;
@@ -206,6 +225,14 @@ export interface CoreSearchItem {
 	frontmatter?: Record<string, unknown>;
 	type?: 'file' | 'folder';
 	childCount?: number;
+	/**
+	 * Outlinks (`cache.links` + `cache.embeds`), raw targets only. Populated by
+	 * listNotes when 'links' is in `fields`. Targets are echoed verbatim and may
+	 * point outside the key's scope — they are source-note content, never resolved.
+	 */
+	links?: CoreLinkRef[];
+	/** Heading outline. Populated by listNotes when 'headings' is in `fields`. */
+	headings?: CoreHeadingRef[];
 }
 
 /** Paginated search result with optional cursor for the next page. */
@@ -468,7 +495,7 @@ export function isCoreOpenNotesRequest(req: {kind?: unknown}): req is CoreOpenNo
 // ============================================================
 
 const READ_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']);
-const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']);
+const SEARCH_OPS = new Set<string>(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter', 'listNotes']);
 
 function isReadDataType(value: string): boolean {
 	return READ_DATA_TYPES.has(value);

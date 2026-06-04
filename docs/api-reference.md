@@ -554,17 +554,19 @@ Search the Obsidian vault. Results are scoped to the calling key's permissions a
 | `byFrontmatter` | Find files by frontmatter key=value or key-only. Supports dot-notation for nested keys (`tomo.state=pending-approval`). | Yes | No |
 | `listDir` | List contents of a folder | No | Yes |
 | `listTags` | List all permitted tags with counts | No | No |
+| `listNotes` | List markdown notes under a folder (notes only, no folders), with an optional `fields` projection of body-derived metadata (outlinks, headings, tags) sourced from the metadata cache without reading note bodies | No | No |
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | `"byName" \| "byTag" \| "byContent" \| "byFrontmatter" \| "listDir" \| "listTags"` | Yes | Search operation type |
-| `query` | `string` | Conditional | Search query (required except for `listDir` and `listTags`) |
-| `path` | `string` | Conditional | Folder path for `listDir` only. `"/"` is the vault root. |
+| `operation` | `"byName" \| "byTag" \| "byContent" \| "byFrontmatter" \| "listDir" \| "listTags" \| "listNotes"` | Yes | Search operation type |
+| `query` | `string` | Conditional | Search query (required except for `listDir`, `listTags`, and `listNotes`) |
+| `path` | `string` | Conditional | Folder walk root for `listDir` and `listNotes`. `"/"` is the vault root. |
 | `cursor` | `string` | No | Pagination cursor from a previous response |
 | `limit` | `integer` | No | Items per page. Default: 50, min: 1, max: 500 |
-| `depth` | `integer` | No | Walk depth for `listDir`. Omit for unlimited. `depth=1` returns direct children only. |
+| `depth` | `integer` | No | Walk depth for `listDir` and `listNotes`. Omit for unlimited. `depth=1` returns direct children only. |
+| `fields` | `string[]` | No | `listNotes` projection -- any of `"links"`, `"headings"`, `"tags"`. Omit for none (path + timestamps only). Ignored by other operations. |
 | `filter` | `object` | No | Universal cross-operation filter (see below) |
 
 ### Filter Object
@@ -975,6 +977,65 @@ Files and folders whose name starts with `.` (e.g., `.obsidian/`, `.trash/`) are
 - **`"/"` is the canonical vault-root marker.** Passing `path: "/"` lists the vault root. Omitting `path` continues to work and is equivalent. Empty string `""` is now rejected. Note: `"/"` is a *listDir path parameter*, not a scope pattern. To grant full vault access in the security config, use `**`.
 - **File-level scope filtering.** Both files and folders are now filtered by the key's scope patterns. Previously only folders were scope-checked during directory walks; files at the walk root could appear regardless of scope.
 - **Sort order changed.** Folders appear before files in the response. Within each group items are sorted alphabetically using locale-independent comparison.
+
+#### listNotes
+
+`listNotes` is a notes-only sibling of `listDir`, built for bulk metadata indexing: it returns every markdown note under a folder (no folders, no non-`.md` files) and can attach an opt-in projection of body-derived metadata sourced from Obsidian's metadata cache — **without reading note bodies**. This lets a client index outlinks, headings, and tags across many notes in one paginated call instead of reading each note's body.
+
+**Parameters** (in addition to the common `cursor`, `limit`):
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `path` | `string` | No | Walk root. `"/"` (or omitted) is the vault root. Trailing slashes accepted. Non-existent paths return `NOT_FOUND`; paths resolving to a file return `VALIDATION_ERROR`. |
+| `depth` | `integer` | No | Walk depth. `depth: 1` returns only direct-child notes; omit for unlimited recursion. Same validation as `listDir`. |
+| `fields` | `string[]` | No | Which body-derived enrichments to include per note: any of `"links"`, `"headings"`, `"tags"`. Omit for none (base item only). |
+| `filter` | `object` | No | The universal filter applies fully (`filter.tags`, `filter.frontmatter`, time bounds, `filter.path`) — e.g. all notes under `Atlas/` carrying tag `Y`. |
+
+**Response items** carry the base fields (`path`, `name`, `created`, `modified`, `size`) plus, when requested via `fields`:
+
+| Field | Type | Description |
+|---|---|---|
+| `links` | `{ target: string, kind: 'link' \| 'embed' }[]` | Outlinks. Folds `[[wikilinks]]` (`kind: 'link'`) and `![[embeds]]` (`kind: 'embed'`) into one list. `target` is the raw written string. |
+| `headings` | `{ heading: string, level: number }[]` | Heading outline (H1 = level 1, etc.). |
+| `tags` | `string[]` | Inline + frontmatter tags, `#`-prefixed and deduplicated. |
+
+A note with no metadata-cache entry yet (unindexed) yields empty arrays for the requested fields, not an error.
+
+**Disclosure model.** Link targets and a note's own tags are returned **raw, including targets that point outside the key's scope**. The disclosure boundary is the *source* note: a link target is literal text in the body of an in-scope note the key may already read via `kado-read operation="note"`, so returning it as structured data grants no new access. The server reads the metadata cache only for in-scope source notes and never resolves a target to its file (no target mtime/existence, no `resolvedLinks`). `filter.tags` selection is still validated against the key's allowed tags.
+
+**Permission.** Like all search operations, `listNotes` requires `note.read`; results are clipped to the key's scope patterns.
+
+```json
+// Request arguments — index every note under Atlas/ with its outlinks, headings, and tags
+{
+  "operation": "listNotes",
+  "path": "Atlas",
+  "fields": ["links", "headings", "tags"]
+}
+
+// Response content (one item shown)
+{
+  "items": [
+    {
+      "path": "Atlas/202 Notes/topic-modelling.md",
+      "name": "topic-modelling.md",
+      "created": 1717488000000,
+      "modified": 1717500000000,
+      "size": 1843,
+      "links": [
+        { "target": "Atlas/202 Notes/latent-dirichlet", "kind": "link" },
+        { "target": "diagram.excalidraw", "kind": "embed" }
+      ],
+      "headings": [
+        { "heading": "Topic modelling", "level": 1 },
+        { "heading": "Approaches", "level": 2 }
+      ],
+      "tags": ["#nlp", "#method/unsupervised"]
+    }
+  ],
+  "total": 1
+}
+```
 
 **List tags:**
 

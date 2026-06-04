@@ -163,7 +163,7 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 
 /** Ensures directory paths end with '/' for consistent prefix matching. */
 function normalizeDirPath(path: string, operation: string): string {
-	if (operation !== 'listDir') return path;
+	if (operation !== 'listDir' && operation !== 'listNotes') return path;
 	return path.endsWith('/') ? path : path + '/';
 }
 
@@ -235,13 +235,19 @@ export function mapSearchRequest(args: Args, keyId: string): CoreSearchRequest {
 		result.depth = d;
 	}
 
-	if (typeof args['path'] === 'string' && operation === 'listDir') {
+	if (typeof args['path'] === 'string' && (operation === 'listDir' || operation === 'listNotes')) {
 		if (args['path'] === '') {
 			throw new Error("mapSearchRequest: path must not be empty. Use '/' to list the vault root.");
 		}
 		if (args['path'] !== '/') {
 			result.path = normalizeDirPath(args['path'], operation);
 		}
+	}
+
+	// listNotes projection: which body-derived enrichments to include per item.
+	if (Array.isArray(args['fields']) && args['fields'].length > 0) {
+		const fields = args['fields'].filter((v): v is string => typeof v === 'string' && v.length > 0);
+		if (fields.length > 0) result.fields = fields;
 	}
 
 	const rawFilter = args['filter'];
