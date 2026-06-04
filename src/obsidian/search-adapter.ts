@@ -9,7 +9,7 @@
 import {TFile, TFolder} from 'obsidian';
 import type {App} from 'obsidian';
 import type {SearchAdapter} from '../core/operation-router';
-import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError, SearchFilter} from '../types/canonical';
+import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError, SearchFilter, CoreLinkRef, CoreHeadingRef} from '../types/canonical';
 import {matchGlob, dirCouldContainMatches, pathMatchesPatterns} from '../core/glob-match';
 import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
 
@@ -277,6 +277,88 @@ function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreE
 	}
 	const items: CoreSearchItem[] = [];
 	walk(resolved.folder, 0, request.depth, request.scopePatterns, items);
+	items.sort(compareListDirItems);
+	return items;
+}
+
+// -----------------------------------------------------------------------
+// listNotes — notes-only flat listing with opt-in body-derived projection
+// -----------------------------------------------------------------------
+
+/** True for markdown notes — listNotes is notes-only (links/headings exist only for `.md`). */
+function isMarkdownPath(path: string): boolean {
+	return path.toLowerCase().endsWith('.md');
+}
+
+/**
+ * Maps a note's `metadataCache` outlinks to raw targets. Folds embeds (`![[x]]`,
+ * cache.embeds) into the link list with kind='embed'. Targets are echoed verbatim
+ * (`.link`) and never resolved — see the source-note disclosure invariant.
+ */
+function readLinks(cache: {links?: {link: string}[]; embeds?: {link: string}[]} | null): CoreLinkRef[] {
+	if (!cache) return [];
+	const out: CoreLinkRef[] = [];
+	if (cache.links) for (const l of cache.links) out.push({target: l.link, kind: 'link'});
+	if (cache.embeds) for (const e of cache.embeds) out.push({target: e.link, kind: 'embed'});
+	return out;
+}
+
+/** Maps a note's `metadataCache` heading outline to {heading, level}. */
+function readHeadings(cache: {headings?: {heading: string; level: number}[]} | null): CoreHeadingRef[] {
+	if (!cache?.headings) return [];
+	return cache.headings.map((h) => ({heading: h.heading, level: h.level}));
+}
+
+/**
+ * Lists notes (markdown only) under a walk root, with an opt-in body-derived
+ * projection (`request.fields`: 'links' | 'headings' | 'tags') sourced from
+ * `metadataCache` — no body read. Selection mirrors listDir (path walk root +
+ * depth + scope clipping); folders are dropped. Enrichment reads getFileCache
+ * only for these in-scope source notes; link targets are returned raw and may
+ * point outside the key's scope (they are source-note content, never resolved).
+ */
+function listNotes(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreError {
+	const resolved = resolveFolder(app, request.path);
+	if (resolved.kind === 'missing') {
+		return {code: 'NOT_FOUND', message: `Path not found: ${request.path ?? '/'}`};
+	}
+	if (resolved.kind === 'file') {
+		return {
+			code: 'VALIDATION_ERROR',
+			message: `listNotes target must be a folder, got file: ${request.path}`,
+		};
+	}
+
+	const walked: CoreSearchItem[] = [];
+	walk(resolved.folder, 0, request.depth, request.scopePatterns, walked);
+
+	const fields = new Set(request.fields ?? []);
+	const wantLinks = fields.has('links');
+	const wantHeadings = fields.has('headings');
+	const wantTags = fields.has('tags');
+	const wantAny = wantLinks || wantHeadings || wantTags;
+
+	const items: CoreSearchItem[] = [];
+	for (const item of walked) {
+		if (item.type !== 'file' || !isMarkdownPath(item.path)) continue;
+		// Drop the 'file'/'folder' discriminator — listNotes is notes-only, so it
+		// carries no meaning here and would just bloat the payload.
+		const note: CoreSearchItem = {
+			path: item.path,
+			name: item.name,
+			created: item.created,
+			modified: item.modified,
+			size: item.size,
+		};
+		if (wantAny) {
+			const file = app.vault.getAbstractFileByPath(item.path);
+			const cache = file instanceof TFile ? app.metadataCache.getFileCache(file) : null;
+			if (wantLinks) note.links = readLinks(cache);
+			if (wantHeadings) note.headings = readHeadings(cache);
+			if (wantTags) note.tags = getFileTags(cache);
+		}
+		items.push(note);
+	}
 	items.sort(compareListDirItems);
 	return items;
 }
@@ -574,7 +656,7 @@ export function createSearchAdapter(app: App): SearchAdapter {
 			const limit = Math.min(request.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
 			// Validate query for operations that require one
-			if (request.operation !== 'listDir' && request.operation !== 'listTags') {
+			if (request.operation !== 'listDir' && request.operation !== 'listTags' && request.operation !== 'listNotes') {
 				const err = requireQuery(request, request.operation);
 				if (err) return err;
 			}
@@ -591,6 +673,12 @@ export function createSearchAdapter(app: App): SearchAdapter {
 					const tagResult = byTag(app, request);
 					if ('code' in tagResult) return tagResult;
 					items = tagResult;
+					break;
+				}
+				case 'listNotes': {
+					const notesResult = listNotes(app, request);
+					if ('code' in notesResult) return notesResult;
+					items = notesResult;
 					break;
 				}
 				case 'byName':

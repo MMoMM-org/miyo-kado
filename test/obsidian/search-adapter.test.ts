@@ -40,10 +40,23 @@ function makeTFile(overrides: {
 	};
 }
 
+/**
+ * Mock CachedMetadata shape. Mirrors the subset of Obsidian's metadataCache the
+ * adapter reads: tags + frontmatter (byTag/byFrontmatter/listTags) and, for
+ * listNotes, links + embeds (outlinks) and headings.
+ */
+type MockCache = {
+	tags?: {tag: string}[];
+	frontmatter?: Record<string, unknown>;
+	links?: {link: string}[];
+	embeds?: {link: string}[];
+	headings?: {heading: string; level: number}[];
+} | null;
+
 function makeApp(overrides: {
 	markdownFiles?: ReturnType<typeof makeTFile>[];
 	allFiles?: ReturnType<typeof makeTFile>[];
-	cacheMap?: Map<ReturnType<typeof makeTFile>, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null>;
+	cacheMap?: Map<ReturnType<typeof makeTFile>, MockCache>;
 	readFile?: Map<ReturnType<typeof makeTFile>, string>;
 }) {
 	const markdownFiles = overrides.markdownFiles ?? [];
@@ -52,7 +65,7 @@ function makeApp(overrides: {
 	const readFile = overrides.readFile ?? new Map();
 
 	// Build path→cache lookup so getFileCache works for both plain objects and TFile instances
-	const pathCacheMap = new Map<string, {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null>();
+	const pathCacheMap = new Map<string, MockCache>();
 	for (const [file, cache] of cacheMap) pathCacheMap.set(file.path, cache);
 
 	// Build path→TFile instances for getAbstractFileByPath (instanceof TFile must work)
@@ -141,7 +154,7 @@ function makeMockFolder(path: string, children: (MockFile | MockFolder)[] = []):
  * Builds a full vault tree from nested folder spec.
  * Returns an app mock with getRoot() and getAbstractFileByPath() properly wired.
  */
-function makeAppWithTree(root: MockFolder, extraMarkdownFiles?: MockFile[]) {
+function makeAppWithTree(root: MockFolder, extraMarkdownFiles?: MockFile[], cacheByPath?: Map<string, MockCache>) {
 	const pathIndex = new Map<string, MockFile | MockFolder>();
 
 	function indexNode(node: MockFile | MockFolder): void {
@@ -166,7 +179,7 @@ function makeAppWithTree(root: MockFolder, extraMarkdownFiles?: MockFile[]) {
 			read: vi.fn(async () => ''),
 		},
 		metadataCache: {
-			getFileCache: vi.fn(() => null),
+			getFileCache: vi.fn((file: {path: string}) => cacheByPath?.get(file.path) ?? null),
 		},
 	};
 }
@@ -2848,5 +2861,231 @@ describe('SearchAdapter — time-range filters', () => {
 		})));
 
 		expect(result.items.map((i) => i.path).sort()).toEqual(['a.md', 'b.md']);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// listNotes — notes-only flat listing with opt-in body-derived projection
+// ---------------------------------------------------------------------------
+//
+// Atlas/
+//   note-a.md   links [[Atlas/note-b]] + [[Secret/private]] (out-of-scope target),
+//               embed ![[img.png]]; headings H1 "Alpha", H2 "Sub";
+//               tags inline #x + frontmatter [y]
+//   note-b.md   (unindexed — getFileCache → null → empty arrays)
+//   img.png     (non-markdown — excluded)
+//   Public/
+//     pub.md    tag #z
+// Secret/
+//   private.md  (out-of-scope source note — must never be enumerated under Atlas)
+
+function buildNotesTree() {
+	const noteA = makeMockFile('Atlas/note-a.md', {ctime: 100, mtime: 200, size: 10});
+	const noteB = makeMockFile('Atlas/note-b.md', {ctime: 300, mtime: 400, size: 20});
+	const img = makeMockFile('Atlas/img.png');
+	const pub = makeMockFile('Atlas/Public/pub.md');
+	const Public = makeMockFolder('Atlas/Public', [pub]);
+	const Atlas = makeMockFolder('Atlas', [noteA, noteB, img, Public]);
+
+	const priv = makeMockFile('Secret/private.md');
+	const Secret = makeMockFolder('Secret', [priv]);
+
+	const vaultRoot = makeMockFolder('', [Atlas, Secret]);
+
+	const cacheByPath = new Map<string, MockCache>([
+		['Atlas/note-a.md', {
+			links: [{link: 'Atlas/note-b'}, {link: 'Secret/private'}],
+			embeds: [{link: 'img.png'}],
+			headings: [{heading: 'Alpha', level: 1}, {heading: 'Sub', level: 2}],
+			tags: [{tag: '#x'}],
+			frontmatter: {tags: ['y']},
+		}],
+		['Atlas/note-b.md', null],
+		['Atlas/Public/pub.md', {tags: [{tag: '#z'}]}],
+		['Secret/private.md', {tags: [{tag: '#secret'}]}],
+	]);
+
+	return {vaultRoot, cacheByPath};
+}
+
+describe('SearchAdapter — listNotes', () => {
+	it('returns markdown notes only — no folders, no non-md files', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+		})));
+
+		expect(result.items.map((i) => i.path).sort()).toEqual([
+			'Atlas/Public/pub.md', 'Atlas/note-a.md', 'Atlas/note-b.md',
+		]);
+		// Notes-only: no folder items, no non-markdown, and no type discriminator at all.
+		expect(result.items.every((i) => i.type === undefined)).toBe(true);
+		expect(result.items.some((i) => i.path.endsWith('.png'))).toBe(false);
+	});
+
+	it('depth:1 returns only direct-child notes (no recursion into subfolders)', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			depth: 1,
+		})));
+
+		expect(result.items.map((i) => i.path).sort()).toEqual([
+			'Atlas/note-a.md', 'Atlas/note-b.md',
+		]);
+	});
+
+	it('returns NOT_FOUND for a missing path', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'listNotes', path: 'Nope'}));
+		expect((result as CoreError).code).toBe('NOT_FOUND');
+	});
+
+	it('returns VALIDATION_ERROR when path points to a file', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = await adapter.search(makeSearchRequest({operation: 'listNotes', path: 'Atlas/note-a.md'}));
+		expect((result as CoreError).code).toBe('VALIDATION_ERROR');
+	});
+
+	it('fields:[links] folds embeds in with kind and returns out-of-scope targets raw', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			fields: ['links'],
+		})));
+
+		const a = result.items.find((i) => i.path === 'Atlas/note-a.md');
+		expect(a?.links).toEqual([
+			{target: 'Atlas/note-b', kind: 'link'},
+			{target: 'Secret/private', kind: 'link'},
+			{target: 'img.png', kind: 'embed'},
+		]);
+		// Disclosure invariant: the out-of-scope target is echoed raw (source-note content).
+		expect(a?.links?.some((l) => l.target === 'Secret/private')).toBe(true);
+	});
+
+	it('fields:[headings] returns the {heading, level} outline', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			fields: ['headings'],
+		})));
+
+		const a = result.items.find((i) => i.path === 'Atlas/note-a.md');
+		expect(a?.headings).toEqual([{heading: 'Alpha', level: 1}, {heading: 'Sub', level: 2}]);
+	});
+
+	it('fields:[tags] returns the inline + frontmatter union', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			fields: ['tags'],
+		})));
+
+		const a = result.items.find((i) => i.path === 'Atlas/note-a.md');
+		expect(a?.tags).toEqual(['#x', '#y']);
+	});
+
+	it('omitted fields ⇒ items carry no links/headings/tags projection', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+		})));
+
+		const a = result.items.find((i) => i.path === 'Atlas/note-a.md');
+		expect(a?.links).toBeUndefined();
+		expect(a?.headings).toBeUndefined();
+		expect(a?.tags).toBeUndefined();
+	});
+
+	it('unindexed note (null cache) yields empty arrays, not an error', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			fields: ['links', 'headings', 'tags'],
+		})));
+
+		const b = result.items.find((i) => i.path === 'Atlas/note-b.md');
+		expect(b?.links).toEqual([]);
+		expect(b?.headings).toEqual([]);
+		expect(b?.tags).toEqual([]);
+	});
+
+	it('scope clips to in-scope source notes — out-of-scope sources are never enumerated', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			scopePatterns: ['Atlas/Public/*'],
+			fields: ['links'],
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['Atlas/Public/pub.md']);
+	});
+
+	it('filter.tags selects within the walk', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			filter: {tags: ['z']},
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['Atlas/Public/pub.md']);
+	});
+
+	it('filter.tags is enforced against allowedTags — a denied tag yields no matches', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes',
+			path: 'Atlas',
+			filter: {tags: ['z']},
+			allowedTags: ['x'],
+		})));
+
+		expect(result.items).toHaveLength(0);
 	});
 });

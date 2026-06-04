@@ -17,6 +17,22 @@ const outdir = prod ? "build" : ".";
 const VAULT_PLUGIN_DIR = "test/MiYo-Kado/.obsidian/plugins/miyo-kado";
 
 /**
+ * Writes manifest.json into `targetDir` with a `-dev.<timestamp>` suffix on the
+ * version, so Obsidian's plugin loader + hot-reload treat every build as a fresh
+ * version (defeats stale-module caching — the same convention the other MiYo
+ * plugins use). Only the deployed test-vault copy is suffixed; the repo-level
+ * and build/ manifest.json stay on the canonical semantic-release version so
+ * GitHub Releases / the Community Plugin manifest remain clean.
+ * Stamp format: "0.11.1-dev.20260604-1021" (UTC, minute resolution).
+ */
+function writeDevManifest(targetDir) {
+	const manifest = JSON.parse(readFileSync("manifest.json", "utf-8"));
+	const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+	manifest.version = `${manifest.version}-dev.${stamp}`;
+	writeFileSync(`${targetDir}/manifest.json`, JSON.stringify(manifest, null, "\t") + "\n");
+}
+
+/**
  * Bumps the patch version in manifest.json and package.json.
  * Only runs on production builds (npm run build).
  */
@@ -52,12 +68,15 @@ const copyAssets = {
 				copyFileSync("manifest.json", "build/manifest.json");
 				copyFileSync("styles.css", "build/styles.css");
 
-				// Copy to test vault (replaces old symlinks)
+				// Copy to test vault (replaces old symlinks). The test-vault
+				// manifest gets a -dev.<timestamp> suffix (writeDevManifest) so
+				// the running build is identifiable and hot-reload never serves a
+				// stale module; build/ + repo manifest.json stay canonical.
 				if (existsSync(VAULT_PLUGIN_DIR)) {
 					copyFileSync(`${outdir}/main.js`, `${VAULT_PLUGIN_DIR}/main.js`);
-					copyFileSync("manifest.json", `${VAULT_PLUGIN_DIR}/manifest.json`);
+					writeDevManifest(VAULT_PLUGIN_DIR);
 					copyFileSync("styles.css", `${VAULT_PLUGIN_DIR}/styles.css`);
-					console.log(`  Copied build to ${VAULT_PLUGIN_DIR}/`);
+					console.log(`  Copied build to ${VAULT_PLUGIN_DIR}/ (manifest stamped)`);
 				}
 			}
 		});

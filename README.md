@@ -29,7 +29,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Two-tier access control** -- global security scope defines what is eligible; per-key scope defines what is permitted
 - **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
-- **Six search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags
+- **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)

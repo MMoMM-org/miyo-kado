@@ -93,12 +93,13 @@ export const kadoOpenNotesShape = {
 };
 
 export const kadoSearchShape = {
-	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter']).describe('Search operation type'),
-	query: z.string().optional().describe('Search query. Required for all operations except listDir and listTags. Supports * and ? glob wildcards for byName and byTag.'),
-	path: z.string().optional().describe('Folder path for listDir only. "/" is the canonical vault-root marker; trailing slashes are accepted; non-existent paths return NOT_FOUND; paths pointing to a file return VALIDATION_ERROR; empty string is rejected.'),
+	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter', 'listNotes']).describe('Search operation type'),
+	query: z.string().optional().describe('Search query. Required for all operations except listDir, listTags, and listNotes. Supports * and ? glob wildcards for byName and byTag.'),
+	path: z.string().optional().describe('Folder walk root for listDir and listNotes. "/" is the canonical vault-root marker; trailing slashes are accepted; non-existent paths return NOT_FOUND; paths pointing to a file return VALIDATION_ERROR; empty string is rejected.'),
 	cursor: z.string().optional().describe('Pagination cursor from a previous response'),
 	limit: z.number().int().min(1).max(500).optional().describe('Max items per page (default 50, max 500)'),
-	depth: z.number().int().positive().optional().describe('Walk depth for listDir. Omit for unlimited recursion. depth=1 returns only direct children. Invalid values (0, negative, non-integer) return VALIDATION_ERROR.'),
+	depth: z.number().int().positive().optional().describe('Walk depth for listDir and listNotes. Omit for unlimited recursion. depth=1 returns only direct children. Invalid values (0, negative, non-integer) return VALIDATION_ERROR.'),
+	fields: z.array(z.enum(['links', 'headings', 'tags'])).optional().describe('listNotes projection — body-derived metadata to include per note, sourced from the metadata cache (no body read): links (outlinks, raw [[target]] and ![[embed]] strings as written — may point outside this key\'s scope, they are source-note content and are never resolved), headings ({heading, level} outline), tags (inline + frontmatter, deduped). Omit for none (path + timestamps only). Ignored by other operations.'),
 	filter: z.object({
 		path: z.string().optional().describe('Folder prefix filter — only items whose path starts with this value. Works with all operations.'),
 		tags: z.array(z.string()).optional().describe('Tag filter — item must carry at least one matching tag. Supports * and ? glob wildcards. Ignored by listDir.'),
@@ -117,7 +118,8 @@ export const KADO_SEARCH_TOOL_DESCRIPTION =
 	'byContent (substring in note body), ' +
 	'byFrontmatter (key=value or key-only; dot-notation traverses nested keys e.g. "tomo.state=pending-approval"), ' +
 	'listDir (folder contents with type: "file" | "folder" discriminator; folder items carry childCount; results sort folders-first then alphabetically; use depth=1 for a shallow scan of direct children only, omit depth for unlimited recursion; "/" is the canonical vault-root marker; missing paths return NOT_FOUND, file targets return VALIDATION_ERROR), ' +
-	'listTags (all permitted tags with counts). ' +
+	'listTags (all permitted tags with counts), ' +
+	'listNotes (notes-only metadata index — like listDir but markdown notes only, no folders; path + depth select the subtree, filter narrows within it; optional "fields" projection adds outlinks, headings, and tags from the metadata cache without reading note bodies). ' +
 	'Optional "filter" narrows any operation: filter.path (folder prefix), filter.tags (note must have at least one matching tag, glob-capable), filter.frontmatter (key=value or key-only; dot-notation traverses nested keys), filter.modifiedAfter / filter.modifiedBefore / filter.createdAfter / filter.createdBefore (Unix-ms time bounds, inclusive; folder items are dropped when any time bound is set). Filters are AND-combined. filter.tags and filter.frontmatter are ignored by listDir; time filters apply to listDir file items. ' +
 	'Results are scoped to this key\'s permissions and paginated (default 50, max 500). ' +
 	'Hidden entries (names starting with ".") are never returned.';

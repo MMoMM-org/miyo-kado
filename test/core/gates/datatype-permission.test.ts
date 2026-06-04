@@ -396,6 +396,26 @@ describe('dataTypePermissionGate.evaluate() — search requests', () => {
 		);
 		expect(result.allowed).toBe(false);
 	});
+
+	it('allows listNotes when note.read is granted (inherits the search note.read gate)', () => {
+		const request: CoreSearchRequest = {apiKeyId: 'kado_test-key', operation: 'listNotes'};
+		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig());
+		expect(result.allowed).toBe(true);
+	});
+
+	it('denies listNotes when note.read is not granted', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: false, update: true, delete: false},
+		};
+		const request: CoreSearchRequest = {apiKeyId: 'kado_test-key', operation: 'listNotes'};
+		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig(keyPerms));
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------

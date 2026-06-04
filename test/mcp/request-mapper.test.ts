@@ -422,6 +422,40 @@ describe('mapSearchRequest — path handling (/ and empty)', () => {
 
 		expect(result.path).toBeUndefined();
 	});
+
+	it('listNotes path: "Atlas" → result.path === "Atlas/" (same normalization as listDir)', () => {
+		const result = mapSearchRequest({operation: 'listNotes', path: 'Atlas'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.path).toBe('Atlas/');
+	});
+
+	it('listNotes path: "" → throws with /path must not be empty/', () => {
+		expect(() => mapSearchRequest({operation: 'listNotes', path: ''}, KEY_ID)).toThrow(/path must not be empty/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapSearchRequest — listNotes fields projection
+// ---------------------------------------------------------------------------
+
+describe('mapSearchRequest — fields projection', () => {
+	it('maps a fields array onto the request', () => {
+		const result = mapSearchRequest({operation: 'listNotes', fields: ['links', 'headings', 'tags']}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.fields).toEqual(['links', 'headings', 'tags']);
+	});
+
+	it('drops non-string and empty entries, omitting the key when nothing remains', () => {
+		const result = mapSearchRequest({operation: 'listNotes', fields: [1, '', null]}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.fields).toBeUndefined();
+	});
+
+	it('omits fields when not supplied', () => {
+		const result = mapSearchRequest({operation: 'listNotes'}, KEY_ID) as CoreSearchRequest;
+
+		expect(result.fields).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------

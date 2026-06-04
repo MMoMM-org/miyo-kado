@@ -3,6 +3,20 @@
 <!-- What goes here: what X means in this codebase, business rules that drive code decisions -->
 <!-- Entries that appear frequently may be promotable → run /memory-promote -->
 
+<!-- 2026-06-04 -->
+## kado-search operation='listNotes' semantics
+Notes-only flat listing with an opt-in body-derived projection, sourced entirely from `metadataCache` (no `vault.read`). Built for bulk metadata indexing (Tomo F-34: index every atomic note in one recursive call). Sibling to `listDir` but distinct: `listDir` is a directory tree (folders + files + `childCount`); `listNotes` returns markdown notes only, never folders.
+- **Selection** mirrors `listDir`: `path` is the walk root (`'/'` = vault root; omitted = root), `depth` bounds recursion (omit = unlimited, `depth=1` = direct children). Plus the universal `filter` (tags / frontmatter / time / path) narrows *within* the subtree — so "all notes under `Atlas/` with tag `Y`" is one call. `filter.tags` runs through `enforceTagPermissions` (respects the key's `allowedTags`).
+- **Markdown only** — non-`.md` files (pdf, png, `.canvas`) are excluded; folders are dropped.
+- **`fields` projection** (opt-in; omit ⇒ base stat item only): `links`, `headings`, `tags`. Each enriches per note from `getFileCache`:
+  - `links: {target, kind: 'link'|'embed'}[]` — `cache.links` (`[[x]]`) + `cache.embeds` (`![[x]]`) folded together, `target` is the raw written string.
+  - `headings: {heading, level}[]` — `cache.headings` outline.
+  - `tags: string[]` — `getFileTags` (inline + frontmatter, `#`-prefixed, deduped).
+  - Unindexed note (`getFileCache` null) ⇒ empty arrays, not an error.
+- **Permission**: a `SearchOperation`, so it inherits the search `note.read` gate (`evaluateSearchPermission`); `scopePatterns` clip results to the key's paths at walk time. No new gate branch.
+- **Disclosure boundary** (see decisions.md 2026-06-04): link targets and a note's own tags are source-note content the key may already read via `operation='note'`, so they are returned **raw, including targets outside the key's scope**. The adapter reads `getFileCache` only for in-scope source notes and never resolves targets / never uses `resolvedLinks`.
+- Implementation: `src/obsidian/search-adapter.ts` (`listNotes`, `readLinks`, `readHeadings`, reuses `walk`/`resolveFolder`/`getFileTags`). Types: `CoreSearchRequest.fields`, `CoreSearchItem.links/headings`, `CoreLinkRef`, `CoreHeadingRef`.
+
 <!-- 2026-04-15 -->
 ## kado-read operation='tags' semantics
 Returns tags of a note as `{frontmatter: string[], inline: string[], all: string[], returnedTags: 'All' | 'FrontmatterOnly'}` (JSON-stringified in the MCP response). All tags stored without the leading `#`.
