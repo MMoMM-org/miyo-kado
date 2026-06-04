@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/MMoMM-org/miyo-kado/compare/0.11.1...0.12.0) (2026-06-04)
+
+
+### Features
+
+* **search:** add listNotes operation with outlinks/headings/tags projection ([#59](https://github.com/MMoMM-org/miyo-kado/issues/59)) ([c4245a8](https://github.com/MMoMM-org/miyo-kado/commit/c4245a839c5b816cc939fe8157a7ee5abf22e056))
+
 ## [0.11.1](https://github.com/MMoMM-org/miyo-kado/compare/0.11.0...0.11.1) (2026-05-26)
 
 
