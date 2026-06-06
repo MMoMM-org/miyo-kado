@@ -49,6 +49,37 @@ Add vault folders to the security scope. Each path entry has independent CRUD pe
 
 Each data type has four permission flags: **C**reate, **R**ead, **U**pdate, **D**elete.
 
+### Permission semantics per data type
+
+Not every flag does something for every data type. The table below shows what each flag
+actually performs — `n/a` marks a flag that has no effect (see footnotes):
+
+| Data type | C (create) | R (read) | U (update) | D (delete) |
+|-----------|-----------|----------|-----------|-----------|
+| Notes | Create a new `.md` file | Read the full body (and `tags`) | Overwrite the whole body | Move the note to trash |
+| Files | Create a new binary file | Read content as base64 | Overwrite the bytes | Move the file to trash |
+| Frontmatter | `n/a` (1) | Read the YAML object | Merge keys (default) or replace the block | Remove specific keys |
+| Dataview | `n/a` (1) | Read inline fields | Replace values of **existing** fields (3) | `n/a` (2) |
+| Tags | `n/a` (4) | Read tags (4) | `n/a` (4) | `n/a` (4) |
+
+1. There is no standalone "create" for frontmatter or Dataview values. Both adapters require an
+   existing `.md` file, and any change to an existing file is classified as an **update** — so
+   adding frontmatter keys or Dataview values needs **U**, not C (frontmatter uses `merge` mode to
+   add new keys). The `create` flag for these two types is therefore inert.
+2. Deleting individual Dataview inline fields is intentionally not supported — regex-based line
+   removal is too risky for a destructive operation. Clear a value with U, or delete the whole note.
+3. Update only changes inline fields that **already exist**; Kado cannot insert a brand-new inline
+   field.
+4. `tags` is a **read-only derivative** of the note body and frontmatter — it has no CRUD flag of
+   its own. A tags read is granted by `note` **R** (returns inline *and* frontmatter tags,
+   `returnedTags="All"`) **or** `frontmatter` **R** (frontmatter tags only,
+   `returnedTags="FrontmatterOnly"`). There is no create/update/delete for tags. This is separate
+   from the tag allow-list (see [Tags](#tags) below), which only filters *which* tags are visible in
+   search results and is not a CRUD permission.
+
+Create versus update is decided by the presence of `expectedModified` on the write — see
+[API Reference -- Create vs Update Flow](api-reference.md#create-vs-update-flow).
+
 ### Path Patterns
 
 Paths in the security scope use glob-style patterns:
