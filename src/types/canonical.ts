@@ -286,7 +286,10 @@ export interface CrudFlags {
 	create: boolean;
 	read: boolean;
 	update: boolean;
-	/** Reserved for future kado-delete tool. Currently not reachable via any MCP tool. */
+	/**
+	 * Reachable via the kado-delete tool for note, file, and frontmatter (key removal).
+	 * dataview-inline-field delete is intentionally unsupported — see delete-adapter.ts.
+	 */
 	delete: boolean;
 }
 

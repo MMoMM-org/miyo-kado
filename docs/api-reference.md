@@ -1312,6 +1312,15 @@ Each path rule specifies independent Create/Read/Update/Delete flags for each da
 - `file` — binary files
 - `dataviewInlineField` — Dataview inline fields
 
+Some flags are inert because no adapter path reaches them:
+
+- `frontmatter.create` and `dataviewInlineField.create` — values are written by **updating** the
+  existing note (there is no standalone create); use `update` instead.
+- `dataviewInlineField.delete` — deleting individual inline fields is intentionally unsupported.
+
+See [Configuration Guide -- Permission semantics per data type](configuration.md#permission-semantics-per-data-type)
+for the full per-type breakdown.
+
 ### Tag Restrictions
 
 Tag-based search operations (`byTag`, `listTags`) respect the intersection of global and key-level tag lists. If neither level has tags configured, all tags are accessible. If both have tags, only the intersection is permitted.

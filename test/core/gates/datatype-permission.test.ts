@@ -344,6 +344,30 @@ describe('dataTypePermissionGate.evaluate() — write requests', () => {
 			expect(result.error.gate).toBe('datatype-permission');
 		}
 	});
+
+	it('allows a note update when only note.update is granted (no create/read)', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: false, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeWriteRequest('projects/note.md', 'note', 1700000000000),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('allows a frontmatter update when only frontmatter.update is granted (no create/read)', () => {
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			frontmatter: {create: false, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeWriteRequest('projects/note.md', 'frontmatter', 1700000000000),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
 });
 
 // ---------------------------------------------------------------------------
