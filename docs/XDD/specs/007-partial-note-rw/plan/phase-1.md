@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundations — types & pure slice helpers"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -31,7 +31,7 @@ phase: 1
 
 Establishes the type vocabulary and the pure content-math used by every later phase.
 
-- [ ] **T1.1 Canonical type extensions** `[activity: domain-modeling]` `[parallel: true]`
+- [x] **T1.1 Canonical type extensions** `[activity: domain-modeling]` `[parallel: true]`
 
   1. Prime: Read `src/types/canonical.ts` (CoreReadRequest, CoreWriteRequest, CoreFileResult, type guards) and `[ref: SDD/Application Data Models]`
   2. Test: type-level — a `CoreWriteRequest` with `notePartial` is still recognized by `isCoreWriteRequest`; `isCoreReadRequest` still holds with `partial` set; `truncated` is optional on `CoreFileResult`. Add a focused spec asserting the unions accept each valid arm and reject extra keys (compile-time + a runtime guard test).
@@ -39,7 +39,7 @@ Establishes the type vocabulary and the pure content-math used by every later ph
   4. Validate: `npm run build` clean; `npx tsc -p tsconfig.test.json` clean for touched specs; existing canonical/guard tests still pass.
   5. Success: types compile and existing guards unchanged `[ref: SDD/Application Data Models]`; backward-compat invariant preserved `[ref: PRD/Constraints]`
 
-- [ ] **T1.2 Pure slice & apply helpers** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T1.2 Pure slice & apply helpers** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read `[ref: SDD/Implementation Examples/Example 1]` and the multibyte/boundary edge cases in `[ref: PRD/Detailed Feature Specifications/Edge Cases]`
   2. Test (RED first): `test/core/partial-slice.test.ts` — `firstXChars` (limit<len → truncated; limit≥len → full, not truncated; never splits a multibyte code point); `sliceByLineRange` (inclusive 1-based; clamp past EOF; truncated reflects content outside; reject start<1 or start>end); `sliceByCharRange` (0-based exclusive end, code points; clamp; reject inverted/negative); `applyAppend` (newline join, empty body, body already ending in `\n`); `applyPrepend` (newline join)
@@ -47,6 +47,6 @@ Establishes the type vocabulary and the pure content-math used by every later ph
   4. Validate: `npx vitest run test/core/partial-slice.test.ts` green; `npx tsc -p tsconfig.test.json` clean; lint clean
   5. Success: all boundary/multibyte criteria pass `[ref: SDD/Quality Requirements/Correctness]`; helpers are Obsidian-free `[ref: SDD/ADR-7]`
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
 
   - Run `npm run build` + `npx vitest run test/core/partial-slice.test.ts` + canonical/guard specs + `npx tsc -p tsconfig.test.json`. All green, no behaviour change to existing guards.

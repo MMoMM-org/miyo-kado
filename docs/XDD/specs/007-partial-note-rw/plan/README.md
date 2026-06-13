@@ -55,7 +55,7 @@ Read before starting any phase:
 
 ## Phases
 
-- [ ] [Phase 1: Foundations — types & pure slice helpers](phase-1.md)
+- [x] [Phase 1: Foundations — types & pure slice helpers](phase-1.md)
 - [ ] [Phase 2: Gate chain — create/update discrimination & lock semantics](phase-2.md)
 - [ ] [Phase 3: Request mapping & validation boundary](phase-3.md)
 - [ ] [Phase 4: Note adapter — partial read slicing & partial write](phase-4.md)
