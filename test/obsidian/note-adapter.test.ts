@@ -569,6 +569,21 @@ describe('NoteAdapter', () => {
 				message: expect.stringContaining('Missing'),
 			});
 		});
+
+		it('throws NOT_FOUND when metadataCache returns null (unindexed file)', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('# Title\nIntro.\n## Tasks\nDo stuff.');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.read(makePartialReadRequest({mode: 'section', heading: 'Tasks'})),
+			).rejects.toMatchObject({
+				code: 'NOT_FOUND',
+				message: expect.stringContaining('Tasks'),
+			});
+		});
 	});
 
 	describe('read() — partial: section by headingPath', () => {
