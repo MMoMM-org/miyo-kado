@@ -88,7 +88,7 @@ A `mode` parameter on `kado-read` and `kado-write` for `n: "note"` that exposes 
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given a note longer than N characters, When the client reads with `mode: firstXChars` and a limit N, Then Kado returns at most the first N characters of the body and `truncated: true`.
   - [ ] Given a note shorter than or equal to N characters, When the client reads with `mode: firstXChars`, Then Kado returns the full body and `truncated: false`.
-  - [ ] Given a note containing a heading that matches the requested section, When the client reads with `mode: section`, Then Kado returns the content under that heading (down to the next heading of equal or higher level) and `truncated: false` for that slice.
+  - [ ] Given a note containing a heading that matches the requested section, When the client reads with `mode: section`, Then Kado returns the content under that heading (down to the next heading of equal or higher level), and `truncated` is `true` whenever any content exists outside the returned section (before the heading or after the section) and `false` only when the section spans the entire note body — consistent with `range`/`firstXChars` semantics.
   - [ ] Given a requested section heading that does not exist in the note, When the client reads with `mode: section`, Then Kado returns a NOT_FOUND-style error naming the missing section (not an empty success).
   - [ ] Given a note, When the client reads with `mode: range` and start/end bounds, Then Kado returns exactly the requested line- or character-range and a `truncated` flag indicating whether content outside the range exists.
   - [ ] Given a `mode: range` request whose bounds exceed the note length, When the read runs, Then Kado clamps to the available content and reports the effective bounds rather than erroring.
@@ -101,10 +101,11 @@ A `mode` parameter on `kado-read` and `kado-write` for `n: "note"` that exposes 
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given an existing note, When the client writes with `mode: append` and content, Then the content is added at the end of the body and no existing content is altered.
   - [ ] Given an existing note, When the client writes with `mode: prepend` and content, Then the content is added at the start of the body (after frontmatter, if present) and no existing content is altered.
-  - [ ] Given an existing note containing the target heading, When the client writes with `mode: insertUnderHeading`, Then the content is inserted under that heading and surrounding sections are unchanged.
+  - [ ] Given an existing note containing the target heading, When the client writes with `mode: insertUnderHeading`, Then the content is inserted at the **end of that section** (immediately before the next heading of equal or higher level, or at end-of-body), and surrounding sections are unchanged.
   - [ ] Given a target heading that does not exist, When the client writes with `mode: insertUnderHeading`, Then Kado returns a NOT_FOUND-style error (it does not silently append at the end).
   - [ ] Given an existing note containing the target section, When the client writes with `mode: replaceSection`, Then only that section's body is replaced and the rest of the note is preserved.
   - [ ] Given an existing note, When the client writes with `mode: replaceRange` and bounds, Then only the content within those bounds is replaced.
+  - [ ] Given `mode: replaceSection` or `mode: replaceRange` with **empty** `content`, When the write runs, Then the targeted span is deleted (replaced with nothing) — this is a valid operation, not an error.
   - [ ] Given `mode: append` or `mode: prepend` with no `expectedModified`, When the file is idle, Then the additive write succeeds without an optimistic-lock check.
   - [ ] Given `mode: replaceSection`, `mode: replaceRange`, or `mode: insertUnderHeading` with no `expectedModified`, When the write is attempted, Then Kado rejects it as a malformed update (these modes require `expectedModified`).
   - [ ] Given any replace/insert mode with a stale `expectedModified`, When the note's current mtime differs, Then Kado returns CONFLICT and makes no change.

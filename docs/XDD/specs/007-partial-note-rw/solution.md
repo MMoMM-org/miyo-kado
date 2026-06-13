@@ -383,7 +383,7 @@ interface SectionSpan { startLine: number; endLine: number; } // 0-based, end ex
 
 function resolveSection(headings: HeadingCache[], target: HeadingTarget): SectionSpan | null {
   const idx = ('headingPath' in target)
-    ? matchHeadingPath(headings, target.headingPath)   // stack walk over levels
+    ? matchHeadingPath(headings, target.headingPath)   // see matchHeadingPath below
     : headings.findIndex(h => h.heading === target.heading); // first text match
   if (idx === -1) return null;
   const start = headings[idx].position.start.line;
@@ -394,6 +394,27 @@ function resolveSection(headings: HeadingCache[], target: HeadingTarget): Sectio
     if (headings[i].level <= level) { endLine = headings[i].position.start.line; break; }
   }
   return { startLine: start, endLine };
+}
+
+// headingPath ['Project','Tasks'] matches the FIRST heading sequence where each
+// segment is found, in order, at a strictly deeper level than the previous match,
+// with no intervening heading at or above the previous segment's level (i.e. the
+// later segment must fall *within* the earlier segment's section). Returns the
+// index of the final segment's heading, or -1 if the path does not resolve.
+function matchHeadingPath(headings: HeadingCache[], path: string[]): number {
+  let from = 0;            // search window start
+  let parentLevel = 0;     // 0 = top; each match must be deeper than this
+  let lastIdx = -1;
+  for (const name of path) {
+    let found = -1;
+    for (let i = from; i < headings.length; i++) {
+      if (headings[i].level <= parentLevel) break;          // left the parent's section
+      if (headings[i].heading === name && headings[i].level > parentLevel) { found = i; break; }
+    }
+    if (found === -1) return -1;
+    lastIdx = found; parentLevel = headings[found].level; from = found + 1;
+  }
+  return lastIdx;
 }
 
 async function applyPartialWrite(app: App, req: CoreWriteRequest): Promise<CoreWriteResult> {
@@ -409,6 +430,12 @@ async function applyPartialWrite(app: App, req: CoreWriteRequest): Promise<CoreW
   return {path: req.path, created: stat.ctime, modified: stat.mtime};
 }
 ```
+
+**`computeNewBody` per-mode semantics:**
+- `insertUnderHeading`: inserts at the **end of the resolved section** — immediately before the next heading of equal-or-higher level (i.e. just before `endLine`), or at end-of-body when the section runs to EOF. It does **not** insert directly after the heading line. Surrounding sections are byte-unchanged.
+- `replaceSection`: replaces the section **body** (lines after the heading up to `endLine`); the heading line itself is preserved. Empty `content` ⇒ the body is deleted, leaving the bare heading.
+- `replaceRange`: replaces the addressed span. **Empty `content` deletes the span** (valid, not an error).
+- `append`/`prepend`: delegate to the pure `applyAppend`/`applyPrepend` helpers; `prepend` anchors after the frontmatter block (via the existing `stripFrontmatter` boundary), never at offset 0.
 
 #### Example 3: Create/update discrimination with partial modes
 
@@ -512,9 +539,9 @@ Section-span resolution and the create/update classification are traced in Examp
   - Trade-offs: `mode`'s valid value-set is operation-dependent at the arg surface; mitigated by request-mapper validation + Zod `.describe()`.
   - User confirmed: **Yes** (2026-06-13).
 
-- [ ] **ADR-2 Partial note write is always Note-Update** (never create), regardless of `expectedModified`.
+- [x] **ADR-2 Partial note write is always Note-Update** (never create), regardless of `expectedModified`.
   - Rationale: Partial writes target existing content; classifying append as "create" (today's `expectedModified`-absent rule) would check the wrong permission and hit "Note already exists". The presence of `notePartial` overrides the legacy discriminator.
-  - Trade-offs: Three sites (`inferCrudAction`, `concurrency-guard`, adapter routing) must branch on `notePartial`. Full-note path unchanged.
+  - Trade-offs: Three sites in the **note** write path (`inferCrudAction`, `concurrency-guard`, `createNoteAdapter.write` routing) must branch on `notePartial`. Full-note path unchanged. **Scope note:** `src/obsidian/file-adapter.ts` also keys off `expectedModified` for create-vs-update, but it serves `operation: "file"` only and `notePartial` never reaches it (partial modes are note-only, enforced in request-mapper) — so file-adapter is intentionally out of scope and unchanged.
   - User confirmed: **Yes** (2026-06-13).
 
 - [x] **ADR-3 Section addressing supports BOTH heading text (first match) and heading path (H1 > H2)**.
@@ -527,22 +554,22 @@ Section-span resolution and the create/update classification are traced in Examp
   - Trade-offs: Two slice helpers; covered by pure unit tests.
   - User confirmed: **Yes** (2026-06-13).
 
-- [ ] **ADR-5 append/prepend are lock-free; replace/insert require `expectedModified`; dirty-editor guard applies to all modes**.
+- [x] **ADR-5 append/prepend are lock-free; replace/insert require `expectedModified`; dirty-editor guard applies to all modes**.
   - Rationale: Append is additive/conflict-tolerant — forcing a fresh read defeats fire-and-forget capture. Replace/insert mutate existing spans → lost-update protection matters. The dirty-editor guard protects live user keystrokes regardless.
   - Trade-offs: Lock-free append can add to a note that changed since the client last saw it; acceptable because it overwrites nothing and the guard still blocks active editing.
   - User confirmed: **Yes** (2026-06-13).
 
-- [ ] **ADR-6 Add `truncated` to `CoreFileResult`**; partial reads never report complete when content was omitted.
+- [x] **ADR-6 Add `truncated` to `CoreFileResult`**; partial reads never report complete when content was omitted.
   - Rationale: Mirrors the search-scope "no partial-as-complete" rule (BR-4); lets clients know to read more.
   - Trade-offs: One optional field; full reads leave it unset/false.
   - User confirmed: **Yes** (2026-06-13).
 
-- [ ] **ADR-7 Pure slice math in `core/partial-slice.ts`; heading/section resolution in the adapter**.
+- [x] **ADR-7 Pure slice math in `core/partial-slice.ts`; heading/section resolution in the adapter**.
   - Rationale: Heading data is Obsidian-coupled (metadataCache); slicing is pure and must be unit-tested without a mock (CON-4). Clean layer separation.
   - Trade-offs: Adapter still owns the metadataCache-dependent span resolution (not unit-testable without a mock); acceptable.
   - User confirmed: **Yes** (2026-06-13).
 
-- [ ] **ADR-8 Backward compatibility: no `mode` ⇒ legacy behaviour**; full-note write keeps the `expectedModified`-based create/update discrimination.
+- [x] **ADR-8 Backward compatibility: no `mode` ⇒ legacy behaviour**; full-note write keeps the `expectedModified`-based create/update discrimination.
   - Rationale: Zero regression for existing clients (CON-5).
   - Trade-offs: Two discrimination rules coexist (full-note legacy vs partial-always-update); documented and tested.
   - User confirmed: **Yes** (2026-06-13).
@@ -566,16 +593,17 @@ Section-span resolution and the create/update classification are traced in Examp
 Partial READ: [PRD Feature 1]
 - [ ] WHEN `mode=firstXChars` with limit N and body length > N, THE SYSTEM SHALL return the first N code points and `truncated:true`
 - [ ] WHEN `mode=firstXChars` and body length ≤ N, THE SYSTEM SHALL return the full body and `truncated:false`
-- [ ] WHEN `mode=section` (heading text or path) matches, THE SYSTEM SHALL return content from the heading to the next equal-or-higher heading (or EOF)
+- [ ] WHEN `mode=section` (heading text or path) matches, THE SYSTEM SHALL return content from the heading to the next equal-or-higher heading (or EOF), with `truncated:true` when any content exists outside the section and `false` only when the section is the whole body
 - [ ] WHEN `mode=section` does not match any heading, THE SYSTEM SHALL return `NOT_FOUND` naming the section
 - [ ] WHEN `mode=range` with `basis` line/char, THE SYSTEM SHALL return exactly the requested span and a `truncated` flag; out-of-range bounds clamp
 - [ ] WHEN `mode` is omitted, THE SYSTEM SHALL return the full body identical to current behaviour
 
 Partial WRITE: [PRD Feature 2]
 - [ ] WHEN `mode=append`/`prepend`, THE SYSTEM SHALL add content additively without altering existing content (prepend lands after frontmatter)
-- [ ] WHEN `mode=insertUnderHeading` with an existing heading, THE SYSTEM SHALL insert under it and leave other sections unchanged
+- [ ] WHEN `mode=insertUnderHeading` with an existing heading, THE SYSTEM SHALL insert at the END of that section (before the next equal-or-higher heading, or EOF) and leave other sections unchanged
 - [ ] WHEN `mode=insertUnderHeading`/`replaceSection` with a missing heading, THE SYSTEM SHALL return `NOT_FOUND`
 - [ ] WHEN `mode=replaceSection`/`replaceRange`, THE SYSTEM SHALL replace only the targeted span
+- [ ] WHEN `mode=replaceSection`/`replaceRange` with empty `content`, THE SYSTEM SHALL delete the targeted span (valid, not an error)
 - [ ] WHEN `mode=append`/`prepend` without `expectedModified` and the file is idle, THE SYSTEM SHALL succeed without an optimistic-lock check
 - [ ] WHEN `mode=replaceSection`/`replaceRange`/`insertUnderHeading` without `expectedModified`, THE SYSTEM SHALL reject as VALIDATION_ERROR
 - [ ] WHEN any replace/insert mode has a stale `expectedModified`, THE SYSTEM SHALL return `CONFLICT` and make no change

@@ -36,3 +36,5 @@
 | 2026-06-13 | append/prepend lock-free, replace/insert require expectedModified (ADR-5) | Dirty-editor guard applies to all modes |
 | 2026-06-13 | SDD approved with 8 ADRs | Pure slice math in core/partial-slice.ts; heading resolution in adapter; truncated flag on CoreFileResult; backward-compatible no-mode path |
 | 2026-06-13 | Plan drafted: 5 TDD phases | Foundations → gate chain (ADR-2/5) → request-mapper → adapter → MCP/docs/E2E; ADR-2 three-site change isolated across phases 2+4 |
+| 2026-06-13 | Validation (4 perspectives) — resolved 3 gaps | F1 `insertUnderHeading` → end of section; F2 empty `content` on replace deletes the span; F3 section-read `truncated`=true when content outside (consistent with range/firstXChars) |
+| 2026-06-13 | Validation — mechanical fixes | ADR-2/5/6/7/8 checkboxes corrected; phase-1 Edge-Cases ref PRD not SDD; ADR-2 scoped note-only (file-adapter unaffected); matchHeadingPath algorithm specified; metadataCache `position.start.line` verification added to phase-4 |

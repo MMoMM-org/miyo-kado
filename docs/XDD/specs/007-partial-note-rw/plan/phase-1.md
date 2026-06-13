@@ -41,7 +41,7 @@ Establishes the type vocabulary and the pure content-math used by every later ph
 
 - [ ] **T1.2 Pure slice & apply helpers** `[activity: backend-logic]` `[parallel: true]`
 
-  1. Prime: Read `[ref: SDD/Implementation Examples/Example 1]` and the multibyte/boundary edge cases in `[ref: SDD/Detailed Feature Specifications/Edge Cases]`
+  1. Prime: Read `[ref: SDD/Implementation Examples/Example 1]` and the multibyte/boundary edge cases in `[ref: PRD/Detailed Feature Specifications/Edge Cases]`
   2. Test (RED first): `test/core/partial-slice.test.ts` — `firstXChars` (limit<len → truncated; limit≥len → full, not truncated; never splits a multibyte code point); `sliceByLineRange` (inclusive 1-based; clamp past EOF; truncated reflects content outside; reject start<1 or start>end); `sliceByCharRange` (0-based exclusive end, code points; clamp; reject inverted/negative); `applyAppend` (newline join, empty body, body already ending in `\n`); `applyPrepend` (newline join)
   3. Implement: NEW `src/core/partial-slice.ts` with `firstXChars`, `sliceByLineRange`, `sliceByCharRange`, `applyAppend`, `applyPrepend` — no imports from `obsidian`/MCP SDK
   4. Validate: `npx vitest run test/core/partial-slice.test.ts` green; `npx tsc -p tsconfig.test.json` clean; lint clean
