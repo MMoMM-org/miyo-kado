@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Gate chain — create/update discrimination & lock semantics"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -30,7 +30,7 @@ phase: 2
 
 Generalises the write-classification and concurrency rules so a partial write is correctly an update — additive writes lock-free, destructive writes locked.
 
-- [ ] **T2.1 `inferCrudAction` — partial write ⇒ update** `[activity: backend-logic]`
+- [x] **T2.1 `inferCrudAction` — partial write ⇒ update** `[activity: backend-logic]`
 
   1. Prime: Read `src/core/gates/datatype-permission.ts` (`inferCrudAction`, lines ~42-49) and `[ref: SDD/Implementation Examples/Example 3]`
   2. Test: `test/core/gates/datatype-permission.test.ts` — write with `notePartial:{mode:'append'}` and **no** `expectedModified` infers `update` (checks Note-Update, not Note-Create); write with `notePartial` + `expectedModified` infers `update`; full-note write (no `notePartial`) unchanged (expectedModified → update, absent → create); FORBIDDEN when key lacks Note-Update for a partial write
@@ -38,7 +38,7 @@ Generalises the write-classification and concurrency rules so a partial write is
   4. Validate: `npx vitest run test/core/gates/datatype-permission.test.ts` green; full-note classification regression intact
   5. Success: partial write never classified create `[ref: PRD/AC Feature 2 — permission]` `[ref: SDD/ADR-2]`
 
-- [ ] **T2.2 `validateConcurrency` — additive lock-free, destructive locked** `[activity: backend-logic]`
+- [x] **T2.2 `validateConcurrency` — additive lock-free, destructive locked** `[activity: backend-logic]`
 
   1. Prime: Read `src/core/concurrency-guard.ts` and `[ref: SDD/Implementation Examples/Example 4]`
   2. Test: `test/core/concurrency-guard.test.ts` — `notePartial:{append}` without `expectedModified` → allowed (no CONFLICT, not treated as create); `notePartial:{prepend}` without expectedModified → allowed; `notePartial:{replaceSection|replaceRange|insertUnderHeading}` without expectedModified → rejected (malformed/VALIDATION-style); partial write with stale `expectedModified` → CONFLICT; partial write with fresh `expectedModified` → allowed; full-note write rules unchanged
@@ -46,6 +46,6 @@ Generalises the write-classification and concurrency rules so a partial write is
   4. Validate: `npx vitest run test/core/concurrency-guard.test.ts` green; full-note concurrency regression intact
   5. Success: additive lock-free, destructive locked `[ref: PRD/AC Feature 2 — concurrency]` `[ref: SDD/ADR-5]`
 
-- [ ] **T2.3 Phase Validation** `[activity: validate]`
+- [x] **T2.3 Phase Validation** `[activity: validate]`
 
   - Run both gate specs + the full suite. Confirm the full-note (no-mode) paths are byte-identical in behaviour. `npx tsc -p tsconfig.test.json` clean for touched specs.
