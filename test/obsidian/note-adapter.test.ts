@@ -994,6 +994,67 @@ describe('NoteAdapter', () => {
 				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, 'content')),
 			).rejects.toMatchObject({code: 'NOT_FOUND'});
 		});
+
+		it('is a no-op when content is empty string (inserts nothing, body unchanged)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, ''));
+
+			// Empty content must not insert a stray blank line — body is unchanged
+			expect(captured.value).toBe(CONTENT);
+		});
+
+		it('inserts at end of nested section via headingPath (SUCCESS)', async () => {
+			// Content with nested headings:
+			// Line 0: "# Title"
+			// Line 1: "Intro."
+			// Line 2: "## Tasks"
+			// Line 3: "- existing"
+			// Line 4: "## Notes"
+			// Line 5: "note text"
+			const DOC = '# Title\nIntro.\n## Tasks\n- existing\n## Notes\nnote text';
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Title', 1, 0),
+					makeHeading('Tasks', 2, 2),
+					makeHeading('Notes', 2, 4),
+				],
+			});
+			const captured = {value: ''};
+			setupVaultProcess(file, DOC, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', headingPath: ['Title', 'Tasks']}, '- new task'));
+
+			expect(captured.value).toBe('# Title\nIntro.\n## Tasks\n- existing\n- new task\n## Notes\nnote text');
+		});
+
+		it('throws NOT_FOUND naming the last path segment when headingPath does not resolve', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Title', 1, 0),
+					makeHeading('Tasks', 2, 2),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', headingPath: ['Title', 'NoSuchSection']}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND', message: expect.stringContaining('NoSuchSection')});
+		});
 	});
 
 	describe('write() — partial: replaceSection', () => {
@@ -1083,6 +1144,55 @@ describe('NoteAdapter', () => {
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'x')),
 			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+
+		it('replaces body of nested section resolved via headingPath (SUCCESS)', async () => {
+			// Document with duplicate "Tasks" headings under different parents:
+			// Line 0: "# Project"
+			// Line 1: "## Tasks"
+			// Line 2: "- proj task"
+			// Line 3: "# Work"
+			// Line 4: "## Tasks"
+			// Line 5: "- work task"
+			const DOC = '# Project\n## Tasks\n- proj task\n# Work\n## Tasks\n- work task';
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 1),
+					makeHeading('Work', 1, 3),
+					makeHeading('Tasks', 2, 4),
+				],
+			});
+			const captured = {value: ''};
+			setupVaultProcess(file, DOC, captured);
+
+			const adapter = createNoteAdapter(app);
+			// Target the SECOND "Tasks" under "Work" via headingPath
+			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', headingPath: ['Work', 'Tasks']}, '- replaced'));
+
+			// Only the Work > Tasks section body is replaced; Project > Tasks unchanged
+			expect(captured.value).toBe('# Project\n## Tasks\n- proj task\n# Work\n## Tasks\n- replaced');
+		});
+
+		it('throws NOT_FOUND naming the last path segment when replaceSection headingPath does not resolve', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 1),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceSection', headingPath: ['Project', 'Missing']}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND', message: expect.stringContaining('Missing')});
 		});
 	});
 

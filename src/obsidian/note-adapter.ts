@@ -329,7 +329,7 @@ function computeNewBody(app: App, file: TFile, data: string, partial: NoteWriteP
 		// Insert content at the END of the section: splice at index endLine (or at
 		// lines.length when endLine is Infinity / past EOF).
 		const insertAt = span.endLine === Infinity ? lines.length : span.endLine;
-		const contentLines = content.split('\n');
+		const contentLines = content === '' ? [] : content.split('\n');
 		lines.splice(insertAt, 0, ...contentLines);
 		return lines.join('\n');
 	}
@@ -377,7 +377,7 @@ function computeNewBody(app: App, file: TFile, data: string, partial: NoteWriteP
  * Pre-validates heading-based partial write modes before calling vault.process.
  * Resolves the section span from the metadata cache and throws NOT_FOUND if
  * the heading cannot be found — allowing callers to fail fast before any write.
- * Returns the span (or null for non-heading modes).
+ * No-ops for non-heading modes (append, prepend, replaceRange).
  */
 function preValidateHeadingTarget(
 	app: App,
