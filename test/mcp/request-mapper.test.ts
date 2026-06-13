@@ -15,6 +15,7 @@ import {
 	mapSearchRequest,
 	mapDeleteRequest,
 	mapOpenNotesRequest,
+	parseHeadingTarget,
 } from '../../src/mcp/request-mapper';
 import {kadoOpenNotesShape} from '../../src/mcp/tools';
 import type {
@@ -23,6 +24,7 @@ import type {
 	CoreSearchRequest,
 	CoreDeleteRequest,
 	CoreOpenNotesRequest,
+	NoteWritePartial,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -250,11 +252,11 @@ describe('mapWriteRequest — frontmatter mode field', () => {
 		)).toThrow(/mode must be "merge" or "replace"/i);
 	});
 
-	it('rejects mode on non-frontmatter operations', () => {
+	it('rejects a frontmatter mode on operation="note"', () => {
 		expect(() => mapWriteRequest(
 			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
 			KEY_ID,
-		)).toThrow(/mode is only valid for operation="frontmatter"/i);
+		)).toThrow(/mapWriteRequest:.*mode.*append|prepend|insertUnderHeading|replaceSection|replaceRange/i);
 	});
 });
 
@@ -1086,5 +1088,293 @@ describe('mapReadRequest — partial read: mode=range', () => {
 		);
 
 		expect(result.partial).toEqual({mode: 'range', basis: 'line', start: 5, end: 5});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseHeadingTarget — mode-agnostic error message (T3.2 fix)
+// ---------------------------------------------------------------------------
+
+describe('parseHeadingTarget — neither heading nor headingPath', () => {
+	it('throws a mode-agnostic error (no "section" wording)', () => {
+		expect(() => parseHeadingTarget({}, 'testCtx'))
+			.toThrow(/testCtx: heading or headingPath is required/i);
+	});
+
+	it('error does NOT contain the word "section"', () => {
+		try {
+			parseHeadingTarget({}, 'testCtx');
+		} catch (e) {
+			expect((e as Error).message).not.toMatch(/mode="section"/);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: omitted mode (no change in behaviour)
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: omitted mode', () => {
+	it('no mode on operation="note" → no notePartial on result', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toBeUndefined();
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('no mode on operation="frontmatter" → no mode or notePartial on result', () => {
+		const result = mapWriteRequest(makeWriteArgs(), KEY_ID) as CoreWriteRequest;
+
+		expect(result.mode).toBeUndefined();
+		expect(result.notePartial).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: unknown mode value
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: unknown mode value', () => {
+	it('unknown mode on operation="note" → throws', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'bogus'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+
+	it('unknown mode on operation="note" error lists valid modes', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'bogus'},
+			KEY_ID,
+		)).toThrow(/append|prepend|insertUnderHeading|replaceSection|replaceRange/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: frontmatter / note mode collision
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: cross-operation mode collision', () => {
+	it('frontmatter mode "merge" on operation="note" → error (wrong mode for note)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+
+	it('note mode "append" on operation="frontmatter" → error (wrong mode for frontmatter)', () => {
+		expect(() => mapWriteRequest(
+			makeWriteArgs({mode: 'append'}),
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode must be "merge" or "replace"/i);
+	});
+
+	it('note mode "replaceSection" on operation="frontmatter" → error', () => {
+		expect(() => mapWriteRequest(
+			makeWriteArgs({mode: 'replaceSection'}),
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode must be "merge" or "replace"/i);
+	});
+
+	it('mode on operation="file" → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'file', path: 'img.png', content: 'base64==', mode: 'append'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: append / prepend (lock-free)
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: append', () => {
+	it('mode="append" with content → notePartial {mode:"append"}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'} satisfies NoteWritePartial);
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('mode="append" without expectedModified → valid (lock-free)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'});
+		expect(result.expectedModified).toBeUndefined();
+	});
+
+	it('mode="append" with expectedModified → valid (optional, passed through)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append', expectedModified: 99},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'});
+		expect(result.expectedModified).toBe(99);
+	});
+});
+
+describe('mapWriteRequest — note mode: prepend', () => {
+	it('mode="prepend" with content → notePartial {mode:"prepend"}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'header', mode: 'prepend'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'prepend'} satisfies NoteWritePartial);
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('mode="prepend" without expectedModified → valid (lock-free)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'header', mode: 'prepend'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.expectedModified).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: insertUnderHeading
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: insertUnderHeading', () => {
+	it('valid heading → notePartial {mode:"insertUnderHeading", heading}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Tasks', expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'insertUnderHeading', heading: 'Tasks'} satisfies NoteWritePartial);
+	});
+
+	it('valid headingPath → notePartial {mode:"insertUnderHeading", headingPath}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', headingPath: ['Ch1', 'Sec2'], expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'insertUnderHeading', headingPath: ['Ch1', 'Sec2']} satisfies NoteWritePartial);
+	});
+
+	it('both heading and headingPath → error (mutually exclusive)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Foo', headingPath: ['Foo'], expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/heading.*headingPath.*mutually exclusive|mutually exclusive/i);
+	});
+
+	it('neither heading nor headingPath → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/heading or headingPath is required/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Tasks'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: replaceSection
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: replaceSection', () => {
+	it('valid heading → notePartial {mode:"replaceSection", heading}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Intro', expectedModified: 5},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceSection', heading: 'Intro'} satisfies NoteWritePartial);
+	});
+
+	it('valid headingPath → notePartial {mode:"replaceSection", headingPath}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', headingPath: ['Ch1'], expectedModified: 5},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceSection', headingPath: ['Ch1']} satisfies NoteWritePartial);
+	});
+
+	it('neither heading nor headingPath → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', expectedModified: 5},
+			KEY_ID,
+		)).toThrow(/heading or headingPath is required/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Intro'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: replaceRange
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: replaceRange', () => {
+	it('valid line range → notePartial {mode:"replaceRange", basis:"line", start, end}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceRange', basis: 'line', start: 1, end: 10} satisfies NoteWritePartial);
+	});
+
+	it('valid char range → notePartial {mode:"replaceRange", basis:"char", start, end}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'char', start: 0, end: 50, expectedModified: 3},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceRange', basis: 'char', start: 0, end: 50} satisfies NoteWritePartial);
+	});
+
+	it('missing rangeBasis → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*rangeBasis/i);
+	});
+
+	it('invalid rangeBasis → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'word', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*rangeBasis/i);
+	});
+
+	it('start > end → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 10, end: 5, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*start.*end|end.*start/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 10},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
 	});
 });

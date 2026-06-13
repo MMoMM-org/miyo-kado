@@ -22,6 +22,7 @@ import type {
 	HeadingTarget,
 	RangeTarget,
 	NoteReadPartial,
+	NoteWritePartial,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
 
@@ -140,7 +141,7 @@ export function parseHeadingTarget(args: Args, context: string): HeadingTarget {
 	}
 
 	throw new Error(
-		`${context}: mode="section" requires either heading or headingPath`,
+		`${context}: heading or headingPath is required`,
 	);
 }
 
@@ -254,6 +255,59 @@ export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	return result;
 }
 
+/** Valid mode values for partial note writes. */
+const NOTE_WRITE_MODES = new Set<string>([
+	'append', 'prepend', 'insertUnderHeading', 'replaceSection', 'replaceRange',
+]);
+
+/** Note write modes that require expectedModified (ADR-5: insert/replace are not lock-free). */
+const NOTE_WRITE_MODES_REQUIRE_LOCK = new Set<string>([
+	'insertUnderHeading', 'replaceSection', 'replaceRange',
+]);
+
+/**
+ * Parses the `mode` field from write args for operation='note' and builds a NoteWritePartial.
+ * Enforces ADR-5: insertUnderHeading/replaceSection/replaceRange require expectedModified.
+ * Reuses parseHeadingTarget and parseRangeTarget for sub-arg validation.
+ *
+ * @param args - Raw args from the MCP tool call.
+ * @param result - Partially-built CoreWriteRequest (used to check expectedModified presence).
+ * @param context - Caller prefix for error messages (e.g. 'mapWriteRequest').
+ */
+function parseNoteWritePartial(args: Args, result: CoreWriteRequest, context: string): NoteWritePartial {
+	const mode = args['mode'];
+	if (typeof mode !== 'string' || !NOTE_WRITE_MODES.has(mode)) {
+		const shown = typeof mode === 'string' ? mode : typeof mode;
+		throw new Error(
+			`${context}: mode must be one of append|prepend|insertUnderHeading|replaceSection|replaceRange (got '${shown}')`,
+		);
+	}
+
+	// ADR-5: insert/replace modes require expectedModified for optimistic concurrency
+	if (NOTE_WRITE_MODES_REQUIRE_LOCK.has(mode) && result.expectedModified === undefined) {
+		throw new Error(
+			`${context}: expectedModified is required for mode="${mode}"`,
+		);
+	}
+
+	if (mode === 'append') return {mode: 'append'};
+	if (mode === 'prepend') return {mode: 'prepend'};
+
+	if (mode === 'insertUnderHeading') {
+		const target = parseHeadingTarget(args, context);
+		return {mode: 'insertUnderHeading', ...target};
+	}
+
+	if (mode === 'replaceSection') {
+		const target = parseHeadingTarget(args, context);
+		return {mode: 'replaceSection', ...target};
+	}
+
+	// mode === 'replaceRange'
+	const range = parseRangeTarget(args, context);
+	return {mode: 'replaceRange', ...range};
+}
+
 /** Operations where content should be a Record, not a string. */
 const OBJECT_CONTENT_OPS = new Set(['frontmatter', 'dataview-inline-field']);
 
@@ -295,14 +349,20 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 
 	if ('mode' in args && args['mode'] !== undefined) {
 		const mode = args['mode'];
-		if (mode !== 'merge' && mode !== 'replace') {
+		if (operation === 'frontmatter') {
+			if (mode !== 'merge' && mode !== 'replace') {
+				const shown = typeof mode === 'string' ? mode : typeof mode;
+				throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
+			}
+			result.mode = mode as FrontmatterWriteMode;
+		} else if (operation === 'note') {
+			result.notePartial = parseNoteWritePartial(args, result, 'mapWriteRequest');
+		} else {
 			const shown = typeof mode === 'string' ? mode : typeof mode;
-			throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
+			throw new Error(
+				`mapWriteRequest: mode is not valid for operation="${operation}" (got '${shown}')`,
+			);
 		}
-		if (operation !== 'frontmatter') {
-			throw new Error(`mapWriteRequest: mode is only valid for operation="frontmatter" (got operation='${operation}')`);
-		}
-		result.mode = mode as FrontmatterWriteMode;
 	}
 
 	return result;
