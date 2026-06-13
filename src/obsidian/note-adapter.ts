@@ -10,7 +10,8 @@ import {MarkdownView, Notice} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
-import {firstXChars, sliceByLineRange, sliceByCharRange} from '../core/partial-slice';
+import {firstXChars, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
+import type {NoteWritePartial} from '../types/canonical';
 
 /** Error thrown by vault adapters, wrapping a CoreError with its error code. */
 export class NoteAdapterError extends Error {
@@ -291,6 +292,141 @@ function conflictEditorError(path: string): NoteAdapterError {
 	});
 }
 
+/**
+ * Computes the new file body for a partial write by branching on the write mode.
+ * All heading-based modes read from metadataCache (same source as T4.1 reads).
+ * The metadataCache may lag the freshly-written body; this is accepted per the SDD.
+ */
+function computeNewBody(app: App, file: TFile, data: string, partial: NoteWritePartial, content: string): string {
+	if (partial.mode === 'append') {
+		return applyAppend(data, content);
+	}
+
+	if (partial.mode === 'prepend') {
+		// Split at the frontmatter boundary so content lands AFTER the FM block.
+		// stripFrontmatter returns the body-after-FM; we recover the prefix by
+		// slicing the original data at the same boundary.
+		const bodyAfterFm = stripFrontmatter(data);
+		const fmPrefix = data.slice(0, data.length - bodyAfterFm.length);
+		return fmPrefix + applyPrepend(bodyAfterFm, content);
+	}
+
+	// All remaining modes need the heading cache.
+	const cache = app.metadataCache.getFileCache(file);
+	const headings: HeadingCache[] = cache?.headings ?? [];
+
+	if (partial.mode === 'insertUnderHeading') {
+		const target = 'headingPath' in partial ? {headingPath: partial.headingPath} : {heading: partial.heading};
+		const span = resolveSection(headings, target);
+		if (span === null) {
+			const name = 'headingPath' in partial
+				? (partial.headingPath[partial.headingPath.length - 1] ?? '(unknown)')
+				: partial.heading;
+			throw sectionNotFoundError(name);
+		}
+
+		const lines = data.split('\n');
+		// Insert content at the END of the section: splice at index endLine (or at
+		// lines.length when endLine is Infinity / past EOF).
+		const insertAt = span.endLine === Infinity ? lines.length : span.endLine;
+		const contentLines = content.split('\n');
+		lines.splice(insertAt, 0, ...contentLines);
+		return lines.join('\n');
+	}
+
+	if (partial.mode === 'replaceSection') {
+		const target = 'headingPath' in partial ? {headingPath: partial.headingPath} : {heading: partial.heading};
+		const span = resolveSection(headings, target);
+		if (span === null) {
+			const name = 'headingPath' in partial
+				? (partial.headingPath[partial.headingPath.length - 1] ?? '(unknown)')
+				: partial.heading;
+			throw sectionNotFoundError(name);
+		}
+
+		const lines = data.split('\n');
+		// Section BODY = lines after the heading (startLine+1) up to endLine.
+		// The heading line itself (startLine) is preserved.
+		const bodyStart = span.startLine + 1;
+		const bodyEnd = span.endLine === Infinity ? lines.length : span.endLine;
+
+		const contentLines = content === '' ? [] : content.split('\n');
+		lines.splice(bodyStart, bodyEnd - bodyStart, ...contentLines);
+		return lines.join('\n');
+	}
+
+	// replaceRange
+	if (partial.basis === 'line') {
+		// 1-based inclusive — replace lines [start..end] with content.
+		const lines = data.split('\n');
+		const from = partial.start - 1; // convert to 0-based
+		const to = partial.end;         // end is inclusive 1-based → exclusive 0-based
+		const contentLines = content === '' ? [] : content.split('\n');
+		lines.splice(from, to - from, ...contentLines);
+		return lines.join('\n');
+	} else {
+		// char basis — 0-based start, exclusive end (code points).
+		const cps = Array.from(data);
+		const before = cps.slice(0, partial.start).join('');
+		const after = cps.slice(partial.end).join('');
+		return before + content + after;
+	}
+}
+
+/**
+ * Pre-validates heading-based partial write modes before calling vault.process.
+ * Resolves the section span from the metadata cache and throws NOT_FOUND if
+ * the heading cannot be found — allowing callers to fail fast before any write.
+ * Returns the span (or null for non-heading modes).
+ */
+function preValidateHeadingTarget(
+	app: App,
+	file: TFile,
+	partial: NoteWritePartial,
+): void {
+	if (
+		partial.mode !== 'insertUnderHeading' &&
+		partial.mode !== 'replaceSection'
+	) return;
+
+	const cache = app.metadataCache.getFileCache(file);
+	const headings: HeadingCache[] = cache?.headings ?? [];
+	const target = 'headingPath' in partial ? {headingPath: partial.headingPath} : {heading: partial.heading};
+	const span = resolveSection(headings, target);
+	if (span === null) {
+		const name = 'headingPath' in partial
+			? (partial.headingPath[partial.headingPath.length - 1] ?? '(unknown)')
+			: partial.heading;
+		throw sectionNotFoundError(name);
+	}
+}
+
+/**
+ * Applies a partial write to an existing note.
+ * Checks for file existence and dirty-editor conflicts before writing.
+ * CON-7: the dirty-editor guard runs for EVERY partial write mode.
+ */
+async function applyPartialWrite(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
+	const file = app.vault.getFileByPath(request.path);
+	if (!file) throw notFoundError(request.path);
+
+	if (await isFileOpenAndDirty(app, file)) {
+		new Notice(`Kado wanted to modify ${file.basename} — pause typing to let the assistant through, or keep going and it will retry`, 8000);
+		throw conflictEditorError(request.path);
+	}
+
+	const partial = request.notePartial!;
+	// Pre-validate heading targets so NOT_FOUND is thrown before vault.process.
+	preValidateHeadingTarget(app, file, partial);
+
+	const content = request.content as string;
+	await app.vault.process(file, (data) => computeNewBody(app, file, data, partial, content));
+
+	const refreshed = app.vault.getFileByPath(request.path);
+	const stat = refreshed?.stat ?? file.stat;
+	return {path: request.path, created: stat.ctime, modified: stat.mtime};
+}
+
 async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
@@ -322,9 +458,11 @@ async function updateNote(app: App, request: CoreWriteRequest): Promise<CoreWrit
 export function createNoteAdapter(app: App): ReadWriteAdapter {
 	return {
 		read: (request: CoreReadRequest) => readNote(app, request),
-		write: (request: CoreWriteRequest) =>
-			request.expectedModified !== undefined
+		write: (request: CoreWriteRequest) => {
+			if (request.notePartial !== undefined) return applyPartialWrite(app, request);
+			return request.expectedModified !== undefined
 				? updateNote(app, request)
-				: createNote(app, request),
+				: createNote(app, request);
+		},
 	};
 }

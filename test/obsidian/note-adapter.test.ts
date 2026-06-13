@@ -10,7 +10,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {App, TFile, MarkdownView, Notice} from '../__mocks__/obsidian';
 import type {HeadingCache} from '../__mocks__/obsidian';
 import {createNoteAdapter} from '../../src/obsidian/note-adapter';
-import type {CoreReadRequest, CoreWriteRequest, NoteReadPartial} from '../../src/types/canonical';
+import type {CoreReadRequest, CoreWriteRequest, NoteReadPartial, NoteWritePartial} from '../../src/types/canonical';
 
 function makeLeafWithView(file: TFile, editorContent: string): {view: MarkdownView} {
 	const view = new MarkdownView();
@@ -33,6 +33,17 @@ function makeWriteRequest(overrides: Partial<CoreWriteRequest> = {}): CoreWriteR
 		operation: 'note',
 		path: 'notes/test.md',
 		content: '# Hello',
+		...overrides,
+	};
+}
+
+function makePartialWriteRequest(notePartial: NoteWritePartial, content: string, overrides: Partial<CoreWriteRequest> = {}): CoreWriteRequest {
+	return {
+		apiKeyId: 'kado_test-key',
+		operation: 'note',
+		path: 'notes/test.md',
+		content,
+		notePartial,
 		...overrides,
 	};
 }
@@ -716,6 +727,519 @@ describe('NoteAdapter', () => {
 			expect(result.content).toBe('Full note content here.');
 			expect(result.truncated).toBeUndefined();
 			expect(result.modified).toBe(3000);
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// Partial write tests (T4.2)
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * Helper to set up vault.process so it calls the transform with provided data
+	 * and captures the resulting new body via captureBody.
+	 */
+	function setupVaultProcess(file: TFile, initialData: string, captureBody?: {value: string}): void {
+		vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+			const result = transform(initialData);
+			if (captureBody) captureBody.value = result;
+			file.stat = {ctime: file.stat.ctime, mtime: 9999, size: result.length};
+			return result;
+		});
+	}
+
+	describe('write() — partial: append', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		it('appends content at end of file without altering existing content', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, 'existing body', captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'append'}, 'new line'));
+
+			expect(captured.value).toBe('existing body\nnew line');
+		});
+
+		it('appends without double newline when body already ends with newline', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, 'existing body\n', captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'append'}, 'new line'));
+
+			expect(captured.value).toBe('existing body\nnew line');
+		});
+
+		it('returns CoreWriteResult with refreshed stat', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			setupVaultProcess(file, 'body');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.write(makePartialWriteRequest({mode: 'append'}, 'more'));
+
+			expect(result).toEqual({path: 'notes/test.md', created: 1000, modified: 9999});
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing here');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('old disk content');
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'append'}, 'new')),
+			).rejects.toMatchObject({code: 'CONFLICT', message: expect.stringContaining('open in the editor')});
+			expect(app.vault.process).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(1);
+			expect(Notice._instances[0]!.message).toContain('Kado wanted to modify test');
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'append'}, 'new')),
+			).rejects.toMatchObject({code: 'NOT_FOUND', message: expect.stringContaining('notes/test.md')});
+		});
+	});
+
+	describe('write() — partial: prepend', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		it('prepends content AFTER frontmatter block without altering existing body', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const data = '---\ntitle: Test\n---\nbody line';
+			const captured = {value: ''};
+			setupVaultProcess(file, data, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
+
+			// Frontmatter prefix preserved, content inserted before body
+			expect(captured.value).toBe('---\ntitle: Test\n---\nprepended\nbody line');
+		});
+
+		it('prepends at start of file when there is no frontmatter', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, 'existing content', captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new first line'));
+
+			expect(captured.value).toBe('new first line\nexisting content');
+		});
+
+		it('never inserts at offset 0 when frontmatter exists', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const data = '---\ntags: [a]\n---\nbody';
+			const captured = {value: ''};
+			setupVaultProcess(file, data, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'inserted'));
+
+			expect(captured.value.startsWith('---')).toBe(true);
+			expect(captured.value.indexOf('inserted')).toBeGreaterThan(captured.value.indexOf('---\n', 3));
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new')),
+			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — partial: insertUnderHeading', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		// Content layout:
+		// Line 0: "# Title"
+		// Line 1: "Intro text."
+		// Line 2: "## Tasks"
+		// Line 3: "- task one"
+		// Line 4: "## Notes"
+		// Line 5: "Some notes."
+		const CONTENT = '# Title\nIntro text.\n## Tasks\n- task one\n## Notes\nSome notes.';
+
+		function makeTasksHeadings(): HeadingCache[] {
+			return [
+				makeHeading('Title', 1, 0),
+				makeHeading('Tasks', 2, 2),
+				makeHeading('Notes', 2, 4),
+			];
+		}
+
+		it('inserts at END of section (before next heading), not directly after heading line', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, '- new task'));
+
+			// Content inserted at end of Tasks section (before "## Notes" at line 4)
+			// Lines: "# Title", "Intro text.", "## Tasks", "- task one", "- new task", "## Notes", "Some notes."
+			expect(captured.value).toBe('# Title\nIntro text.\n## Tasks\n- task one\n- new task\n## Notes\nSome notes.');
+		});
+
+		it('surrounding sections are byte-unchanged after insert', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, '- new task'));
+
+			// "## Notes\nSome notes." unchanged at end
+			expect(captured.value.endsWith('## Notes\nSome notes.')).toBe(true);
+			// "# Title\nIntro text." unchanged at start
+			expect(captured.value.startsWith('# Title\nIntro text.')).toBe(true);
+		});
+
+		it('inserts at EOF when section extends to end of file', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Notes'}, 'extra note'));
+
+			// Notes is the last section; content appended at EOF
+			expect(captured.value).toBe('# Title\nIntro text.\n## Tasks\n- task one\n## Notes\nSome notes.\nextra note');
+		});
+
+		it('raises NOT_FOUND naming the heading when heading is missing', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'NoSuchHeading'}, 'content')),
+			).rejects.toMatchObject({code: 'NOT_FOUND', message: expect.stringContaining('NoSuchHeading')});
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, 'content')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, 'content')),
+			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — partial: replaceSection', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		const CONTENT = '# Title\nIntro text.\n## Tasks\n- task one\n- task two\n## Notes\nSome notes.';
+		// Line 0: "# Title"
+		// Line 1: "Intro text."
+		// Line 2: "## Tasks"
+		// Line 3: "- task one"
+		// Line 4: "- task two"
+		// Line 5: "## Notes"
+		// Line 6: "Some notes."
+
+		function makeHeadings(): HeadingCache[] {
+			return [
+				makeHeading('Title', 1, 0),
+				makeHeading('Tasks', 2, 2),
+				makeHeading('Notes', 2, 5),
+			];
+		}
+
+		it('replaces section BODY while preserving the heading line itself', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, '- replaced task'));
+
+			// "## Tasks" heading preserved, body replaced, other sections unchanged
+			expect(captured.value).toBe('# Title\nIntro text.\n## Tasks\n- replaced task\n## Notes\nSome notes.');
+		});
+
+		it('deletes section body (bare heading remains) when content is empty string', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, ''));
+
+			// Section body deleted — heading line stays, no extra blank lines between headings
+			expect(captured.value).toBe('# Title\nIntro text.\n## Tasks\n## Notes\nSome notes.');
+		});
+
+		it('raises NOT_FOUND naming the heading when heading is missing', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'NonExistent'}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND', message: expect.stringContaining('NonExistent')});
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'x')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — partial: replaceRange (line basis)', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		// 1-based inclusive line range
+		const CONTENT = 'line1\nline2\nline3\nline4\nline5';
+
+		it('replaces addressed lines with content (1-based inclusive)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 2, end: 3}, 'replaced'));
+
+			expect(captured.value).toBe('line1\nreplaced\nline4\nline5');
+		});
+
+		it('deletes addressed lines when content is empty string (valid)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 2, end: 3}, ''));
+
+			expect(captured.value).toBe('line1\nline4\nline5');
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 1, end: 2}, 'x')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 1, end: 2}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — partial: replaceRange (char basis)', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		// 0-based start, exclusive end
+		const CONTENT = 'Hello, World!';
+
+		it('replaces addressed char span with content (0-based, end exclusive)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 7, end: 12}, 'Kado'));
+
+			expect(captured.value).toBe('Hello, Kado!');
+		});
+
+		it('deletes addressed char span when content is empty string (valid)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, CONTENT, captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 5, end: 7}, ''));
+
+			expect(captured.value).toBe('HelloWorld!');
+		});
+
+		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, 'user is typing');
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 5}, 'x')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('raises NOT_FOUND when file is missing', async () => {
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 5}, 'x')),
+			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — routing: notePartial routes to partial path, not createNote/updateNote', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		it('routes to applyPartialWrite when notePartial is set (even without expectedModified)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				transform('current body');
+				file.stat = {ctime: 1000, mtime: 5000, size: 10};
+			});
+
+			const adapter = createNoteAdapter(app);
+			// No expectedModified — without routing fix this would go to createNote
+			const result = await adapter.write(makePartialWriteRequest({mode: 'append'}, 'added'));
+
+			// vault.create must NOT have been called (would be createNote path)
+			expect(app.vault.create).not.toHaveBeenCalled();
+			// vault.process MUST have been called (partial path)
+			expect(app.vault.process).toHaveBeenCalledOnce();
+			expect(result.path).toBe('notes/test.md');
+		});
+
+		it('does not raise CONFLICT "Note already exists" when file exists and notePartial is set', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				transform('body');
+				file.stat = {ctime: 1000, mtime: 5000, size: 4};
+			});
+
+			const adapter = createNoteAdapter(app);
+
+			// Should NOT throw "already exists" — must go through partial path
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'append'}, 'x')),
+			).resolves.toBeDefined();
 		});
 	});
 });
