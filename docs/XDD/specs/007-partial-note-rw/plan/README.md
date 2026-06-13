@@ -58,7 +58,7 @@ Read before starting any phase:
 - [x] [Phase 1: Foundations — types & pure slice helpers](phase-1.md)
 - [x] [Phase 2: Gate chain — create/update discrimination & lock semantics](phase-2.md)
 - [x] [Phase 3: Request mapping & validation boundary](phase-3.md)
-- [ ] [Phase 4: Note adapter — partial read slicing & partial write](phase-4.md)
+- [x] [Phase 4: Note adapter — partial read slicing & partial write](phase-4.md)
 - [ ] [Phase 5: MCP surface, docs & end-to-end](phase-5.md)
 
 ## Dependency Graph
