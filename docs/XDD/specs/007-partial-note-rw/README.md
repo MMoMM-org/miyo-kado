@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-13 |
-| **Current Phase** | Planning |
+| **Current Phase** | Ready for implementation |
 | **Last Updated** | 2026-06-13 |
 | **Tracking** | [#69](https://github.com/MMoMM-org/miyo-kado/issues/69) |
 
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | Approved by user |
 | solution.md | completed | Approved by user; 8 ADRs confirmed |
-| plan/ | pending | — |
+| plan/ | completed | 5 TDD phases approved; implementation deferred |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -35,3 +35,4 @@
 | 2026-06-13 | Partial write = always Note-Update (ADR-2) | notePartial overrides expectedModified-based create/update discrimination across 3 sites |
 | 2026-06-13 | append/prepend lock-free, replace/insert require expectedModified (ADR-5) | Dirty-editor guard applies to all modes |
 | 2026-06-13 | SDD approved with 8 ADRs | Pure slice math in core/partial-slice.ts; heading resolution in adapter; truncated flag on CoreFileResult; backward-compatible no-mode path |
+| 2026-06-13 | Plan drafted: 5 TDD phases | Foundations → gate chain (ADR-2/5) → request-mapper → adapter → MCP/docs/E2E; ADR-2 three-site change isolated across phases 2+4 |
