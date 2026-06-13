@@ -19,6 +19,9 @@ import type {
 	DeleteDataType,
 	FrontmatterWriteMode,
 	SearchFilter,
+	HeadingTarget,
+	RangeTarget,
+	NoteReadPartial,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
 
@@ -93,6 +96,143 @@ function requirePresent(args: Args, field: string, context: string): unknown {
 	return args[field];
 }
 
+/** Valid mode values for partial note reads. */
+const NOTE_READ_MODES = new Set<string>(['firstXChars', 'section', 'range']);
+
+/**
+ * Parses heading addressing args (heading or headingPath) into a HeadingTarget.
+ * Exactly one of `heading` / `headingPath` must be supplied.
+ * Reused by the write-mapper in a follow-up task.
+ *
+ * @param args - Raw args from the MCP tool call.
+ * @param context - Caller prefix for error messages (e.g. 'mapReadRequest').
+ */
+export function parseHeadingTarget(args: Args, context: string): HeadingTarget {
+	const hasHeading = 'heading' in args && args['heading'] !== undefined;
+	const hasPath = 'headingPath' in args && args['headingPath'] !== undefined;
+
+	if (hasHeading && hasPath) {
+		throw new Error(
+			`${context}: heading and headingPath are mutually exclusive — supply exactly one`,
+		);
+	}
+
+	if (hasHeading) {
+		const heading = args['heading'];
+		if (typeof heading !== 'string' || heading.length === 0) {
+			throw new Error(`${context}: heading must be a non-empty string`);
+		}
+		return {heading};
+	}
+
+	if (hasPath) {
+		const headingPath = args['headingPath'];
+		if (
+			!Array.isArray(headingPath) ||
+			headingPath.length === 0 ||
+			!headingPath.every((s: unknown) => typeof s === 'string' && s.length > 0)
+		) {
+			throw new Error(
+				`${context}: headingPath must be a non-empty array of non-empty strings`,
+			);
+		}
+		return {headingPath: headingPath as string[]};
+	}
+
+	throw new Error(
+		`${context}: mode="section" requires either heading or headingPath`,
+	);
+}
+
+/**
+ * Parses range addressing args (rangeBasis, start, end) into a RangeTarget.
+ * Enforces ADR-4 bounds: line basis → start ≥ 1; char basis → start ≥ 0; start ≤ end.
+ * Reused by the write-mapper in a follow-up task.
+ *
+ * @param args - Raw args from the MCP tool call.
+ * @param context - Caller prefix for error messages (e.g. 'mapReadRequest').
+ */
+export function parseRangeTarget(args: Args, context: string): RangeTarget {
+	const basis = args['rangeBasis'];
+	if (basis !== 'line' && basis !== 'char') {
+		const shown = typeof basis === 'string' ? basis : typeof basis;
+		throw new Error(
+			`${context}: rangeBasis must be "line" or "char" (got '${shown}')`,
+		);
+	}
+
+	const rawStart = args['start'];
+	if (typeof rawStart !== 'number' || !Number.isInteger(rawStart)) {
+		throw new Error(`${context}: start must be an integer`);
+	}
+
+	const rawEnd = args['end'];
+	if (typeof rawEnd !== 'number' || !Number.isInteger(rawEnd)) {
+		throw new Error(`${context}: end must be an integer`);
+	}
+
+	const minStart = basis === 'line' ? 1 : 0;
+	if (rawStart < minStart) {
+		throw new Error(
+			`${context}: start must be ≥ ${minStart} for rangeBasis="${basis}" (got ${rawStart})`,
+		);
+	}
+
+	if (rawStart > rawEnd) {
+		throw new Error(
+			`${context}: start must be ≤ end (got start=${rawStart}, end=${rawEnd})`,
+		);
+	}
+
+	return {basis, start: rawStart, end: rawEnd};
+}
+
+/**
+ * Parses the optional `mode` field from read args and builds a NoteReadPartial descriptor.
+ * Returns undefined when `mode` is absent (full read).
+ * Throws when `mode` is present but invalid, or when mode-specific args are missing/invalid.
+ * Only valid for operation='note'.
+ */
+function parseNoteReadPartial(args: Args, operation: string, context: string): NoteReadPartial | undefined {
+	if (!('mode' in args) || args['mode'] === undefined) {
+		return undefined;
+	}
+
+	const mode = args['mode'];
+
+	if (operation !== 'note') {
+		throw new Error(
+			`${context}: mode is only valid for operation="note" (got operation='${operation}')`,
+		);
+	}
+
+	if (typeof mode !== 'string' || !NOTE_READ_MODES.has(mode)) {
+		const shown = typeof mode === 'string' ? mode : typeof mode;
+		throw new Error(
+			`${context}: mode must be one of firstXChars|section|range (got '${shown}')`,
+		);
+	}
+
+	if (mode === 'firstXChars') {
+		const limit = args['limit'];
+		if (typeof limit !== 'number' || !Number.isInteger(limit) || limit <= 0) {
+			throw new Error(
+				`${context}: limit must be a positive integer for mode="firstXChars"`,
+			);
+		}
+		return {mode: 'firstXChars', limit};
+	}
+
+	if (mode === 'section') {
+		const target = parseHeadingTarget(args, context);
+		return {mode: 'section', ...target};
+	}
+
+	// mode === 'range'
+	const range = parseRangeTarget(args, context);
+	return {mode: 'range', ...range};
+}
+
 /**
  * Maps raw MCP tool arguments into a CoreReadRequest.
  * @param args - Raw key-value arguments from the MCP tool call.
@@ -104,7 +244,14 @@ export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	const path = requireString(args, 'path', 'mapReadRequest');
 	validateOperationExtension(operation, path, 'mapReadRequest');
 
-	return {apiKeyId: keyId, operation, path};
+	const result: CoreReadRequest = {apiKeyId: keyId, operation, path};
+
+	const partial = parseNoteReadPartial(args, operation, 'mapReadRequest');
+	if (partial !== undefined) {
+		result.partial = partial;
+	}
+
+	return result;
 }
 
 /** Operations where content should be a Record, not a string. */

@@ -849,3 +849,242 @@ describe('kadoOpenNotesShape — Zod schema boundary', () => {
 		expect(() => kadoOpenNotesShape.scope?.parse('ACTIVE')).toThrow();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// mapReadRequest — partial read mode (T3.1)
+// ---------------------------------------------------------------------------
+
+describe('mapReadRequest — partial read: omitted mode', () => {
+	it('no mode → no partial field on result', () => {
+		const result = mapReadRequest(makeReadArgs(), KEY_ID);
+
+		expect(result.partial).toBeUndefined();
+	});
+
+	it('operation="frontmatter" without mode → no partial field', () => {
+		const result = mapReadRequest(makeReadArgs({operation: 'frontmatter'}), KEY_ID);
+
+		expect(result.partial).toBeUndefined();
+	});
+});
+
+describe('mapReadRequest — partial read: unknown mode', () => {
+	it('mode="bogus" → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'bogus'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*mode/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode only valid for operation="note"', () => {
+	it('mode="firstXChars" with operation="frontmatter" → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({operation: 'frontmatter', mode: 'firstXChars', limit: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+
+	it('mode="firstXChars" with operation="file" → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'file', path: 'img.png', mode: 'firstXChars', limit: 100},
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+
+	it('mode="firstXChars" with operation="tags" → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({operation: 'tags', mode: 'firstXChars', limit: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=firstXChars', () => {
+	it('valid limit → partial {mode:"firstXChars", limit}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 500}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'firstXChars', limit: 500});
+	});
+
+	it('limit missing → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit=0 → throws (must be positive)', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 0}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit negative → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: -1}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit non-integer (1.5) → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 1.5}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit as string → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: '500'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=section', () => {
+	it('valid heading → partial {mode:"section", heading}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'section', heading: 'Introduction'}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'section', heading: 'Introduction'});
+	});
+
+	it('valid headingPath → partial {mode:"section", headingPath}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'section', headingPath: ['Chapter 1', 'Overview']}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'section', headingPath: ['Chapter 1', 'Overview']});
+	});
+
+	it('both heading and headingPath → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', heading: 'Intro', headingPath: ['Intro']}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('neither heading nor headingPath → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('heading empty string → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section', heading: ''}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath empty array → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section', headingPath: []}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath with empty-string element → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', headingPath: ['Chapter 1', '']}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath with non-string element → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', headingPath: ['Chapter 1', 42]}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=range', () => {
+	it('valid line range → partial {mode:"range", basis:"line", start, end}', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1, end: 10}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'line', start: 1, end: 10});
+	});
+
+	it('valid char range → partial {mode:"range", basis:"char", start, end}', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: 0, end: 100}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'char', start: 0, end: 100});
+	});
+
+	it('rangeBasis missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', start: 1, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*rangeBasis/i);
+	});
+
+	it('rangeBasis invalid value → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'word', start: 1, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*rangeBasis/i);
+	});
+
+	it('start missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('end missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*end/i);
+	});
+
+	it('start non-integer → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1.5, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('end non-integer → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1, end: 10.5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*end/i);
+	});
+
+	it('line basis: start=0 → throws (must be ≥ 1)', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 0, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('line basis: start negative → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: -1, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('char basis: start=-1 → throws (must be ≥ 0)', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: -1, end: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('char basis: start=0 → valid (0-based)', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: 0, end: 50}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'char', start: 0, end: 50});
+	});
+
+	it('inverted range: start > end → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 10, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start.*end|end.*start/i);
+	});
+
+	it('start === end → valid (single line)', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 5, end: 5}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'line', start: 5, end: 5});
+	});
+});
