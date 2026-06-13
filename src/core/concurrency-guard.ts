@@ -4,7 +4,11 @@
  * Read and search requests bypass the guard entirely. Write requests with
  * `expectedModified` are checked against the current mtime; a mismatch
  * produces a CONFLICT error. Writes without `expectedModified` are treated
- * as creates and always pass. See SDD ADR-8.
+ * as creates and always pass — except for partial writes: additive modes
+ * (append/prepend) are lock-free and skip the optimistic check when
+ * `expectedModified` is absent; destructive modes (replaceSection,
+ * replaceRange, insertUnderHeading) require `expectedModified` and return
+ * VALIDATION_ERROR when it is missing. See SDD ADR-5, ADR-8.
  *
  * CRITICAL: No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
@@ -42,6 +46,27 @@ export function validateConcurrency(request: CoreRequest, currentMtime: number |
 
 	if (!isCoreWriteRequest(request)) {
 		return {allowed: true};
+	}
+
+	// Partial-write branch (ADR-5). Must sit before the generic write logic so
+	// additive modes never reach the "no expectedModified + file exists → CONFLICT"
+	// path. When expectedModified IS present, execution falls through to the
+	// standard mtime compare below.
+	if (request.notePartial !== undefined) {
+		const additive = request.notePartial.mode === 'append' || request.notePartial.mode === 'prepend';
+		if (request.expectedModified === undefined) {
+			if (additive) {
+				return {allowed: true};
+			}
+			return {
+				allowed: false,
+				error: {
+					code: 'VALIDATION_ERROR',
+					message: 'replace/insert modes require expectedModified. Read the file first to get the current modified timestamp.',
+				},
+			};
+		}
+		// expectedModified present → fall through to standard mtime compare
 	}
 
 	if (request.expectedModified === undefined) {
