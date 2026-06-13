@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundations — types & pure slice helpers"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

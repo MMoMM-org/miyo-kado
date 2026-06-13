@@ -9,6 +9,51 @@
  */
 
 // ============================================================
+// Partial Note Read/Write Types (spec 007)
+// ============================================================
+
+/** Addressing mode for a partial note read. */
+export type NoteReadMode = 'firstXChars' | 'section' | 'range';
+
+/** Addressing mode for a partial note write. */
+export type NoteWriteMode =
+	| 'append' | 'prepend'
+	| 'insertUnderHeading' | 'replaceSection' | 'replaceRange';
+
+/**
+ * Heading addressing — text (first match) OR path (H1 > H2 > …).
+ * ADR-3: two exclusive discriminated arms, no merging.
+ */
+export type HeadingTarget =
+	| { heading: string }
+	| { headingPath: string[] };
+
+/**
+ * Range addressing with explicit basis. ADR-4.
+ * line: start 1-based, end inclusive.
+ * char: start 0-based, end exclusive (code points).
+ */
+export interface RangeTarget {
+	basis: 'line' | 'char';
+	start: number;
+	end: number;
+}
+
+/** Normalized partial-READ descriptor (built by request-mapper from flat args). */
+export type NoteReadPartial =
+	| { mode: 'firstXChars'; limit: number }
+	| ({ mode: 'section' } & HeadingTarget)
+	| ({ mode: 'range' } & RangeTarget);
+
+/** Normalized partial-WRITE descriptor. */
+export type NoteWritePartial =
+	| { mode: 'append' }
+	| { mode: 'prepend' }
+	| ({ mode: 'insertUnderHeading' } & HeadingTarget)
+	| ({ mode: 'replaceSection' } & HeadingTarget)
+	| ({ mode: 'replaceRange' } & RangeTarget);
+
+// ============================================================
 // Data Types
 // ============================================================
 
@@ -47,6 +92,8 @@ export interface CoreReadRequest {
 	 * - 'frontmatter-only' when only frontmatter.read is granted (inline omitted)
 	 */
 	tagsReturnScope?: 'all' | 'frontmatter-only';
+	/** Partial-read descriptor. Only honoured for operation='note'. */
+	partial?: NoteReadPartial;
 }
 
 /** Merge strategy for frontmatter writes. Ignored for other operations. */
@@ -68,6 +115,11 @@ export interface CoreWriteRequest {
 	 *   object as-is.
 	 */
 	mode?: FrontmatterWriteMode;
+	/**
+	 * Partial-write descriptor for note operations. Only honoured for operation='note'.
+	 * Kept separate from `mode` (which remains FrontmatterWriteMode) to avoid field overloading.
+	 */
+	notePartial?: NoteWritePartial;
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
 }
@@ -192,6 +244,8 @@ export interface CoreFileResult {
 	created: number;
 	modified: number;
 	size: number;
+	/** Set to true when a partial-read limit was reached and content was cut off. */
+	truncated?: boolean;
 }
 
 /** Result of a write operation, containing path and updated timestamps. */
