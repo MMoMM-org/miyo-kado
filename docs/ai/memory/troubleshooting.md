@@ -45,7 +45,7 @@
 - read `maybe-allowed/Budget 2026.md` → ALLOWED ✓
 - create `maybe-allowed/new-file.md` → FORBIDDEN with `Key does not have 'create' permission for data type 'note'` ✓
 **Unit tests**: `test/core/gates/scope-resolver.test.ts` and `test/core/gates/datatype-permission.test.ts` rewritten for the literal semantic; added a direct T9.3 repro + literal-flag-per-CRUD coverage.
-**Note for future**: `invertPermissions` is still exported from `scope-resolver.ts` as an unused utility; remove in a later cleanup.
+**Cleanup (2026-06-13, [#66](https://github.com/MMoMM-org/miyo-kado/issues/66))**: `invertPermissions` removed from `scope-resolver.ts` along with its direct tests — it had no production caller after the literal-semantics fix.
 
 ## Live test state isolation — Status: known
 **Problem**: Config-change tests mutate `data.json` + plugin in-memory state. A test failure before `writeConfig(fixtureConfig)` leaks the broken config into subsequent tests. Adding `beforeEach` to restore fixture + trigger reload is fragile: the hot-reload timing varies (some tests need >5s reload-settle, causing 3s waits to miss), and restore-then-reload without waiting for the MCP probe can race with the next test's early calls.

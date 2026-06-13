@@ -45,7 +45,7 @@
 | `core/gates/key-scope.test.ts` | `src/core/gates/key-scope.ts` | whitelist allowed/denied, blacklist | 12 | 0 |
 | `core/gates/datatype-permission.test.ts` | `src/core/gates/datatype-permission.ts` | read/write/search permissions, scope exclusion, blacklist inversion | 19 | 0 |
 | `core/gates/path-access.test.ts` | `src/core/gates/path-access.ts` | allowed paths, traversal attempts, empty paths | 14 | 0 |
-| `core/gates/scope-resolver.test.ts` | `src/core/gates/scope-resolver.ts` | createAllPermissions, invertPermissions, intersectPermissions, whitelist/blacklist resolveScope, **directory prefix matching** | 19 | 0 |
+| `core/gates/scope-resolver.test.ts` | `src/core/gates/scope-resolver.ts` | createAllPermissions, intersectPermissions, whitelist/blacklist resolveScope, **directory prefix matching** | 19 | 0 |
 | `core/permission-chain.test.ts` | `src/core/permission-chain.ts` | gate ordering, short-circuit denial, createDefaultGateChain | 10 | 0 |
 
 ### Core — Utilities

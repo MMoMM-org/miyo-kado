@@ -2,7 +2,7 @@
  * Behavioral tests for scope-resolver utility functions.
  *
  * Covers resolveScope() in whitelist and blacklist modes, intersectPermissions(),
- * invertPermissions(), and createAllPermissions(). Exercised through their public
+ * and createAllPermissions(). Exercised through their public
  * function signatures — no dependency on gate wiring.
  */
 
@@ -10,7 +10,6 @@ import {describe, it, expect} from 'vitest';
 import {
 	resolveScope,
 	intersectPermissions,
-	invertPermissions,
 	createAllPermissions,
 } from '../../../src/core/gates/scope-resolver';
 import type {DataTypePermissions, PathPermission} from '../../../src/types/canonical';
@@ -59,39 +58,6 @@ describe('createAllPermissions()', () => {
 		const a = createAllPermissions();
 		const b = createAllPermissions();
 		expect(a).not.toBe(b);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// invertPermissions()
-// ---------------------------------------------------------------------------
-
-describe('invertPermissions()', () => {
-	it('flips all flags from true to false', () => {
-		const result = invertPermissions(createAllPermissions());
-
-		expect(result.note).toEqual({create: false, read: false, update: false, delete: false});
-		expect(result.frontmatter).toEqual({create: false, read: false, update: false, delete: false});
-		expect(result.file).toEqual({create: false, read: false, update: false, delete: false});
-		expect(result.dataviewInlineField).toEqual({create: false, read: false, update: false, delete: false});
-	});
-
-	it('flips all flags from false to true', () => {
-		const result = invertPermissions(makeAllFalsePermissions());
-
-		expect(result.note).toEqual({create: true, read: true, update: true, delete: true});
-		expect(result.frontmatter).toEqual({create: true, read: true, update: true, delete: true});
-		expect(result.file).toEqual({create: true, read: true, update: true, delete: true});
-		expect(result.dataviewInlineField).toEqual({create: true, read: true, update: true, delete: true});
-	});
-
-	it('flips mixed flags independently per field', () => {
-		const result = invertPermissions(makeReadOnlyPermissions());
-
-		expect(result.note).toEqual({create: true, read: false, update: true, delete: true});
-		expect(result.frontmatter).toEqual({create: true, read: false, update: true, delete: true});
-		expect(result.file).toEqual({create: true, read: false, update: true, delete: true});
-		expect(result.dataviewInlineField).toEqual({create: true, read: false, update: true, delete: true});
 	});
 });
 
