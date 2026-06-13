@@ -27,16 +27,6 @@ export function createAllPermissions(): DataTypePermissions {
 	};
 }
 
-/** Returns DataTypePermissions with all CRUD flags flipped from the input. */
-export function invertPermissions(p: DataTypePermissions): DataTypePermissions {
-	return {
-		note: {create: !p.note.create, read: !p.note.read, update: !p.note.update, delete: !p.note.delete},
-		frontmatter: {create: !p.frontmatter.create, read: !p.frontmatter.read, update: !p.frontmatter.update, delete: !p.frontmatter.delete},
-		file: {create: !p.file.create, read: !p.file.read, update: !p.file.update, delete: !p.file.delete},
-		dataviewInlineField: {create: !p.dataviewInlineField.create, read: !p.dataviewInlineField.read, update: !p.dataviewInlineField.update, delete: !p.dataviewInlineField.delete},
-	};
-}
-
 /**
  * Returns a specificity score for a glob pattern: the count of literal
  * (non-wildcard) characters. Higher = more specific.
