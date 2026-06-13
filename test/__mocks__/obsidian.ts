@@ -12,9 +12,24 @@ export interface TagCache {
 	position?: unknown;
 }
 
+/**
+ * Minimal HeadingCache stub that mirrors Obsidian's real HeadingCache shape.
+ * `position.start.line` is 0-based relative to the whole file (including
+ * YAML frontmatter), matching Obsidian's metadataCache contract.
+ */
+export interface HeadingCache {
+	heading: string;
+	level: number;
+	position: {
+		start: {line: number; col: number; offset: number};
+		end: {line: number; col: number; offset: number};
+	};
+}
+
 export interface CachedMetadata {
 	tags?: TagCache[];
 	frontmatter?: Record<string, unknown>;
+	headings?: HeadingCache[];
 }
 
 // --- App & Workspace ---

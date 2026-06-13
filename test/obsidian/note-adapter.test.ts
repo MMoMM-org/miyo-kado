@@ -8,8 +8,9 @@
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {App, TFile, MarkdownView, Notice} from '../__mocks__/obsidian';
+import type {HeadingCache} from '../__mocks__/obsidian';
 import {createNoteAdapter} from '../../src/obsidian/note-adapter';
-import type {CoreReadRequest, CoreWriteRequest} from '../../src/types/canonical';
+import type {CoreReadRequest, CoreWriteRequest, NoteReadPartial} from '../../src/types/canonical';
 
 function makeLeafWithView(file: TFile, editorContent: string): {view: MarkdownView} {
 	const view = new MarkdownView();
@@ -415,6 +416,291 @@ describe('NoteAdapter', () => {
 			expect(view.save).not.toHaveBeenCalled();
 			expect(app.vault.read).not.toHaveBeenCalled();
 			expect(app.vault.process).toHaveBeenCalledOnce();
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// Helpers for partial read tests
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * Build a HeadingCache entry in the shape Obsidian actually provides.
+	 * heading: text only (no leading # or spaces).
+	 * level: 1-6.
+	 * position.start.line: 0-based line index into the FULL file content.
+	 */
+	function makeHeading(heading: string, level: number, line: number): HeadingCache {
+		return {
+			heading,
+			level,
+			position: {
+				start: {line, col: 0, offset: 0},
+				end: {line, col: heading.length + level + 1, offset: 0},
+			},
+		};
+	}
+
+	function makePartialReadRequest(partial: NoteReadPartial, path = 'notes/test.md'): CoreReadRequest {
+		return {apiKeyId: 'kado_test-key', operation: 'note', path, partial};
+	}
+
+	describe('read() — HeadingCache shape assertion', () => {
+		it('HeadingCache mock exposes position.start.line and level (API shape guard)', () => {
+			const h = makeHeading('Introduction', 2, 5);
+			// If Obsidian ever changes this shape, this test will catch it early.
+			expect(h.heading).toBe('Introduction');
+			expect(h.level).toBe(2);
+			expect(h.position.start.line).toBe(5);
+		});
+	});
+
+	describe('read() — partial: firstXChars', () => {
+		it('returns slice + truncated:true when content exceeds limit', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 100});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hello, World! This is more text.');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makePartialReadRequest({mode: 'firstXChars', limit: 5}));
+
+			expect(result.content).toBe('Hello');
+			expect(result.truncated).toBe(true);
+			expect(result.modified).toBe(2000);
+		});
+
+		it('returns full content + truncated:false when limit >= content length', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 10});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hi');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makePartialReadRequest({mode: 'firstXChars', limit: 100}));
+
+			expect(result.content).toBe('Hi');
+			expect(result.truncated).toBe(false);
+		});
+	});
+
+	describe('read() — partial: section by heading TEXT', () => {
+		const CONTENT = '# Title\nIntro line.\n## Tasks\nDo stuff.\n## Notes\nSome notes.';
+		// Line 0: "# Title"
+		// Line 1: "Intro line."
+		// Line 2: "## Tasks"
+		// Line 3: "Do stuff."
+		// Line 4: "## Notes"
+		// Line 5: "Some notes."
+
+		it('returns section content from heading line to next equal-level heading (exclusive)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 60});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Title', 1, 0),
+					makeHeading('Tasks', 2, 2),
+					makeHeading('Notes', 2, 4),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'section', heading: 'Tasks'}),
+			);
+
+			// Section "Tasks" spans lines 2-3 (line 4 starts the next H2)
+			expect(result.content).toBe('## Tasks\nDo stuff.');
+			expect(result.truncated).toBe(true); // content exists outside the section
+		});
+
+		it('section that is the entire body has truncated:false', async () => {
+			const FULL = '# Only\nAll content.';
+			// Line 0: "# Only"
+			// Line 1: "All content."
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 20});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(FULL);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Only', 1, 0)],
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'section', heading: 'Only'}),
+			);
+
+			expect(result.content).toBe(FULL);
+			expect(result.truncated).toBe(false);
+		});
+
+		it('section extends to EOF when no subsequent heading of equal-or-higher level', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 60});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Title', 1, 0),
+					makeHeading('Tasks', 2, 2),
+					makeHeading('Notes', 2, 4),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'section', heading: 'Notes'}),
+			);
+
+			expect(result.content).toBe('## Notes\nSome notes.');
+			expect(result.truncated).toBe(true);
+		});
+
+		it('throws NOT_FOUND when heading text does not exist', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('# Title\nBody.');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Title', 1, 0)],
+			});
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.read(makePartialReadRequest({mode: 'section', heading: 'Missing'})),
+			).rejects.toMatchObject({
+				code: 'NOT_FOUND',
+				message: expect.stringContaining('Missing'),
+			});
+		});
+	});
+
+	describe('read() — partial: section by headingPath', () => {
+		// Content with duplicate "Tasks" at different nesting levels:
+		// # Project
+		// ## Tasks       ← line 1
+		// ### Subtask
+		// # Work
+		// ## Tasks       ← line 4 (duplicate heading text, different path)
+		// ### Subtask
+		const CONTENT_DUP = '# Project\n## Tasks\n### Subtask\n# Work\n## Tasks\n### Subtask';
+
+		it('disambiguates duplicate headings via headingPath', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 60});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT_DUP);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 1),
+					makeHeading('Subtask', 3, 2),
+					makeHeading('Work', 1, 3),
+					makeHeading('Tasks', 2, 4),
+					makeHeading('Subtask', 3, 5),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+
+			// Target the SECOND "Tasks" under "Work"
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'section', headingPath: ['Work', 'Tasks']}),
+			);
+			expect(result.content).toBe('## Tasks\n### Subtask');
+			expect(result.truncated).toBe(true);
+		});
+
+		it('throws NOT_FOUND when headingPath does not resolve', async () => {
+			const file = makeTFile();
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('# Project\n## Tasks\n');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 1),
+				],
+			});
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.read(makePartialReadRequest({mode: 'section', headingPath: ['Project', 'NoSuchSection']})),
+			).rejects.toMatchObject({
+				code: 'NOT_FOUND',
+				message: expect.stringContaining('NoSuchSection'),
+			});
+		});
+	});
+
+	describe('read() — partial: range (line basis)', () => {
+		const CONTENT = 'line1\nline2\nline3\nline4\nline5';
+
+		it('returns the requested line span + truncated:true', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 30});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'range', basis: 'line', start: 2, end: 3}),
+			);
+
+			expect(result.content).toBe('line2\nline3');
+			expect(result.truncated).toBe(true);
+		});
+
+		it('clamps end past EOF instead of throwing', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 30});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'range', basis: 'line', start: 4, end: 999}),
+			);
+
+			expect(result.content).toBe('line4\nline5');
+			expect(result.truncated).toBe(true);
+		});
+	});
+
+	describe('read() — partial: range (char basis)', () => {
+		it('returns the requested char span + truncated:true', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 20});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hello, World!');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'range', basis: 'char', start: 0, end: 5}),
+			);
+
+			expect(result.content).toBe('Hello');
+			expect(result.truncated).toBe(true);
+		});
+
+		it('clamps end past EOF', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 5});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hi');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(
+				makePartialReadRequest({mode: 'range', basis: 'char', start: 0, end: 9999}),
+			);
+
+			expect(result.content).toBe('Hi');
+			expect(result.truncated).toBe(false);
+		});
+	});
+
+	describe('read() — no partial (regression)', () => {
+		it('returns full content unchanged when request.partial is omitted', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 3000, size: 50});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Full note content here.');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makeReadRequest());
+
+			expect(result.content).toBe('Full note content here.');
+			expect(result.truncated).toBeUndefined();
+			expect(result.modified).toBe(3000);
 		});
 	});
 });

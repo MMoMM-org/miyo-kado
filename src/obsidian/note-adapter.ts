@@ -5,11 +5,12 @@
  * Translates vault results and errors into Core canonical types.
  */
 
-import type {App, TFile} from 'obsidian';
+import type {App, HeadingCache, TFile} from 'obsidian';
 import {MarkdownView, Notice} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
-import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode} from '../types/canonical';
+import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
+import {firstXChars, sliceByLineRange, sliceByCharRange} from '../core/partial-slice';
 
 /** Error thrown by vault adapters, wrapping a CoreError with its error code. */
 export class NoteAdapterError extends Error {
@@ -25,21 +26,152 @@ function notFoundError(path: string): NoteAdapterError {
 	return new NoteAdapterError({code: 'NOT_FOUND', message: `Note not found: ${path}`});
 }
 
+function sectionNotFoundError(name: string): NoteAdapterError {
+	return new NoteAdapterError({code: 'NOT_FOUND', message: `Section not found: ${name}`});
+}
+
 function conflictError(path: string): NoteAdapterError {
 	return new NoteAdapterError({code: 'CONFLICT', message: `Note already exists: ${path}`});
 }
+
+// ============================================================
+// Partial-read helpers
+// ============================================================
+
+/**
+ * A resolved section span: 0-based start line (inclusive) and end line (exclusive).
+ * `endLine` is `Infinity` when the section extends to EOF.
+ * Exported for reuse by the partial-write adapter (T4.2+).
+ */
+export interface SectionSpan {
+	startLine: number;
+	endLine: number;
+}
+
+/**
+ * Walk `headings` to find a heading whose path (H1 > H2 > …) matches `path[]`.
+ * Each segment must appear at a strictly deeper level than the previous match,
+ * and must reside within the previous match's section.
+ * Returns the index of the final matched heading, or -1.
+ */
+export function matchHeadingPath(headings: HeadingCache[], path: string[]): number {
+	let from = 0;
+	let parentLevel = 0;
+	let lastIdx = -1;
+	for (const name of path) {
+		let found = -1;
+		for (let i = from; i < headings.length; i++) {
+			const h = headings[i]!;
+			if (h.level <= parentLevel) break; // left the parent's section
+			if (h.heading === name && h.level > parentLevel) {
+				found = i;
+				break;
+			}
+		}
+		if (found === -1) return -1;
+		lastIdx = found;
+		parentLevel = headings[found]!.level;
+		from = found + 1;
+	}
+	return lastIdx;
+}
+
+/**
+ * Resolve a HeadingTarget to a SectionSpan using Obsidian's HeadingCache[].
+ * HeadingCache.position.start.line is 0-based and relative to the WHOLE file
+ * (including YAML frontmatter), so the span indices align with the full content
+ * string from vault.read() — do NOT strip frontmatter before slicing.
+ * Returns null when the target heading cannot be found.
+ */
+export function resolveSection(headings: HeadingCache[], target: HeadingTarget): SectionSpan | null {
+	const idx = ('headingPath' in target)
+		? matchHeadingPath(headings, target.headingPath)
+		: headings.findIndex(h => h.heading === target.heading); // first text match
+
+	if (idx === -1) return null;
+
+	const matched = headings[idx]!;
+	const start = matched.position.start.line;
+	const level = matched.level;
+	let endLine: number = Infinity;
+
+	// Section ends at the next heading of equal-or-higher level, else EOF.
+	for (let i = idx + 1; i < headings.length; i++) {
+		const next = headings[i]!;
+		if (next.level <= level) {
+			endLine = next.position.start.line;
+			break;
+		}
+	}
+
+	return {startLine: start, endLine};
+}
+
+// ============================================================
+// Core read implementation
+// ============================================================
 
 async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileResult> {
 	const file = app.vault.getFileByPath(request.path);
 	if (!file) throw notFoundError(request.path);
 	if (request.operation === 'tags') return readTags(app, file, request);
+
+	// CRITICAL: All partial-read slicing operates on the FULL file content from
+	// vault.read() — do NOT strip frontmatter first. Obsidian's HeadingCache
+	// position.start.line values are relative to the whole file (including any
+	// YAML frontmatter block), so the indices would be wrong on a stripped body.
 	const content = await app.vault.read(file);
+
+	if (!request.partial) {
+		return {
+			path: request.path,
+			content,
+			created: file.stat.ctime,
+			modified: file.stat.mtime,
+			size: file.stat.size,
+		};
+	}
+
+	const partial = request.partial;
+	let slice: string;
+	let truncated: boolean;
+
+	if (partial.mode === 'firstXChars') {
+		({slice, truncated} = firstXChars(content, partial.limit));
+	} else if (partial.mode === 'range') {
+		if (partial.basis === 'line') {
+			({slice, truncated} = sliceByLineRange(content, partial.start, partial.end));
+		} else {
+			({slice, truncated} = sliceByCharRange(content, partial.start, partial.end));
+		}
+	} else {
+		// mode === 'section'
+		const cache = app.metadataCache.getFileCache(file);
+		const headings: HeadingCache[] = cache?.headings ?? [];
+		const span = resolveSection(headings, partial);
+
+		if (span === null) {
+			// Build a human-readable name for the error message.
+			const sectionName = 'headingPath' in partial
+				? partial.headingPath[partial.headingPath.length - 1] ?? '(unknown)'
+				: partial.heading;
+			throw sectionNotFoundError(sectionName);
+		}
+
+		// Convert the 0-based [startLine, endLine) span to sliceByLineRange's
+		// 1-based inclusive form: start+1, end (clamped at line count for EOF).
+		const lineCount = content.split('\n').length;
+		const rangeEnd = span.endLine === Infinity ? lineCount : span.endLine;
+		({slice, truncated} = sliceByLineRange(content, span.startLine + 1, rangeEnd));
+	}
+
 	return {
 		path: request.path,
-		content,
+		content: slice,
 		created: file.stat.ctime,
 		modified: file.stat.mtime,
 		size: file.stat.size,
+		truncated,
 	};
 }
 
