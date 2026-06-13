@@ -175,12 +175,24 @@ describe('validateConcurrency — partial write: append without expectedModified
 		const result = validateConcurrency(request, 1700000000000);
 		expect(result).toEqual({allowed: true});
 	});
+
+	it('returns allowed when file does not exist (new file, no expectedModified)', () => {
+		const request = makePartialWriteRequest({mode: 'append'});
+		const result = validateConcurrency(request, undefined);
+		expect(result).toEqual({allowed: true});
+	});
 });
 
 describe('validateConcurrency — partial write: prepend without expectedModified', () => {
 	it('returns allowed even when file exists (lock-free additive write)', () => {
 		const request = makePartialWriteRequest({mode: 'prepend'});
 		const result = validateConcurrency(request, 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns allowed when file does not exist (new file, no expectedModified)', () => {
+		const request = makePartialWriteRequest({mode: 'prepend'});
+		const result = validateConcurrency(request, undefined);
 		expect(result).toEqual({allowed: true});
 	});
 });
@@ -230,8 +242,17 @@ describe('validateConcurrency — partial write: insertUnderHeading without expe
 // ---------------------------------------------------------------------------
 
 describe('validateConcurrency — partial write with stale expectedModified', () => {
-	it('returns CONFLICT when mtime does not match (any mode)', () => {
+	it('returns CONFLICT when mtime does not match (additive mode)', () => {
 		const request = makePartialWriteRequest({mode: 'append'}, {expectedModified: 1700000000000});
+		const result = validateConcurrency(request, 1800000000000);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('CONFLICT');
+		}
+	});
+
+	it('returns CONFLICT when mtime does not match (destructive mode)', () => {
+		const request = makePartialWriteRequest({mode: 'replaceSection', heading: '## Summary'}, {expectedModified: 1700000000000});
 		const result = validateConcurrency(request, 1800000000000);
 		expect(result.allowed).toBe(false);
 		if (!result.allowed) {

@@ -22,7 +22,7 @@ import type {CoreRequest, GateResult} from '../types/canonical';
  * @param request - The incoming core request.
  * @param currentMtime - The current modification timestamp of the target file,
  *   or undefined when the file does not yet exist.
- * @returns GateResult — allowed or CONFLICT error.
+ * @returns GateResult — allowed, CONFLICT error, or VALIDATION_ERROR (partial destructive write missing expectedModified).
  */
 export function validateConcurrency(request: CoreRequest, currentMtime: number | undefined): GateResult {
 	// Delete requests always require expectedModified + file must exist.
