@@ -75,6 +75,10 @@ describe('firstXChars()', () => {
 		expect(Array.from(slice).length).toBe(3);
 		expect(truncated).toBe(true);
 	});
+
+	it('throws when limit is negative', () => {
+		expect(() => firstXChars('hello', -1)).toThrow();
+	});
 });
 
 // ============================================================

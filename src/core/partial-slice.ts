@@ -29,6 +29,7 @@ export function firstXChars(
 	body: string,
 	limit: number,
 ): {slice: string; truncated: boolean} {
+	if (limit < 0) throw new Error(`VALIDATION_ERROR: limit must be ≥ 0, got ${limit}`);
 	const cps = Array.from(body); // code points, not UTF-16 units → never splits a char
 	if (cps.length <= limit) return {slice: body, truncated: false};
 	return {slice: cps.slice(0, limit).join(''), truncated: true};
