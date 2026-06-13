@@ -27,6 +27,9 @@ import {
 // @ts-expect-error — extra key must be rejected by NoteReadPartial union
 const _badReadPartial: NoteReadPartial = {mode: 'firstXChars', limit: 10, extraKey: true};
 
+// @ts-expect-error — extra key must be rejected by NoteWritePartial union
+const _badWritePartial: NoteWritePartial = {mode: 'append', extraKey: true};
+
 // @ts-expect-error — mode value not in NoteWriteMode must be rejected
 const _badWriteMode: NoteWriteMode = 'nonExistentMode';
 
