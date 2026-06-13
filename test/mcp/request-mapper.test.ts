@@ -256,7 +256,7 @@ describe('mapWriteRequest — frontmatter mode field', () => {
 		expect(() => mapWriteRequest(
 			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
 			KEY_ID,
-		)).toThrow(/mapWriteRequest:.*mode.*append|prepend|insertUnderHeading|replaceSection|replaceRange/i);
+		)).toThrow(/mapWriteRequest:.*mode.*(append|prepend|insertUnderHeading|replaceSection|replaceRange)/i);
 	});
 });
 
@@ -1102,6 +1102,7 @@ describe('parseHeadingTarget — neither heading nor headingPath', () => {
 	});
 
 	it('error does NOT contain the word "section"', () => {
+		expect.assertions(1);
 		try {
 			parseHeadingTarget({}, 'testCtx');
 		} catch (e) {
@@ -1310,6 +1311,13 @@ describe('mapWriteRequest — note mode: replaceSection', () => {
 		) as CoreWriteRequest;
 
 		expect(result.notePartial).toEqual({mode: 'replaceSection', headingPath: ['Ch1']} satisfies NoteWritePartial);
+	});
+
+	it('both heading and headingPath → error (mutually exclusive)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Foo', headingPath: ['Foo'], expectedModified: 5},
+			KEY_ID,
+		)).toThrow(/heading.*headingPath.*mutually exclusive|mutually exclusive/i);
 	});
 
 	it('neither heading nor headingPath → error', () => {
