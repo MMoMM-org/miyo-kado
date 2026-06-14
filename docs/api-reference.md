@@ -215,7 +215,7 @@ Partial reads let a client fetch only part of a note's body instead of the whole
 
 - `rangeBasis: "line"` — `start` is a **1-based** line number, `end` is **inclusive**.
 - `rangeBasis: "char"` — `start` is a **0-based** code-point offset, `end` is **exclusive**. Multibyte code points are never split.
-- Out-of-range bounds **clamp** to the body (not an error). Inverted (`start > end`) or negative bounds are rejected with `VALIDATION_ERROR` at the mapper boundary.
+- Out-of-range bounds **clamp** to the body (not an error). Inverted (`start > end`) or below-minimum bounds (`start < 1` for line basis, `start < 0` for char basis) are rejected with `VALIDATION_ERROR` at the mapper boundary.
 
 **`truncated` semantics:** every partial-read response carries `truncated: boolean`.
 
@@ -328,7 +328,7 @@ Write content to the Obsidian vault. Supports creating new files and updating ex
 ### Content Format and Coercion
 
 - **`note`** and **`file`**: content must be a string.
-- **`frontmatter`** and **`dataview-inline-field`**: content should be a JSON object. If a JSON string is passed instead, Kado automatically parses it into an object (coercion). Prototype-pollution keys (`__proto__`, `constructor`, `prototype`) are stripped.
+- **`frontmatter`** and **`dataview-inline-field`**: content should be a JSON object. If a JSON string is passed instead, Kado automatically parses it into an object (coercion). Prototype-pollution keys (`__proto__`, `constructor`) are stripped.
 
 ### Frontmatter Write Modes
 
