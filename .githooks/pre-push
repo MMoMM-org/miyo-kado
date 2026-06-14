@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: v2.2.2
-# tcs-git-helpers-bundle: h2
+# tcs-git-helpers: v2.2.9
+# tcs-git-helpers-bundle: h3
 # pre-push — tcs-git-helpers repo-side safety hook
 #
 # Blocks pushes to branches whose GitHub PR is CLOSED or MERGED.
@@ -207,9 +207,12 @@ _query_gh_pr_state() {
   fi
 
   # Capture output + exit code in a subshell so set -uo pipefail doesn't bite us.
+  # --state all is REQUIRED: `gh pr list` defaults to --state open, so a CLOSED
+  # or MERGED PR (exactly what this hook must block) would be invisible and the
+  # query would return [] → NO_PR → push allowed. Mirrors scripts/lib/git_state.sh.
   gh_exit=0
   gh_out="$(_gh_with_timeout "$_TIMEOUT" \
-    gh pr list --head "$branch" --json state,number,mergedAt --limit 1 2>/dev/null)" || gh_exit=$?
+    gh pr list --head "$branch" --state all --json state,number,mergedAt --limit 1 2>/dev/null)" || gh_exit=$?
 
   # Exit 4 = auth error (fail-open with warning).
   if [ "$gh_exit" -eq 4 ]; then
