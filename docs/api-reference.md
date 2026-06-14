@@ -88,6 +88,13 @@ Read content from the Obsidian vault. Returns content along with file metadata. 
 |---|---|---|---|
 | `operation` | `"note" \| "frontmatter" \| "file" \| "dataview-inline-field"` | Yes | What to read |
 | `path` | `string` | Yes | Vault-relative path, e.g. `"Calendar/2026-03-31.md"` |
+| `mode` | `"firstXChars" \| "section" \| "range"` | No | Partial-read mode. Only valid for `operation="note"`. Omit for a full read (unchanged behaviour). See [Partial reads](#partial-reads). |
+| `limit` | `integer` | Conditional | Number of Unicode code points to return. Required (positive integer) for `mode="firstXChars"`; ignored otherwise. |
+| `heading` | `string` | Conditional | Heading text to target (first match). Used with `mode="section"`. Mutually exclusive with `headingPath`. |
+| `headingPath` | `string[]` | Conditional | Hierarchical heading path (`["H1", "H2"]`) for disambiguating duplicate headings. Used with `mode="section"`. Mutually exclusive with `heading`. |
+| `rangeBasis` | `"line" \| "char"` | Conditional | Unit for `start`/`end`. Required for `mode="range"`. `line`: 1-based, inclusive end. `char`: 0-based code points, exclusive end. |
+| `start` | `integer` | Conditional | Start of the range. Required for `mode="range"`. `line`: 1-based; `char`: 0-based. |
+| `end` | `integer` | Conditional | End of the range. Required for `mode="range"`. `line`: inclusive; `char`: exclusive. |
 
 ### Response Format
 
@@ -100,6 +107,7 @@ All read responses return a JSON object with:
 | `created` | `number` | File creation timestamp (Unix ms) |
 | `modified` | `number` | File modification timestamp (Unix ms) |
 | `size` | `number` | File size in bytes |
+| `truncated` | `boolean` | **Only present on partial reads** (`mode` set). `true` when content outside the returned slice exists, `false` when the slice covers the whole body. Absent entirely on full reads. |
 
 ### Examples
 
@@ -193,6 +201,100 @@ All read responses return a JSON object with:
 }
 ```
 
+### Partial reads
+
+Partial reads let a client fetch only part of a note's body instead of the whole thing. They apply **only to `operation="note"`** — supplying `mode` with any other operation returns `VALIDATION_ERROR`. When `mode` is omitted the read is byte-for-byte identical to a full read; the response omits `truncated`.
+
+| Mode | Required params | Returns |
+|---|---|---|
+| `firstXChars` | `limit` (positive integer) | The first `limit` Unicode code points of the body. If `limit ≥ body length`, the full body is returned with `truncated: false`. |
+| `section` | `heading` **or** `headingPath` (exactly one) | The content from the matched heading down to the next equal-or-higher heading (or EOF). `heading` matches the first heading with that text; `headingPath` disambiguates by H1 > H2 > … path. |
+| `range` | `rangeBasis`, `start`, `end` | A slice addressed by line or character offsets (see basis rules below). |
+
+**Range basis (ADR-4):**
+
+- `rangeBasis: "line"` — `start` is a **1-based** line number, `end` is **inclusive**.
+- `rangeBasis: "char"` — `start` is a **0-based** code-point offset, `end` is **exclusive**. Multibyte code points are never split.
+- Out-of-range bounds **clamp** to the body (not an error). Inverted (`start > end`) or negative bounds are rejected with `VALIDATION_ERROR` at the mapper boundary.
+
+**`truncated` semantics:** every partial-read response carries `truncated: boolean`.
+
+- `firstXChars` — `true` when the body is longer than `limit`, else `false`.
+- `section` — `true` whenever any content exists outside the returned section; `false` only when the section spans the whole body.
+- `range` — `true` when anything was cut from either end; `false` only when the slice covers the entire body.
+
+A `section` mode that matches no heading returns `NOT_FOUND` naming the section — never a silent empty result.
+
+**Backward compatibility:** omitting `mode` behaves exactly as before this feature shipped — a full body read with no `truncated` field.
+
+**First N characters:**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "path": "Projects/kado.md",
+  "mode": "firstXChars",
+  "limit": 200
+}
+
+// Response content (body was longer than 200 code points)
+{
+  "path": "Projects/kado.md",
+  "content": "# Kado Plugin\n\nAn MCP server for Obsidian...",
+  "created": 1743379200000,
+  "modified": 1743379500000,
+  "size": 4096,
+  "truncated": true
+}
+```
+
+**Read one section by heading:**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "path": "Projects/kado.md",
+  "mode": "section",
+  "heading": "Roadmap"
+}
+
+// Response content (content from "## Roadmap" to the next equal-or-higher heading)
+{
+  "path": "Projects/kado.md",
+  "content": "## Roadmap\n\n- [ ] Ship partial RW\n- [ ] Docs\n",
+  "created": 1743379200000,
+  "modified": 1743379500000,
+  "size": 4096,
+  "truncated": true
+}
+```
+
+**Read a line range:**
+
+```json
+// Request arguments — lines 10 through 20 inclusive (1-based)
+{
+  "operation": "note",
+  "path": "Projects/kado.md",
+  "mode": "range",
+  "rangeBasis": "line",
+  "start": 10,
+  "end": 20
+}
+
+// Response content
+{
+  "path": "Projects/kado.md",
+  "content": "...lines 10-20 of the body...",
+  "created": 1743379200000,
+  "modified": 1743379500000,
+  "size": 4096,
+  "truncated": true
+}
+```
+
 ---
 
 ## Tool: kado-write
@@ -214,9 +316,14 @@ Write content to the Obsidian vault. Supports creating new files and updating ex
 |---|---|---|---|
 | `operation` | `"note" \| "frontmatter" \| "file" \| "dataview-inline-field"` | Yes | What to write |
 | `path` | `string` | Yes | Vault-relative path, e.g. `"100 Inbox/new-note.md"` |
-| `content` | `string \| object` | Yes | Content to write (see content format below) |
-| `expectedModified` | `number` | Conditional | Required for updates. Omit only for creates. |
-| `mode` | `"merge" \| "replace"` | No | Only honoured for `operation="frontmatter"` (ignored otherwise). Defaults to `"merge"`. See [Frontmatter Write Modes](#frontmatter-write-modes). |
+| `content` | `string \| object` | Yes | Content to write (see content format below). For partial note writes, the text to add or use as the replacement. |
+| `expectedModified` | `number` | Conditional | Required for updates. Omit only for creates. For partial note writes: **required** for `insertUnderHeading`/`replaceSection`/`replaceRange`; **optional** for `append`/`prepend` (lock-free). |
+| `mode` | `"merge" \| "replace" \| "append" \| "prepend" \| "insertUnderHeading" \| "replaceSection" \| "replaceRange"` | No | Overloaded by operation. For `operation="frontmatter"`: `"merge"` (default) or `"replace"` — see [Frontmatter Write Modes](#frontmatter-write-modes). For `operation="note"`: one of the five partial-write modes — see [Partial writes](#partial-writes). Omit for a full-body note write (unchanged). Supplying a partial mode with any other operation returns `VALIDATION_ERROR`. |
+| `heading` | `string` | Conditional | Heading text to target (first match). Used with `mode="insertUnderHeading"` or `"replaceSection"`. Mutually exclusive with `headingPath`. |
+| `headingPath` | `string[]` | Conditional | Hierarchical heading path for disambiguation. Used with `mode="insertUnderHeading"` or `"replaceSection"`. Mutually exclusive with `heading`. |
+| `rangeBasis` | `"line" \| "char"` | Conditional | Unit for `start`/`end`. Required for `mode="replaceRange"`. `line`: 1-based, inclusive end. `char`: 0-based code points, exclusive end. |
+| `start` | `integer` | Conditional | Start of the range to replace. Required for `mode="replaceRange"`. |
+| `end` | `integer` | Conditional | End of the range to replace. Required for `mode="replaceRange"`. |
 
 ### Content Format and Coercion
 
@@ -239,6 +346,105 @@ The `mode` parameter controls how `operation="frontmatter"` reconciles the suppl
 **Concurrency:** the `expectedModified` requirement is unchanged — frontmatter updates still need a fresh read first.
 
 **Audit log:** frontmatter writes are marked `bodyTouched: false` in audit entries so auditors can distinguish metadata-only writes from content writes.
+
+### Partial writes
+
+For `operation="note"`, the `mode` parameter selects a **partial write** that targets only part of the body instead of replacing the whole note. Partial writes apply **only to `operation="note"`** — supplying any of these modes with another operation returns `VALIDATION_ERROR`. When `mode` is omitted the write is a full-body write, byte-for-byte identical to before this feature shipped (the legacy `expectedModified`-based create-vs-update rule still applies).
+
+| Mode | Required params | Behaviour |
+|---|---|---|
+| `append` | — | Add `content` after the last line of the body. |
+| `prepend` | — | Insert `content` before the body (after the YAML frontmatter block, if any). |
+| `insertUnderHeading` | `heading` **or** `headingPath` | Insert `content` at the **end** of the matched heading's section (just before the next equal-or-higher heading, or EOF). The heading line and surrounding sections are left unchanged. |
+| `replaceSection` | `heading` **or** `headingPath` | Replace the **body** of the matched heading's section with `content`. The heading line itself is preserved; only the lines under it (up to the next equal-or-higher heading or EOF) are replaced. |
+| `replaceRange` | `rangeBasis`, `start`, `end` | Replace the addressed line or character span with `content`. Same basis rules as partial reads (ADR-4): `line` is 1-based inclusive, `char` is 0-based exclusive code points. |
+
+**`expectedModified` rule (ADR-5):**
+
+- `append` and `prepend` are **lock-free** — `expectedModified` is **optional**. They are additive and conflict-tolerant (fire-and-forget capture); omitting it skips the optimistic-lock check.
+- `insertUnderHeading`, `replaceSection`, and `replaceRange` **require** `expectedModified`. Omitting it returns `VALIDATION_ERROR`. These modes mutate existing spans, so lost-update protection is mandatory.
+
+**Empty content deletes:** for `replaceSection` and `replaceRange`, an empty `content` string **deletes** the addressed span — this is valid, not an error. (`insertUnderHeading` with empty content is a no-op.)
+
+**Dirty-editor guard (applies to all modes):** if the target file is open in Obsidian with **unsaved** changes, every write mode — including lock-free `append`/`prepend` — returns `CONFLICT` (plus a user-facing Notice) and makes **no** change. Live editor keystrokes are never silently overwritten.
+
+**Concurrency classification:** a partial write is **always** treated as a note **update** (never a create), regardless of whether `expectedModified` is present (ADR-2). It checks `note.write` (update) permission and never reports "note already exists".
+
+**Errors:**
+
+| Code | When |
+|---|---|
+| `VALIDATION_ERROR` | Malformed mode/param combo: unknown mode, missing/invalid range bounds, inverted range, both or neither of `heading`/`headingPath`, or a required `expectedModified` omitted for insert/replace. Caught at the mapper boundary. |
+| `NOT_FOUND` | The target heading/section does not exist (for `insertUnderHeading`/`replaceSection`). Never a silent append. |
+| `CONFLICT` | Stale `expectedModified` (insert/replace), **or** the file is open and dirty (any mode). No mutation occurs. |
+| `FORBIDDEN` | The key lacks `note.write` (writes) — partial writes use the same permission as full note writes. |
+
+**Audit log:** partial writes are recorded with `bodyTouched: true` and the `mode` value, so auditors can see which span-level operation ran.
+
+**Backward compatibility:** omitting `mode` on a note write behaves exactly as before — a full-body write using the legacy create-vs-update discrimination on `expectedModified`.
+
+**Append to a note (lock-free):**
+
+```json
+// Request arguments — expectedModified optional for append
+{
+  "operation": "note",
+  "path": "Calendar/2026-03-31.md",
+  "mode": "append",
+  "content": "\n- Captured at 14:05: follow up with Alice"
+}
+
+// Response content
+{
+  "path": "Calendar/2026-03-31.md",
+  "created": 1743379200000,
+  "modified": 1743380400000
+}
+```
+
+**Insert under a heading (expectedModified required):**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "path": "Projects/kado.md",
+  "mode": "insertUnderHeading",
+  "heading": "Roadmap",
+  "content": "- [ ] Document partial RW contract",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "path": "Projects/kado.md",
+  "created": 1743379200000,
+  "modified": 1743380500000
+}
+```
+
+**Replace a line range (empty content deletes it):**
+
+```json
+// Request arguments — delete lines 5 through 8 inclusive
+{
+  "operation": "note",
+  "path": "Projects/kado.md",
+  "mode": "replaceRange",
+  "rangeBasis": "line",
+  "start": 5,
+  "end": 8,
+  "content": "",
+  "expectedModified": 1743380500000
+}
+
+// Response content
+{
+  "path": "Projects/kado.md",
+  "created": 1743379200000,
+  "modified": 1743380600000
+}
+```
 
 ### Path and Filename Restrictions
 
