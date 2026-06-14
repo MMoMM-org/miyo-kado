@@ -262,10 +262,29 @@ describe('validateConcurrency — partial write with stale expectedModified', ()
 });
 
 describe('validateConcurrency — partial write with fresh expectedModified', () => {
-	it('returns allowed when mtime matches (any mode)', () => {
+	it('returns allowed when mtime matches (replaceSection)', () => {
 		const request = makePartialWriteRequest({mode: 'replaceSection', heading: '## Summary'}, {expectedModified: 1700000000000});
 		const result = validateConcurrency(request, 1700000000000);
 		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns allowed when mtime matches (replaceRange)', () => {
+		const request = makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 1, end: 5}, {expectedModified: 1700000000000});
+		const result = validateConcurrency(request, 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns allowed when mtime matches (insertUnderHeading)', () => {
+		const request = makePartialWriteRequest({mode: 'insertUnderHeading', heading: '## Tasks'}, {expectedModified: 1700000000000});
+		const result = validateConcurrency(request, 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns CONFLICT when mtime mismatches (destructive mode with stale expectedModified)', () => {
+		const request = makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 3}, {expectedModified: 1700000000000});
+		const result = validateConcurrency(request, 1700000009999);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) expect(result.error.code).toBe('CONFLICT');
 	});
 });
 

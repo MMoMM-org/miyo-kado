@@ -858,8 +858,37 @@ describe('NoteAdapter', () => {
 			const adapter = createNoteAdapter(app);
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'inserted'));
 
-			expect(captured.value.startsWith('---')).toBe(true);
-			expect(captured.value.indexOf('inserted')).toBeGreaterThan(captured.value.indexOf('---\n', 3));
+			// Exact output: FM block intact, content after the closing fence.
+			expect(captured.value).toBe('---\ntags: [a]\n---\ninserted\nbody');
+		});
+
+		it('prepends after frontmatter on a FM-only note (trailing newline)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, '---\ntitle: Test\n---\n', captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
+
+			expect(captured.value).toBe('---\ntitle: Test\n---\nprepended\n');
+		});
+
+		it('prepends after frontmatter on a FM-only note with NO trailing newline (C1 regression)', async () => {
+			// Closing fence is the very last byte — must not run the fence into the
+			// inserted text ("---prepended"); a separator newline is required.
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			const captured = {value: ''};
+			setupVaultProcess(file, '---\ntitle: Test\n---', captured);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
+
+			expect(captured.value).toBe('---\ntitle: Test\n---\nprepended\n');
+			expect(captured.value).not.toContain('---prepended');
 		});
 
 		it('raises CONFLICT and shows Notice when file is open and dirty', async () => {
@@ -1309,6 +1338,59 @@ describe('NoteAdapter', () => {
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 5}, 'x')),
 			).rejects.toMatchObject({code: 'NOT_FOUND'});
+		});
+	});
+
+	describe('write() — partial: hardening (review regressions)', () => {
+		beforeEach(() => { Notice._reset(); });
+
+		it('raises CONFLICT when the cached heading line is stale (H2 stale-cache guard)', async () => {
+			// Cache claims "Tasks" at line 2, but in the freshest data line 2 is body
+			// text (the heading actually moved to line 3). Splicing there would corrupt
+			// the note, so fail safe with CONFLICT instead.
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Title', 1, 0), makeHeading('Tasks', 2, 2)],
+			});
+			setupVaultProcess(file, '# Title\nintro\nmore intro\n## Tasks\nx');
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'y')),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+		});
+
+		it('raises VALIDATION_ERROR when replaceRange line start is past EOF (M4)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			setupVaultProcess(file, 'a\nb\nc');
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 10, end: 12}, 'x')),
+			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
+		});
+
+		it('raises VALIDATION_ERROR when replaceRange char start is past EOF (M4)', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			setupVaultProcess(file, 'abc');
+
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 10, end: 12}, 'x')),
+			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
+		});
+
+		it('raises VALIDATION_ERROR when partial write content is not a string (M2)', async () => {
+			const adapter = createNoteAdapter(app);
+			await expect(
+				adapter.write(makePartialWriteRequest({mode: 'append'}, 42 as unknown as string)),
+			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
 		});
 	});
 

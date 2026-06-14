@@ -164,6 +164,13 @@ describe('sliceByLineRange()', () => {
 		expect(slice).toBe('only line');
 		expect(truncated).toBe(false);
 	});
+
+	it('returns empty slice (not truncated) for an empty body', () => {
+		// ''.split('\n') === [''] → one empty line; reading line 1 yields ''.
+		const {slice, truncated} = sliceByLineRange('', 1, 1);
+		expect(slice).toBe('');
+		expect(truncated).toBe(false);
+	});
 });
 
 // ============================================================
@@ -237,6 +244,12 @@ describe('sliceByCharRange()', () => {
 		const {slice, truncated} = sliceByCharRange(body, 0, 0);
 		expect(slice).toBe('');
 		expect(truncated).toBe(true);
+	});
+
+	it('returns empty slice (not truncated) for an empty body', () => {
+		const {slice, truncated} = sliceByCharRange('', 0, 0);
+		expect(slice).toBe('');
+		expect(truncated).toBe(false);
 	});
 });
 

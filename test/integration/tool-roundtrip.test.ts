@@ -1371,6 +1371,74 @@ describe('End-to-end tool call pipeline', () => {
 		});
 	});
 
+	describe('kado-write partial note — insertUnderHeading round-trip (review M9)', () => {
+		it('insertUnderHeading with expectedModified appends at the end of the section', async () => {
+			const OLD_BODY = '# Project\n\n## Tasks\nOld task.\n## Notes\nSome notes.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Project', 1, 0), makeHeading('Tasks', 2, 2), makeHeading('Notes', 2, 4)],
+			});
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/plan.md', content: 'New task.', mode: 'insertUnderHeading', heading: 'Tasks', expectedModified: 2000},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			// Inserted at the END of the Tasks section (before "## Notes"), heading preserved.
+			expect(writtenBody).toContain('## Tasks\nOld task.\nNew task.\n## Notes');
+		});
+	});
+
+	describe('kado-write partial note — replaceRange round-trip (review M9)', () => {
+		it('replaceRange (line basis) with expectedModified replaces the addressed lines', async () => {
+			const OLD_BODY = 'line1\nline2\nline3\nline4';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/plan.md', content: 'replaced', mode: 'replaceRange', rangeBasis: 'line', start: 2, end: 3, expectedModified: 2000},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(writtenBody).toBe('line1\nreplaced\nline4');
+		});
+	});
+
 	// ============================================================
 	// Backward-compatibility regression (spec 007 T5.4 §3)
 	// ============================================================

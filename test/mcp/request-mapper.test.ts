@@ -1385,4 +1385,57 @@ describe('mapWriteRequest — note mode: replaceRange', () => {
 			KEY_ID,
 		)).toThrow(/mapWriteRequest:.*expectedModified/i);
 	});
+
+	it('rejects non-finite expectedModified (H1)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', expectedModified: Infinity},
+			KEY_ID,
+		)).toThrow(/expectedModified must be a finite number/i);
+	});
+
+	it('rejects non-number expectedModified (H1)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', expectedModified: '123'},
+			KEY_ID,
+		)).toThrow(/expectedModified must be a finite number/i);
+	});
+
+	it('rejects non-string content for a partial note write (M2)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: {not: 'a string'}, mode: 'append'},
+			KEY_ID,
+		)).toThrow(/content must be a string/i);
+	});
+
+	it('rejects a limit above the upper bound (M3)', () => {
+		// limit only applies to reads; bounds are enforced symmetrically — exercise via read.
+		expect(() => mapReadRequest(
+			{operation: 'note', path: 'a.md', mode: 'firstXChars', limit: 2_000_000_000},
+			KEY_ID,
+		)).toThrow(/limit must not exceed/i);
+	});
+
+	it('rejects a range end above the upper bound (M3)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'x', expectedModified: 1, mode: 'replaceRange', rangeBasis: 'char', start: 0, end: 2_000_000_000},
+			KEY_ID,
+		)).toThrow(/end must not exceed/i);
+	});
+
+	it('rejects a headingPath deeper than the cap (M3)', () => {
+		const deep = Array.from({length: 51}, (_v, i) => `H${i}`);
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'x', expectedModified: 1, mode: 'insertUnderHeading', headingPath: deep},
+			KEY_ID,
+		)).toThrow(/headingPath must not exceed/i);
+	});
+
+	it('strips a "prototype" key from coerced frontmatter content (L7)', () => {
+		const result = mapWriteRequest(
+			{operation: 'frontmatter', path: 'a.md', content: '{"a":1,"prototype":{"x":1}}', expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+		expect(result.content).toEqual({a: 1});
+		expect(Object.prototype.hasOwnProperty.call(result.content, 'prototype')).toBe(false);
+	});
 });
