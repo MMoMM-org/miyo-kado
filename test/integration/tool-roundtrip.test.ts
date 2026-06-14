@@ -10,7 +10,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {App, TFile, TFolder, MarkdownView, Notice, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
+import {App, TFile, TFolder, MarkdownView, Notice, WorkspaceLeaf, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
 import type {HeadingCache} from '../__mocks__/obsidian';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest} from '../../src/mcp/request-mapper';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from '../../src/mcp/response-mapper';
@@ -228,7 +228,10 @@ async function runPipeline(
 		const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR')
 			? (asError.code as CoreError['code'])
 			: 'INTERNAL_ERROR';
-		return mapError({code, message: asError.message ?? String(err)});
+		if (code !== 'INTERNAL_ERROR') {
+			return mapError({code, message: asError.message ?? String(err)});
+		}
+		return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 	}
 
 	// Step 5: map to CallToolResult
@@ -1254,7 +1257,7 @@ describe('End-to-end tool call pipeline', () => {
 			const view = new MarkdownView();
 			view.file = file;
 			view.data = EDITOR_CONTENT;
-			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as WorkspaceLeaf] as unknown as never[]);
 			// Disk content differs from editor → dirty
 			vi.mocked(app.vault.read).mockResolvedValue(DISK_CONTENT);
 
@@ -1345,28 +1348,26 @@ describe('End-to-end tool call pipeline', () => {
 			const config = makeTestConfig();
 			const app = makeApp();
 
-			// The mapper throws before any adapter call — we expect a pipeline error.
-			// We test this by catching the thrown error from mapWriteRequest directly:
-			// the runPipeline helper doesn't catch mapper throws, so verify at mapper layer.
-			let caught: Error | undefined;
-			try {
-				mapWriteRequest(
-					{
-						operation: 'note',
-						path: 'projects/plan.md',
-						content: 'New body.',
-						mode: 'replaceSection',
-						heading: 'Tasks',
-						// No expectedModified — must be rejected
-					},
-					'test-key',
-				);
-			} catch (e) {
-				caught = e as Error;
-			}
+			// The mapper throws before any adapter call — runPipeline catches mapper
+			// throws and maps them to VALIDATION_ERROR (mirrors tools.ts behaviour).
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: 'New body.',
+					mode: 'replaceSection',
+					heading: 'Tasks',
+					// No expectedModified — must be rejected by the mapper (ADR-5)
+				},
+				'test-key',
+				'kado-write',
+			);
 
-			expect(caught).toBeDefined();
-			expect(caught!.message).toContain('expectedModified is required');
+			expect(result.isError).toBe(true);
+			const body = parseResult(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
 		});
 	});
 
