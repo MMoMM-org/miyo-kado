@@ -1458,7 +1458,7 @@ describe('kadoReadShape — partial note read params', () => {
 	// --- start ---
 
 	it('accepts start=0 (nonnegative)', () => {
-		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'line', start: 0, end: 5});
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char', start: 0, end: 5});
 		expect(result.success).toBe(true);
 	});
 
@@ -1484,7 +1484,7 @@ describe('kadoReadShape — partial note read params', () => {
 	// --- end ---
 
 	it('accepts end=0 (nonnegative)', () => {
-		const result = schema.safeParse({operation: 'note', path: 'a.md', end: 0});
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char', end: 0});
 		expect(result.success).toBe(true);
 	});
 
@@ -1677,7 +1677,7 @@ describe('kadoWriteShape — partial note write params', () => {
 	// --- start / end ---
 
 	it('accepts start=0 (nonnegative) on write', () => {
-		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', start: 0});
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'char', start: 0});
 		expect(result.success).toBe(true);
 	});
 
@@ -1687,7 +1687,7 @@ describe('kadoWriteShape — partial note write params', () => {
 	});
 
 	it('accepts end=0 (nonnegative) on write', () => {
-		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', end: 0});
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'char', end: 0});
 		expect(result.success).toBe(true);
 	});
 
