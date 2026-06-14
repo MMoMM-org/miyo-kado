@@ -29,7 +29,7 @@ phase: 5
 
 Exposes the capability to MCP clients, makes it observable and documented, and proves the whole pipeline end-to-end including backward compatibility.
 
-- [ ] **T5.1 Tool schemas (`tools.ts`)** `[activity: backend-api]`
+- [x] **T5.1 Tool schemas (`tools.ts`)** `[activity: backend-api]`
 
   1. Prime: Read `src/mcp/tools.ts` (kado-read / kado-write registration, Zod shapes, `.describe()` conventions)
   2. Test: schema accepts the new params; `.describe()` text present for `mode` + addressing params; existing params unaffected

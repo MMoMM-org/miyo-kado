@@ -129,6 +129,27 @@ describe('mapFileResult()', () => {
 
 		expect(text).toContain(base64);
 	});
+
+	it('includes truncated:true in JSON when result is truncated', () => {
+		const result = mapFileResult(makeFileResult({truncated: true}));
+		const body = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+
+		expect(body['truncated']).toBe(true);
+	});
+
+	it('omits truncated key in JSON when result is not truncated (full read)', () => {
+		const result = mapFileResult(makeFileResult());
+		const body = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(false);
+	});
+
+	it('omits truncated key in JSON when truncated is explicitly undefined', () => {
+		const result = mapFileResult(makeFileResult({truncated: undefined}));
+		const body = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------

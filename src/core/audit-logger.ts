@@ -39,6 +39,11 @@ export interface AuditEntry {
 	 * ops. Lets auditors separate metadata-only writes from content writes.
 	 */
 	bodyTouched?: boolean;
+	/**
+	 * Note-partial write mode (append/prepend/insertUnderHeading/replaceSection/replaceRange).
+	 * Set only for partial note writes; absent on full note writes, frontmatter writes, and reads.
+	 */
+	mode?: string;
 }
 
 /** I/O callbacks injected into AuditLogger for file operations (no Obsidian dependency). */

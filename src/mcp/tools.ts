@@ -320,8 +320,17 @@ async function logAllowed(
 		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
 		const operation = String(coreReq.operation ?? '');
 		const dataType = extractDataType(coreReq);
-		const bodyTouched = isCoreWriteRequest(coreReq) && coreReq.operation === 'frontmatter' ? false : undefined;
-		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs, bodyTouched}));
+		// Partial note write: body is touched, record the mode for auditors.
+		// Frontmatter write: body is preserved byte-identical, so bodyTouched=false.
+		// All other ops (full note write, reads): leave both fields absent.
+		const isWrite = isCoreWriteRequest(coreReq);
+		const bodyTouched = isWrite && coreReq.operation === 'frontmatter' ? false
+			: isWrite && coreReq.operation === 'note' && coreReq.notePartial !== undefined ? true
+			: undefined;
+		const mode = isWrite && coreReq.operation === 'note' && coreReq.notePartial !== undefined
+			? coreReq.notePartial.mode
+			: undefined;
+		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs, bodyTouched, mode}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
 	}
