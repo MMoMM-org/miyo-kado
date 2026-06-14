@@ -364,7 +364,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user typing in progress');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('old disk content');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('old disk content');
 
 			const adapter = createNoteAdapter(app);
 
@@ -385,7 +385,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'identical content');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('identical content');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('identical content');
 			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
 				transform('identical content');
 				file.stat = {ctime: 1000, mtime: 3000, size: 3};
@@ -409,7 +409,7 @@ describe('NoteAdapter', () => {
 			const adapter = createNoteAdapter(app);
 			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
-			expect(app.vault.read).not.toHaveBeenCalled();
+			expect(app.vault.cachedRead).not.toHaveBeenCalled();
 			expect(app.vault.process).toHaveBeenCalledOnce();
 		});
 
@@ -425,7 +425,7 @@ describe('NoteAdapter', () => {
 			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
 			expect(view.save).not.toHaveBeenCalled();
-			expect(app.vault.read).not.toHaveBeenCalled();
+			expect(app.vault.cachedRead).not.toHaveBeenCalled();
 			expect(app.vault.process).toHaveBeenCalledOnce();
 		});
 	});
@@ -793,7 +793,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing here');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('old disk content');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('old disk content');
 
 			const adapter = createNoteAdapter(app);
 
@@ -867,7 +867,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
 			const adapter = createNoteAdapter(app);
 
@@ -974,7 +974,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
 
 			const adapter = createNoteAdapter(app);
@@ -1125,7 +1125,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
 
 			const adapter = createNoteAdapter(app);
@@ -1233,7 +1233,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
 			const adapter = createNoteAdapter(app);
 
@@ -1291,7 +1291,7 @@ describe('NoteAdapter', () => {
 			const {view} = makeLeafWithView(file, 'user is typing');
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
-			vi.mocked(app.vault.read).mockResolvedValue('disk content differs');
+			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
 			const adapter = createNoteAdapter(app);
 

@@ -100,6 +100,16 @@ function requirePresent(args: Args, field: string, context: string): unknown {
 /** Valid mode values for partial note reads. */
 const NOTE_READ_MODES = new Set<string>(['firstXChars', 'section', 'range']);
 
+/** Max heading-path nesting depth accepted at the boundary (well beyond any real outline). */
+const MAX_HEADING_DEPTH = 50;
+
+/**
+ * Upper bound for `limit`/`start`/`end`. Notes never approach this many code
+ * points or lines; bounding the inputs keeps numbers in safe-integer territory
+ * and rejects obviously-bogus values at the boundary.
+ */
+const MAX_PARTIAL_INDEX = 1_000_000_000;
+
 /**
  * Parses heading addressing args (heading or headingPath) into a HeadingTarget.
  * Exactly one of `heading` / `headingPath` must be supplied.
@@ -136,6 +146,11 @@ export function parseHeadingTarget(args: Args, context: string): HeadingTarget {
 			throw new Error(
 				`${context}: headingPath must be a non-empty array of non-empty strings`,
 			);
+		}
+		// Cap nesting depth — no real Obsidian outline is this deep, and an unbounded
+		// path makes matchHeadingPath O(path.length × headings) on the main thread.
+		if (headingPath.length > MAX_HEADING_DEPTH) {
+			throw new Error(`${context}: headingPath must not exceed ${MAX_HEADING_DEPTH} levels`);
 		}
 		return {headingPath: headingPath as string[]};
 	}
@@ -179,6 +194,10 @@ export function parseRangeTarget(args: Args, context: string): RangeTarget {
 		);
 	}
 
+	if (rawEnd > MAX_PARTIAL_INDEX) {
+		throw new Error(`${context}: end must not exceed ${MAX_PARTIAL_INDEX} (got ${rawEnd})`);
+	}
+
 	if (rawStart > rawEnd) {
 		throw new Error(
 			`${context}: start must be ≤ end (got start=${rawStart}, end=${rawEnd})`,
@@ -220,6 +239,9 @@ function parseNoteReadPartial(args: Args, operation: string, context: string): N
 			throw new Error(
 				`${context}: limit must be a positive integer for mode="firstXChars"`,
 			);
+		}
+		if (limit > MAX_PARTIAL_INDEX) {
+			throw new Error(`${context}: limit must not exceed ${MAX_PARTIAL_INDEX} (got ${limit})`);
 		}
 		return {mode: 'firstXChars', limit};
 	}
@@ -321,6 +343,7 @@ function coerceContent(content: unknown, operation: string): CoreWriteRequest['c
 				// Strip prototype-pollution keys before the object enters the core pipeline
 				delete safe['__proto__'];
 				delete safe['constructor'];
+				delete safe['prototype'];
 				return safe;
 			}
 		} catch { /* not JSON — pass through as string */ }
@@ -344,7 +367,14 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	const result: CoreWriteRequest = {apiKeyId: keyId, operation, path, content};
 
 	if ('expectedModified' in args && args['expectedModified'] !== undefined) {
-		result.expectedModified = args['expectedModified'] as number;
+		// Validate rather than blind-cast (mirrors mapDeleteRequest): a NaN/Infinity/
+		// string value would never strict-equal a real mtime, spuriously CONFLICTing
+		// every write to the path.
+		const raw = args['expectedModified'];
+		if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+			throw new Error('mapWriteRequest: expectedModified must be a finite number');
+		}
+		result.expectedModified = raw;
 	}
 
 	if ('mode' in args && args['mode'] !== undefined) {
@@ -356,6 +386,11 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 			}
 			result.mode = mode as FrontmatterWriteMode;
 		} else if (operation === 'note') {
+			// Partial note writes carry a markdown fragment — reject non-string content
+			// at the boundary so the client gets VALIDATION_ERROR, not a downstream crash.
+			if (typeof content !== 'string') {
+				throw new Error('mapWriteRequest: content must be a string for partial note writes');
+			}
 			result.notePartial = parseNoteWritePartial(args, result, 'mapWriteRequest');
 		} else {
 			const shown = typeof mode === 'string' ? mode : typeof mode;

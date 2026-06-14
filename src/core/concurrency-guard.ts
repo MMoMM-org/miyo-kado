@@ -52,6 +52,11 @@ export function validateConcurrency(request: CoreRequest, currentMtime: number |
 	// additive modes never reach the "no expectedModified + file exists → CONFLICT"
 	// path. When expectedModified IS present, execution falls through to the
 	// standard mtime compare below.
+	//
+	// The request-mapper is the PRIMARY enforcer of "destructive modes require
+	// expectedModified" (it fails fast at the MCP boundary with a clear message).
+	// This branch is the defense-in-depth backstop for any non-MCP caller that
+	// builds a CoreWriteRequest directly, bypassing the mapper.
 	if (request.notePartial !== undefined) {
 		const additive = request.notePartial.mode === 'append' || request.notePartial.mode === 'prepend';
 		if (request.expectedModified === undefined) {
