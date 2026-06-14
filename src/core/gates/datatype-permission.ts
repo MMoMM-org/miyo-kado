@@ -3,10 +3,11 @@
  *
  * Checks whether the API key has the required CRUD permission for the specific
  * data type. The CRUD action is inferred from the request type:
- *   - CoreReadRequest   → read
- *   - CoreWriteRequest (no expectedModified) → create
- *   - CoreWriteRequest (with expectedModified) → update
- *   - CoreSearchRequest → read (search requires note read access)
+ *   - CoreReadRequest                              → read
+ *   - CoreWriteRequest (with notePartial)          → update (partial writes always target existing files)
+ *   - CoreWriteRequest (no expectedModified)       → create
+ *   - CoreWriteRequest (with expectedModified)     → update
+ *   - CoreSearchRequest                            → read (search requires note read access)
  *
  * Effective permissions are the intersection (AND) of the global security scope
  * and the key's own scope, each resolved with their respective listMode.
@@ -43,6 +44,8 @@ function forbidden(message: string): GateResult {
 function inferCrudAction(request: CoreRequest): CrudOperation {
 	if (isCoreDeleteRequest(request)) return 'delete';
 	if (isCoreWriteRequest(request)) {
+		// A partial note write always targets an existing file → update, regardless of expectedModified.
+		if (request.notePartial !== undefined) return 'update';
 		return request.expectedModified !== undefined ? 'update' : 'create';
 	}
 	return 'read';

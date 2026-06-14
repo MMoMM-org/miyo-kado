@@ -10,7 +10,8 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {App, TFile, TFolder, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
+import {App, TFile, TFolder, MarkdownView, Notice, WorkspaceLeaf, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
+import type {HeadingCache} from '../__mocks__/obsidian';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest} from '../../src/mcp/request-mapper';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from '../../src/mcp/response-mapper';
 import {evaluatePermissions, createDefaultGateChain} from '../../src/core/permission-chain';
@@ -21,7 +22,7 @@ import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import {createFrontmatterAdapter} from '../../src/obsidian/frontmatter-adapter';
 import {createInlineFieldAdapter} from '../../src/obsidian/inline-field-adapter';
 import {createSearchAdapter} from '../../src/obsidian/search-adapter';
-import type {KadoConfig, CoreError} from '../../src/types/canonical';
+import type {KadoConfig, CoreError, CoreFileResult, CoreWriteResult, CoreSearchResult, CoreDeleteResult} from '../../src/types/canonical';
 
 // ============================================================
 // Config factory
@@ -182,13 +183,19 @@ async function runPipeline(
 	const adapters = makeAdapters(app);
 	const router = createOperationRouter(adapters);
 
-	// Step 1: map MCP args to canonical request
-	const request =
-		toolName === 'kado-read'
-			? mapReadRequest(toolArgs, keyId)
-			: toolName === 'kado-write'
-				? mapWriteRequest(toolArgs, keyId)
-				: mapSearchRequest(toolArgs, keyId);
+	// Step 1: map MCP args to canonical request.
+	// Mirrors tools.ts: mapper throws become VALIDATION_ERROR.
+	let request: ReturnType<typeof mapReadRequest> | ReturnType<typeof mapWriteRequest> | ReturnType<typeof mapSearchRequest>;
+	try {
+		request =
+			toolName === 'kado-read'
+				? mapReadRequest(toolArgs, keyId)
+				: toolName === 'kado-write'
+					? mapWriteRequest(toolArgs, keyId)
+					: mapSearchRequest(toolArgs, keyId);
+	} catch (err: unknown) {
+		return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+	}
 
 	// Step 2: evaluate permissions
 	const permResult = evaluatePermissions(request, config, gates);
@@ -210,8 +217,22 @@ async function runPipeline(
 		}
 	}
 
-	// Step 4: route to adapter
-	const result = await router(request);
+	// Step 4: route to adapter.
+	// Mirrors tools.ts: adapter throws (NoteAdapterError, FrontmatterAdapterError, …)
+	// carry a `code` field and must be mapped to the appropriate error result.
+	let result: CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
+	try {
+		result = await router(request);
+	} catch (err: unknown) {
+		const asError = err as {code?: string; message?: string};
+		const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR')
+			? (asError.code as CoreError['code'])
+			: 'INTERNAL_ERROR';
+		if (code !== 'INTERNAL_ERROR') {
+			return mapError({code, message: asError.message ?? String(err)});
+		}
+		return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
+	}
 
 	// Step 5: map to CallToolResult
 	if ('code' in result) {
@@ -921,6 +942,643 @@ describe('End-to-end tool call pipeline', () => {
 			expect(result.isError).toBeUndefined();
 			const body = parseResult(result);
 			expect(body.content).toBe('# From Config Manager');
+		});
+	});
+
+	// ============================================================
+	// Partial Note READ — end-to-end (spec 007 T5.4)
+	// ============================================================
+
+	/**
+	 * Build a HeadingCache entry using the same shape as Obsidian's real cache.
+	 * `line` is 0-based relative to the FULL file content (including frontmatter).
+	 */
+	function makeHeading(heading: string, level: number, line: number): HeadingCache {
+		return {
+			heading,
+			level,
+			position: {
+				start: {line, col: 0, offset: 0},
+				end: {line, col: heading.length + level + 1, offset: 0},
+			},
+		};
+	}
+
+	describe('kado-read partial note — section mode (T5.4)', () => {
+		// File content:
+		//   Line 0: "# Project"
+		//   Line 1: "Intro."
+		//   Line 2: "## Tasks"
+		//   Line 3: "- do thing"
+		//   Line 4: "## Notes"
+		//   Line 5: "Some notes."
+		const CONTENT = '# Project\nIntro.\n## Tasks\n- do thing\n## Notes\nSome notes.';
+
+		it('returns the matched section body and truncated:true when content exists outside the slice', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/spec.md',
+				name: 'spec.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 2),
+					makeHeading('Notes', 2, 4),
+				],
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/spec.md', mode: 'section', heading: 'Tasks'},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			// Section "Tasks" runs from line 2 up to (not including) line 4.
+			expect(body.content).toBe('## Tasks\n- do thing');
+			// Lines 0-1 and 4-5 exist outside the slice.
+			expect(body.truncated).toBe(true);
+		});
+
+		it('returns truncated:false when the section is the entire file body', async () => {
+			const FULL = '# Only\nAll content here.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/solo.md',
+				name: 'solo.md',
+				stat: {ctime: 1000, mtime: 2000, size: FULL.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(FULL);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Only', 1, 0)],
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/solo.md', mode: 'section', heading: 'Only'},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe(FULL);
+			expect(body.truncated).toBe(false);
+		});
+
+		it('returns NOT_FOUND when the heading does not exist in metadataCache', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/spec.md',
+				name: 'spec.md',
+				stat: {ctime: 1000, mtime: 2000, size: 40},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('# Project\nIntro.');
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Project', 1, 0)],
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/spec.md', mode: 'section', heading: 'NonExistent'},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBe(true);
+			const body = parseResult(result);
+			expect(body.code).toBe('NOT_FOUND');
+		});
+	});
+
+	describe('kado-read partial note — firstXChars mode (T5.4)', () => {
+		it('returns the first N characters and truncated:true when content is longer', async () => {
+			const CONTENT = 'Hello, World! This is a long note.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/long.md',
+				name: 'long.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/long.md', mode: 'firstXChars', limit: 5},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe('Hello');
+			expect(body.truncated).toBe(true);
+		});
+
+		it('returns full content and truncated:false when limit exceeds content length', async () => {
+			const CONTENT = 'Short.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/short.md',
+				name: 'short.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/short.md', mode: 'firstXChars', limit: 1000},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe(CONTENT);
+			expect(body.truncated).toBe(false);
+		});
+	});
+
+	describe('kado-read partial note — range mode (T5.4)', () => {
+		// Content:
+		//   Line 1: "alpha"
+		//   Line 2: "beta"
+		//   Line 3: "gamma"
+		const CONTENT = 'alpha\nbeta\ngamma';
+
+		it('returns the requested line range and truncated:true when lines exist outside the range', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/lines.md',
+				name: 'lines.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/lines.md', mode: 'range', rangeBasis: 'line', start: 2, end: 2},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe('beta');
+			expect(body.truncated).toBe(true);
+		});
+	});
+
+	// ============================================================
+	// Partial Note WRITE — end-to-end (spec 007 T5.4)
+	// ============================================================
+
+	describe('kado-write partial note — additive lock-free path (T5.4)', () => {
+		it('append without expectedModified succeeds and new body starts with old body and ends with appended content', async () => {
+			// applyAppend inserts a newline separator when the body does not end with one.
+			// Use a body that ends with '\n' so the concatenation is a simple join, which
+			// makes the assertion unambiguous regardless of the separator logic.
+			const OLD_BODY = '# Project\n\nExisting content.\n';
+			const APPENDED = 'New paragraph.';
+			const EXPECTED_BODY = OLD_BODY + APPENDED; // body ends with \n → no extra separator added
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			// No open editor leaf — straightforward path.
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: APPENDED,
+					mode: 'append',
+					// No expectedModified — lock-free append path
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.path).toBe('projects/plan.md');
+			// Written body must be byte-identical to old body + appended content.
+			// OLD_BODY ends with '\n' so applyAppend does not insert an extra separator.
+			expect(writtenBody).toBe(EXPECTED_BODY);
+		});
+
+		it('prepend without expectedModified places new content before the existing body', async () => {
+			const OLD_BODY = 'Existing content.';
+			const PREPENDED = 'Preamble.\n\n';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: PREPENDED,
+					mode: 'prepend',
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(writtenBody).toBe(PREPENDED + OLD_BODY);
+		});
+	});
+
+	describe('kado-write partial note — CONFLICT on dirty editor (T5.4)', () => {
+		it('returns CONFLICT when the target note is open and dirty during an append', async () => {
+			const DISK_CONTENT = 'Saved content.';
+			const EDITOR_CONTENT = 'Saved content. [user is typing]';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: DISK_CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+
+			// Simulate an open editor with unsaved content
+			const view = new MarkdownView();
+			view.file = file;
+			view.data = EDITOR_CONTENT;
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as WorkspaceLeaf] as unknown as never[]);
+			// Disk content differs from editor → dirty
+			vi.mocked(app.vault.read).mockResolvedValue(DISK_CONTENT);
+
+			Notice._reset();
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: '\n\nNew section.',
+					mode: 'append',
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBe(true);
+			const body = parseResult(result);
+			expect(body.code).toBe('CONFLICT');
+			// vault.process must NOT have been called
+			expect(app.vault.process).not.toHaveBeenCalled();
+			// A Notice must have been shown to inform the user
+			expect(Notice._instances.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe('kado-write partial note — replaceSection round-trip (T5.4)', () => {
+		it('replaceSection with expectedModified writes the new section body and returns updated timestamps', async () => {
+			const OLD_BODY = '# Project\n\n## Tasks\nOld task.\n## Notes\nSome notes.';
+			// headings for the old body:
+			//   Line 0: "# Project"
+			//   Line 1: "" (blank)
+			//   Line 2: "## Tasks"
+			//   Line 3: "Old task."
+			//   Line 4: "## Notes"
+			//   Line 5: "Some notes."
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [
+					makeHeading('Project', 1, 0),
+					makeHeading('Tasks', 2, 2),
+					makeHeading('Notes', 2, 4),
+				],
+			});
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: 'New task.\nAnother task.',
+					mode: 'replaceSection',
+					heading: 'Tasks',
+					expectedModified: 2000,
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.path).toBe('projects/plan.md');
+			// The Tasks section body (line 3, between heading and the next H2) was replaced.
+			// Heading line is preserved; body replaced with new content.
+			expect(writtenBody).toContain('## Tasks\nNew task.\nAnother task.');
+			// The Notes section is untouched.
+			expect(writtenBody).toContain('## Notes\nSome notes.');
+		});
+
+		it('returns VALIDATION_ERROR when replaceSection is called without expectedModified (ADR-5)', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+
+			// The mapper throws before any adapter call — runPipeline catches mapper
+			// throws and maps them to VALIDATION_ERROR (mirrors tools.ts behaviour).
+			const result = await runPipeline(
+				config,
+				app,
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: 'New body.',
+					mode: 'replaceSection',
+					heading: 'Tasks',
+					// No expectedModified — must be rejected by the mapper (ADR-5)
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBe(true);
+			const body = parseResult(result);
+			expect(body.code).toBe('VALIDATION_ERROR');
+		});
+	});
+
+	describe('kado-write partial note — insertUnderHeading round-trip (review M9)', () => {
+		it('insertUnderHeading with expectedModified appends at the end of the section', async () => {
+			const OLD_BODY = '# Project\n\n## Tasks\nOld task.\n## Notes\nSome notes.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({
+				headings: [makeHeading('Project', 1, 0), makeHeading('Tasks', 2, 2), makeHeading('Notes', 2, 4)],
+			});
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/plan.md', content: 'New task.', mode: 'insertUnderHeading', heading: 'Tasks', expectedModified: 2000},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			// Inserted at the END of the Tasks section (before "## Notes"), heading preserved.
+			expect(writtenBody).toContain('## Tasks\nOld task.\nNew task.\n## Notes');
+		});
+	});
+
+	describe('kado-write partial note — replaceRange round-trip (review M9)', () => {
+		it('replaceRange (line basis) with expectedModified replaces the addressed lines', async () => {
+			const OLD_BODY = 'line1\nline2\nline3\nline4';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: OLD_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(OLD_BODY);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/plan.md', content: 'replaced', mode: 'replaceRange', rangeBasis: 'line', start: 2, end: 3, expectedModified: 2000},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			expect(writtenBody).toBe('line1\nreplaced\nline4');
+		});
+	});
+
+	// ============================================================
+	// Backward-compatibility regression (spec 007 T5.4 §3)
+	// ============================================================
+	//
+	// These tests protect the pre-feature contract: callers that supply no `mode`
+	// must get exactly the same behavior as before partial-RW was introduced.
+	// A future regression in the routing logic will cause these to fail loudly.
+
+	describe('backward-compat: no-mode read (T5.4)', () => {
+		it('no-mode read omits truncated and returns full content', async () => {
+			const FULL_BODY = '# Full Note\n\nAll the content is here.\n\nEven this part.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/full.md',
+				name: 'full.md',
+				stat: {ctime: 1000, mtime: 2000, size: FULL_BODY.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(FULL_BODY);
+
+			const result = await runPipeline(
+				config,
+				app,
+				// No `mode` field — legacy full-read behavior
+				{operation: 'note', path: 'projects/full.md'},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+
+			// Content must be BYTE-IDENTICAL to the vault content.
+			expect(body.content).toBe(FULL_BODY);
+
+			// The `truncated` key must be ABSENT for full reads (ADR-6 / response-mapper contract).
+			// Using 'in' to distinguish undefined-value from absent key.
+			expect('truncated' in body).toBe(false);
+		});
+
+		it('no-mode read returns standard stat fields (created, modified, size, path)', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/full.md',
+				name: 'full.md',
+				stat: {ctime: 1000, mtime: 2000, size: 42},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('body');
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/full.md'},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.path).toBe('projects/full.md');
+			expect(body.created).toBe(1000);
+			expect(body.modified).toBe(2000);
+			expect(body.size).toBe(42);
+			// Absence of truncated re-confirmed here as part of the compat contract.
+			expect('truncated' in body).toBe(false);
+		});
+	});
+
+	describe('backward-compat: no-mode write replaces whole body (T5.4)', () => {
+		it('no-mode write replaces the entire note body — byte-identical to pre-feature behavior', async () => {
+			const ORIGINAL = '# Old\n\nThis will be fully replaced.';
+			const NEW_CONTENT = '# New\n\nFresh content for the whole note.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/plan.md',
+				name: 'plan.md',
+				stat: {ctime: 1000, mtime: 2000, size: ORIGINAL.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
+
+			let writtenBody = '';
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				writtenBody = transform(ORIGINAL);
+				file.stat = {ctime: 1000, mtime: 3000, size: writtenBody.length};
+			});
+
+			const result = await runPipeline(
+				config,
+				app,
+				// No mode — full-replace path (expectedModified present → update, not create)
+				{
+					operation: 'note',
+					path: 'projects/plan.md',
+					content: NEW_CONTENT,
+					expectedModified: 2000,
+				},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.path).toBe('projects/plan.md');
+			// The adapter must have called vault.process with a transform that returns exactly NEW_CONTENT.
+			expect(writtenBody).toBe(NEW_CONTENT);
+		});
+
+		it('no-mode write with no expectedModified creates a new note (pre-feature create path)', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+			const createdFile = createMockTFile({
+				path: 'projects/brand-new.md',
+				name: 'brand-new.md',
+				stat: {ctime: 5000, mtime: 5000, size: 10},
+			});
+			// File does not exist yet → getFileByPath returns null
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/brand-new.md', content: '# New'},
+				'test-key',
+				'kado-write',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.path).toBe('projects/brand-new.md');
+			expect(body.created).toBe(5000);
+			expect(body.modified).toBe(5000);
+			// vault.create must have been called, not vault.process
+			expect(app.vault.create).toHaveBeenCalledOnce();
+			expect(app.vault.process).not.toHaveBeenCalled();
 		});
 	});
 });

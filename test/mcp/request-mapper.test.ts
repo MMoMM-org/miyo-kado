@@ -15,6 +15,7 @@ import {
 	mapSearchRequest,
 	mapDeleteRequest,
 	mapOpenNotesRequest,
+	parseHeadingTarget,
 } from '../../src/mcp/request-mapper';
 import {kadoOpenNotesShape} from '../../src/mcp/tools';
 import type {
@@ -23,6 +24,7 @@ import type {
 	CoreSearchRequest,
 	CoreDeleteRequest,
 	CoreOpenNotesRequest,
+	NoteWritePartial,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -250,11 +252,11 @@ describe('mapWriteRequest — frontmatter mode field', () => {
 		)).toThrow(/mode must be "merge" or "replace"/i);
 	});
 
-	it('rejects mode on non-frontmatter operations', () => {
+	it('rejects a frontmatter mode on operation="note"', () => {
 		expect(() => mapWriteRequest(
 			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
 			KEY_ID,
-		)).toThrow(/mode is only valid for operation="frontmatter"/i);
+		)).toThrow(/mapWriteRequest:.*mode.*(append|prepend|insertUnderHeading|replaceSection|replaceRange)/i);
 	});
 });
 
@@ -847,5 +849,593 @@ describe('kadoOpenNotesShape — Zod schema boundary', () => {
 
 	it('rejects scope "ACTIVE" (case-sensitive)', () => {
 		expect(() => kadoOpenNotesShape.scope?.parse('ACTIVE')).toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapReadRequest — partial read mode (T3.1)
+// ---------------------------------------------------------------------------
+
+describe('mapReadRequest — partial read: omitted mode', () => {
+	it('no mode → no partial field on result', () => {
+		const result = mapReadRequest(makeReadArgs(), KEY_ID);
+
+		expect(result.partial).toBeUndefined();
+	});
+
+	it('operation="frontmatter" without mode → no partial field', () => {
+		const result = mapReadRequest(makeReadArgs({operation: 'frontmatter'}), KEY_ID);
+
+		expect(result.partial).toBeUndefined();
+	});
+});
+
+describe('mapReadRequest — partial read: unknown mode', () => {
+	it('mode="bogus" → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'bogus'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*mode/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode only valid for operation="note"', () => {
+	it('mode="firstXChars" with operation="frontmatter" → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({operation: 'frontmatter', mode: 'firstXChars', limit: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+
+	it('mode="firstXChars" with operation="file" → throws', () => {
+		expect(() => mapReadRequest(
+			{operation: 'file', path: 'img.png', mode: 'firstXChars', limit: 100},
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+
+	it('mode="firstXChars" with operation="tags" → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({operation: 'tags', mode: 'firstXChars', limit: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*mode.*note/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=firstXChars', () => {
+	it('valid limit → partial {mode:"firstXChars", limit}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 500}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'firstXChars', limit: 500});
+	});
+
+	it('limit missing → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit=0 → throws (must be positive)', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 0}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit negative → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: -1}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit non-integer (1.5) → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: 1.5}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit as string → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXChars', limit: '500'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=section', () => {
+	it('valid heading → partial {mode:"section", heading}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'section', heading: 'Introduction'}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'section', heading: 'Introduction'});
+	});
+
+	it('valid headingPath → partial {mode:"section", headingPath}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'section', headingPath: ['Chapter 1', 'Overview']}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'section', headingPath: ['Chapter 1', 'Overview']});
+	});
+
+	it('both heading and headingPath → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', heading: 'Intro', headingPath: ['Intro']}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('neither heading nor headingPath → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('heading empty string → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section', heading: ''}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath empty array → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'section', headingPath: []}), KEY_ID))
+			.toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath with empty-string element → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', headingPath: ['Chapter 1', '']}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+
+	it('headingPath with non-string element → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'section', headingPath: ['Chapter 1', 42]}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*heading/i);
+	});
+});
+
+describe('mapReadRequest — partial read: mode=range', () => {
+	it('valid line range → partial {mode:"range", basis:"line", start, end}', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1, end: 10}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'line', start: 1, end: 10});
+	});
+
+	it('valid char range → partial {mode:"range", basis:"char", start, end}', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: 0, end: 100}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'char', start: 0, end: 100});
+	});
+
+	it('rangeBasis missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', start: 1, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*rangeBasis/i);
+	});
+
+	it('rangeBasis invalid value → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'word', start: 1, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*rangeBasis/i);
+	});
+
+	it('start missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('end missing → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*end/i);
+	});
+
+	it('start non-integer → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1.5, end: 10}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('end non-integer → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 1, end: 10.5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*end/i);
+	});
+
+	it('line basis: start=0 → throws (must be ≥ 1)', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 0, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('line basis: start negative → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: -1, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('char basis: start=-1 → throws (must be ≥ 0)', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: -1, end: 100}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start/i);
+	});
+
+	it('char basis: start=0 → valid (0-based)', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'char', start: 0, end: 50}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'char', start: 0, end: 50});
+	});
+
+	it('inverted range: start > end → throws', () => {
+		expect(() => mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 10, end: 5}),
+			KEY_ID,
+		)).toThrow(/mapReadRequest:.*start.*end|end.*start/i);
+	});
+
+	it('start === end → valid (single line)', () => {
+		const result = mapReadRequest(
+			makeReadArgs({mode: 'range', rangeBasis: 'line', start: 5, end: 5}),
+			KEY_ID,
+		);
+
+		expect(result.partial).toEqual({mode: 'range', basis: 'line', start: 5, end: 5});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseHeadingTarget — mode-agnostic error message (T3.2 fix)
+// ---------------------------------------------------------------------------
+
+describe('parseHeadingTarget — neither heading nor headingPath', () => {
+	it('throws a mode-agnostic error (no "section" wording)', () => {
+		expect(() => parseHeadingTarget({}, 'testCtx'))
+			.toThrow(/testCtx: heading or headingPath is required/i);
+	});
+
+	it('error does NOT contain the word "section"', () => {
+		expect.assertions(1);
+		try {
+			parseHeadingTarget({}, 'testCtx');
+		} catch (e) {
+			expect((e as Error).message).not.toMatch(/mode="section"/);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: omitted mode (no change in behaviour)
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: omitted mode', () => {
+	it('no mode on operation="note" → no notePartial on result', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toBeUndefined();
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('no mode on operation="frontmatter" → no mode or notePartial on result', () => {
+		const result = mapWriteRequest(makeWriteArgs(), KEY_ID) as CoreWriteRequest;
+
+		expect(result.mode).toBeUndefined();
+		expect(result.notePartial).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: unknown mode value
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: unknown mode value', () => {
+	it('unknown mode on operation="note" → throws', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'bogus'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+
+	it('unknown mode on operation="note" error lists valid modes', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'bogus'},
+			KEY_ID,
+		)).toThrow(/append|prepend|insertUnderHeading|replaceSection|replaceRange/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: frontmatter / note mode collision
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: cross-operation mode collision', () => {
+	it('frontmatter mode "merge" on operation="note" → error (wrong mode for note)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'merge'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+
+	it('note mode "append" on operation="frontmatter" → error (wrong mode for frontmatter)', () => {
+		expect(() => mapWriteRequest(
+			makeWriteArgs({mode: 'append'}),
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode must be "merge" or "replace"/i);
+	});
+
+	it('note mode "replaceSection" on operation="frontmatter" → error', () => {
+		expect(() => mapWriteRequest(
+			makeWriteArgs({mode: 'replaceSection'}),
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode must be "merge" or "replace"/i);
+	});
+
+	it('mode on operation="file" → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'file', path: 'img.png', content: 'base64==', mode: 'append'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*mode/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: append / prepend (lock-free)
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: append', () => {
+	it('mode="append" with content → notePartial {mode:"append"}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'} satisfies NoteWritePartial);
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('mode="append" without expectedModified → valid (lock-free)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'});
+		expect(result.expectedModified).toBeUndefined();
+	});
+
+	it('mode="append" with expectedModified → valid (optional, passed through)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'new text', mode: 'append', expectedModified: 99},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'append'});
+		expect(result.expectedModified).toBe(99);
+	});
+});
+
+describe('mapWriteRequest — note mode: prepend', () => {
+	it('mode="prepend" with content → notePartial {mode:"prepend"}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'header', mode: 'prepend'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'prepend'} satisfies NoteWritePartial);
+		expect(result.mode).toBeUndefined();
+	});
+
+	it('mode="prepend" without expectedModified → valid (lock-free)', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'header', mode: 'prepend'},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.expectedModified).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: insertUnderHeading
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: insertUnderHeading', () => {
+	it('valid heading → notePartial {mode:"insertUnderHeading", heading}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Tasks', expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'insertUnderHeading', heading: 'Tasks'} satisfies NoteWritePartial);
+	});
+
+	it('valid headingPath → notePartial {mode:"insertUnderHeading", headingPath}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', headingPath: ['Ch1', 'Sec2'], expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'insertUnderHeading', headingPath: ['Ch1', 'Sec2']} satisfies NoteWritePartial);
+	});
+
+	it('both heading and headingPath → error (mutually exclusive)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Foo', headingPath: ['Foo'], expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/heading.*headingPath.*mutually exclusive|mutually exclusive/i);
+	});
+
+	it('neither heading nor headingPath → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', expectedModified: 1},
+			KEY_ID,
+		)).toThrow(/heading or headingPath is required/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'insertUnderHeading', heading: 'Tasks'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: replaceSection
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: replaceSection', () => {
+	it('valid heading → notePartial {mode:"replaceSection", heading}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Intro', expectedModified: 5},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceSection', heading: 'Intro'} satisfies NoteWritePartial);
+	});
+
+	it('valid headingPath → notePartial {mode:"replaceSection", headingPath}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', headingPath: ['Ch1'], expectedModified: 5},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceSection', headingPath: ['Ch1']} satisfies NoteWritePartial);
+	});
+
+	it('both heading and headingPath → error (mutually exclusive)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Foo', headingPath: ['Foo'], expectedModified: 5},
+			KEY_ID,
+		)).toThrow(/heading.*headingPath.*mutually exclusive|mutually exclusive/i);
+	});
+
+	it('neither heading nor headingPath → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', expectedModified: 5},
+			KEY_ID,
+		)).toThrow(/heading or headingPath is required/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceSection', heading: 'Intro'},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapWriteRequest — note mode: replaceRange
+// ---------------------------------------------------------------------------
+
+describe('mapWriteRequest — note mode: replaceRange', () => {
+	it('valid line range → notePartial {mode:"replaceRange", basis:"line", start, end}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceRange', basis: 'line', start: 1, end: 10} satisfies NoteWritePartial);
+	});
+
+	it('valid char range → notePartial {mode:"replaceRange", basis:"char", start, end}', () => {
+		const result = mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'char', start: 0, end: 50, expectedModified: 3},
+			KEY_ID,
+		) as CoreWriteRequest;
+
+		expect(result.notePartial).toEqual({mode: 'replaceRange', basis: 'char', start: 0, end: 50} satisfies NoteWritePartial);
+	});
+
+	it('missing rangeBasis → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*rangeBasis/i);
+	});
+
+	it('invalid rangeBasis → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'word', start: 1, end: 10, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*rangeBasis/i);
+	});
+
+	it('start > end → error', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 10, end: 5, expectedModified: 3},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*start.*end|end.*start/i);
+	});
+
+	it('missing expectedModified → error (ADR-5)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 10},
+			KEY_ID,
+		)).toThrow(/mapWriteRequest:.*expectedModified/i);
+	});
+
+	it('rejects non-finite expectedModified (H1)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', expectedModified: Infinity},
+			KEY_ID,
+		)).toThrow(/expectedModified must be a finite number/i);
+	});
+
+	it('rejects non-number expectedModified (H1)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'body', expectedModified: '123'},
+			KEY_ID,
+		)).toThrow(/expectedModified must be a finite number/i);
+	});
+
+	it('rejects non-string content for a partial note write (M2)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: {not: 'a string'}, mode: 'append'},
+			KEY_ID,
+		)).toThrow(/content must be a string/i);
+	});
+
+	it('rejects a limit above the upper bound (M3)', () => {
+		// limit only applies to reads; bounds are enforced symmetrically — exercise via read.
+		expect(() => mapReadRequest(
+			{operation: 'note', path: 'a.md', mode: 'firstXChars', limit: 2_000_000_000},
+			KEY_ID,
+		)).toThrow(/limit must not exceed/i);
+	});
+
+	it('rejects a range end above the upper bound (M3)', () => {
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'x', expectedModified: 1, mode: 'replaceRange', rangeBasis: 'char', start: 0, end: 2_000_000_000},
+			KEY_ID,
+		)).toThrow(/end must not exceed/i);
+	});
+
+	it('rejects a headingPath deeper than the cap (M3)', () => {
+		const deep = Array.from({length: 51}, (_v, i) => `H${i}`);
+		expect(() => mapWriteRequest(
+			{operation: 'note', path: 'a.md', content: 'x', expectedModified: 1, mode: 'insertUnderHeading', headingPath: deep},
+			KEY_ID,
+		)).toThrow(/headingPath must not exceed/i);
+	});
+
+	it('strips a "prototype" key from coerced frontmatter content (L7)', () => {
+		const result = mapWriteRequest(
+			{operation: 'frontmatter', path: 'a.md', content: '{"a":1,"prototype":{"x":1}}', expectedModified: 1},
+			KEY_ID,
+		) as CoreWriteRequest;
+		expect(result.content).toEqual({a: 1});
+		expect(Object.prototype.hasOwnProperty.call(result.content, 'prototype')).toBe(false);
 	});
 });

@@ -25,6 +25,7 @@ import type {
 	CoreOpenNotesResult,
 	OpenNoteDescriptor,
 } from '../../src/types/canonical';
+import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -74,6 +75,16 @@ function makeCoreError(overrides?: Partial<CoreError>): CoreError {
 		message: 'Note not found',
 		...overrides,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function readText(result: CallToolResult): string {
+	const first = result.content[0];
+	if (!first || first.type !== 'text') throw new Error('expected a text content block');
+	return first.text;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +139,35 @@ describe('mapFileResult()', () => {
 		const text = result.content[0].text;
 
 		expect(text).toContain(base64);
+	});
+
+	it('includes truncated:true in JSON when result is truncated', () => {
+		const result = mapFileResult(makeFileResult({truncated: true}));
+		const body = JSON.parse(readText(result)) as Record<string, unknown>;
+
+		expect(body['truncated']).toBe(true);
+	});
+
+	it('omits truncated key in JSON when result is not truncated (full read)', () => {
+		const result = mapFileResult(makeFileResult());
+		const body = JSON.parse(readText(result)) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(false);
+	});
+
+	it('omits truncated key in JSON when truncated is explicitly undefined', () => {
+		const result = mapFileResult(makeFileResult({truncated: undefined}));
+		const body = JSON.parse(readText(result)) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(false);
+	});
+
+	it('includes truncated:false in JSON when result is explicitly not truncated', () => {
+		const result = mapFileResult(makeFileResult({truncated: false}));
+		const body = JSON.parse(readText(result)) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(true);
+		expect(body['truncated']).toBe(false);
 	});
 });
 

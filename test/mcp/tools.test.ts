@@ -10,7 +10,7 @@
 import {describe, it, expect, vi} from 'vitest';
 import {z} from 'zod';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
+import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, kadoReadShape, kadoWriteShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import type {
 	CoreRequest,
@@ -1311,5 +1311,421 @@ describe('INTERNAL_ERROR message redaction', () => {
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		expect(parsed.message).toBe('An unexpected error occurred');
 		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kadoReadShape — partial note read params (T5.1)
+// ---------------------------------------------------------------------------
+
+describe('kadoReadShape — partial note read params', () => {
+	const schema = z.object(kadoReadShape);
+
+	// --- existing params regression ---
+
+	it('accepts existing params: operation and path', () => {
+		const result = schema.safeParse({operation: 'note', path: 'notes/a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts all existing operations', () => {
+		for (const op of ['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags'] as const) {
+			const result = schema.safeParse({operation: op, path: 'notes/a.md'});
+			expect(result.success, `operation=${op} should be accepted`).toBe(true);
+		}
+	});
+
+	// --- mode ---
+
+	it('accepts mode=firstXChars', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXChars'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=section', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=range', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range'});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects unknown mode value', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'bogus'});
+		expect(result.success).toBe(false);
+	});
+
+	it('mode is optional — absent does not fail parse', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('mode field has a non-empty description', () => {
+		expect(kadoReadShape.mode.description).toBeTruthy();
+	});
+
+	// --- limit ---
+
+	it('accepts positive integer limit', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXChars', limit: 500});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects limit=0 (must be positive)', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', limit: 0});
+		expect(result.success).toBe(false);
+	});
+
+	it('rejects negative limit', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', limit: -1});
+		expect(result.success).toBe(false);
+	});
+
+	it('limit is optional — absent does not fail parse', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('limit field has a non-empty description', () => {
+		expect(kadoReadShape.limit.description).toBeTruthy();
+	});
+
+	// --- heading ---
+
+	it('accepts string heading', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section', heading: 'Introduction'});
+		expect(result.success).toBe(true);
+	});
+
+	it('heading is optional', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('heading field has a non-empty description', () => {
+		expect(kadoReadShape.heading.description).toBeTruthy();
+	});
+
+	// --- headingPath ---
+
+	it('accepts string array headingPath', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section', headingPath: ['Chapter 1', 'Section A']});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects non-string element in headingPath', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', headingPath: [42 as unknown as string]});
+		expect(result.success).toBe(false);
+	});
+
+	it('headingPath is optional', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('headingPath field has a non-empty description', () => {
+		expect(kadoReadShape.headingPath.description).toBeTruthy();
+	});
+
+	// --- rangeBasis ---
+
+	it('accepts rangeBasis=line', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'line'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts rangeBasis=char', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char'});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects unknown rangeBasis value', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', rangeBasis: 'byte'});
+		expect(result.success).toBe(false);
+	});
+
+	it('rangeBasis is optional', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('rangeBasis field has a non-empty description', () => {
+		expect(kadoReadShape.rangeBasis.description).toBeTruthy();
+	});
+
+	// --- start ---
+
+	it('accepts start=0 (nonnegative)', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char', start: 0, end: 5});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts positive start', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', start: 10});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects negative start', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', start: -1});
+		expect(result.success).toBe(false);
+	});
+
+	it('start is optional', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('start field has a non-empty description', () => {
+		expect(kadoReadShape.start.description).toBeTruthy();
+	});
+
+	// --- end ---
+
+	it('accepts end=0 (nonnegative)', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char', end: 0});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects negative end', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', end: -1});
+		expect(result.success).toBe(false);
+	});
+
+	it('end is optional', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md'});
+		expect(result.success).toBe(true);
+	});
+
+	it('end field has a non-empty description', () => {
+		expect(kadoReadShape.end.description).toBeTruthy();
+	});
+
+	// --- full combinations ---
+
+	it('accepts full firstXChars combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXChars', limit: 2000});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full section-with-heading combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section', heading: 'Overview'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full section-with-headingPath combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section', headingPath: ['H1', 'H2']});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full range-line combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'line', start: 1, end: 20});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full range-char combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'range', rangeBasis: 'char', start: 0, end: 500});
+		expect(result.success).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kadoWriteShape — partial note write params (T5.1)
+// ---------------------------------------------------------------------------
+
+describe('kadoWriteShape — partial note write params', () => {
+	const schema = z.object(kadoWriteShape);
+
+	// --- existing params regression ---
+
+	it('accepts existing required params: operation, path, content', () => {
+		const result = schema.safeParse({operation: 'note', path: 'notes/a.md', content: 'body'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts all existing operations', () => {
+		for (const op of ['note', 'frontmatter', 'file', 'dataview-inline-field'] as const) {
+			const result = schema.safeParse({operation: op, path: 'notes/a.md', content: 'x'});
+			expect(result.success, `operation=${op} should be accepted`).toBe(true);
+		}
+	});
+
+	it('accepts existing frontmatter modes: merge and replace', () => {
+		for (const m of ['merge', 'replace'] as const) {
+			const result = schema.safeParse({operation: 'frontmatter', path: 'a.md', content: {}, mode: m});
+			expect(result.success, `frontmatter mode=${m} should still be accepted`).toBe(true);
+		}
+	});
+
+	it('accepts expectedModified (existing param)', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', expectedModified: 12345});
+		expect(result.success).toBe(true);
+	});
+
+	// --- mode (widened) ---
+
+	it('accepts mode=append', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'text', mode: 'append'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=prepend', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'text', mode: 'prepend'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=insertUnderHeading', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'text', mode: 'insertUnderHeading', heading: 'Notes'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=replaceSection', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'text', mode: 'replaceSection', heading: 'Notes'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts mode=replaceRange', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'text', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 5});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects unknown mode value on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'overwrite'});
+		expect(result.success).toBe(false);
+	});
+
+	it('mode is optional on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'body'});
+		expect(result.success).toBe(true);
+	});
+
+	it('mode field has a non-empty description mentioning both frontmatter and note partial modes', () => {
+		const desc = kadoWriteShape.mode.description ?? '';
+		expect(desc).toBeTruthy();
+		// Must document frontmatter semantics (existing)
+		expect(desc).toContain('merge');
+		expect(desc).toContain('replace');
+		// Must document note partial-write modes (new)
+		expect(desc).toContain('append');
+		expect(desc).toContain('prepend');
+	});
+
+	// --- heading ---
+
+	it('accepts heading on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'insertUnderHeading', heading: 'Section'});
+		expect(result.success).toBe(true);
+	});
+
+	it('heading is optional on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x'});
+		expect(result.success).toBe(true);
+	});
+
+	it('heading field has a non-empty description on write', () => {
+		expect(kadoWriteShape.heading.description).toBeTruthy();
+	});
+
+	// --- headingPath ---
+
+	it('accepts headingPath on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceSection', headingPath: ['H1', 'H2']});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects non-string element in headingPath on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', headingPath: [1 as unknown as string]});
+		expect(result.success).toBe(false);
+	});
+
+	it('headingPath is optional on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x'});
+		expect(result.success).toBe(true);
+	});
+
+	it('headingPath field has a non-empty description on write', () => {
+		expect(kadoWriteShape.headingPath.description).toBeTruthy();
+	});
+
+	// --- rangeBasis ---
+
+	it('accepts rangeBasis=line on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'line', start: 1, end: 3});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts rangeBasis=char on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'char', start: 0, end: 100});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects unknown rangeBasis on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', rangeBasis: 'byte'});
+		expect(result.success).toBe(false);
+	});
+
+	it('rangeBasis is optional on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x'});
+		expect(result.success).toBe(true);
+	});
+
+	it('rangeBasis field has a non-empty description on write', () => {
+		expect(kadoWriteShape.rangeBasis.description).toBeTruthy();
+	});
+
+	// --- start / end ---
+
+	it('accepts start=0 (nonnegative) on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'char', start: 0});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects negative start on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', start: -1});
+		expect(result.success).toBe(false);
+	});
+
+	it('accepts end=0 (nonnegative) on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', mode: 'replaceRange', rangeBasis: 'char', end: 0});
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects negative end on write', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: 'x', end: -1});
+		expect(result.success).toBe(false);
+	});
+
+	it('start field has a non-empty description on write', () => {
+		expect(kadoWriteShape.start.description).toBeTruthy();
+	});
+
+	it('end field has a non-empty description on write', () => {
+		expect(kadoWriteShape.end.description).toBeTruthy();
+	});
+
+	// --- full combinations ---
+
+	it('accepts full append combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', content: '\nNew paragraph', mode: 'append'});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full insertUnderHeading combination with headingPath', () => {
+		const result = schema.safeParse({
+			operation: 'note', path: 'a.md', content: '- item',
+			mode: 'insertUnderHeading', headingPath: ['Chapter 1', 'Notes'],
+			expectedModified: 99999,
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full replaceRange-line combination', () => {
+		const result = schema.safeParse({
+			operation: 'note', path: 'a.md', content: 'replacement',
+			mode: 'replaceRange', rangeBasis: 'line', start: 5, end: 10,
+			expectedModified: 88888,
+		});
+		expect(result.success).toBe(true);
 	});
 });

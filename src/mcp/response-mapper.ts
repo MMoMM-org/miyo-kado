@@ -22,13 +22,17 @@ function textResult(data: unknown): CallToolResult {
 
 /** Serializes a CoreFileResult (read response) into a JSON CallToolResult. */
 export function mapFileResult(result: CoreFileResult): CallToolResult {
-	return textResult({
+	const payload: Record<string, unknown> = {
 		path: result.path,
 		content: result.content,
 		created: result.created,
 		modified: result.modified,
 		size: result.size,
-	});
+	};
+	// ADR-6: partial reads must never appear complete when content was cut off.
+	// Include the flag only when the adapter explicitly set it to true.
+	if (result.truncated !== undefined) payload['truncated'] = result.truncated;
+	return textResult(payload);
 }
 
 /** Serializes a CoreWriteResult (write response) into a JSON CallToolResult. */

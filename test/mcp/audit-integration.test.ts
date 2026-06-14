@@ -211,6 +211,12 @@ function getHandler(toolName: string, deps: ToolDependencies) {
 	return server.tools.find((t) => t.name === toolName)!.handler;
 }
 
+function firstEntry(entries: AuditEntry[]): AuditEntry {
+	const entry = entries[0];
+	if (!entry) throw new Error('expected at least one audit entry');
+	return entry;
+}
+
 // ---------------------------------------------------------------------------
 // Allowed tool call — audit entry logged
 // ---------------------------------------------------------------------------
@@ -299,6 +305,78 @@ describe('audit integration — allowed kado-write call', () => {
 
 		expect(entries).toHaveLength(1);
 		expect(entries[0].bodyTouched).toBeUndefined();
+	});
+
+	it('sets bodyTouched:true and mode on partial note write (append)', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/p.md'}));
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
+
+		// args are flat MCP tool args — mapWriteRequest reads 'mode' directly
+		await handler(
+			{operation: 'note', path: 'notes/p.md', content: 'appended text', mode: 'append'},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(firstEntry(entries).bodyTouched).toBe(true);
+		expect(firstEntry(entries).mode).toBe('append');
+	});
+
+	it('sets bodyTouched:true and mode on partial note write (replaceSection)', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/p.md'}));
+		// replaceSection requires expectedModified to match the file's current mtime
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger, getFileMtime: () => 1000}));
+
+		// ADR-5: replaceSection requires expectedModified + a headingPath
+		await handler(
+			{
+				operation: 'note',
+				path: 'notes/p.md',
+				content: 'new section',
+				mode: 'replaceSection',
+				headingPath: ['## Heading'],
+				expectedModified: 1000,
+			},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(firstEntry(entries).bodyTouched).toBe(true);
+		expect(firstEntry(entries).mode).toBe('replaceSection');
+	});
+
+	it('omits mode on full note write (no notePartial)', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/n.md'}));
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
+
+		await handler(
+			{operation: 'note', path: 'notes/n.md', content: 'body'},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(firstEntry(entries).mode).toBeUndefined();
+	});
+
+	it('omits mode on frontmatter write', async () => {
+		const {logger, entries, drain} = makeAuditLogger();
+		const router = vi.fn(async () => makeWriteResult({path: 'notes/f.md'}));
+		const handler = getHandler('kado-write', makeDeps({router, auditLogger: logger}));
+
+		await handler(
+			{operation: 'frontmatter', path: 'notes/f.md', content: {key: 'value'}},
+			makeExtra('kado_writer'),
+		);
+		await drain();
+
+		expect(entries).toHaveLength(1);
+		expect(firstEntry(entries).mode).toBeUndefined();
 	});
 });
 

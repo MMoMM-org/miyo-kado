@@ -21,6 +21,10 @@ import type {
 	SearchFilter,
 } from '../types/canonical';
 import {validatePath} from '../core/gates/path-access';
+import {parseNoteReadPartial, parseNoteWritePartial, parseHeadingTarget} from './partial-mapper';
+
+// Re-exported for tests and callers that addressed it here before the split.
+export {parseHeadingTarget};
 
 type Args = Record<string, unknown>;
 
@@ -104,7 +108,14 @@ export function mapReadRequest(args: Args, keyId: string): CoreReadRequest {
 	const path = requireString(args, 'path', 'mapReadRequest');
 	validateOperationExtension(operation, path, 'mapReadRequest');
 
-	return {apiKeyId: keyId, operation, path};
+	const result: CoreReadRequest = {apiKeyId: keyId, operation, path};
+
+	const partial = parseNoteReadPartial(args, operation, 'mapReadRequest');
+	if (partial !== undefined) {
+		result.partial = partial;
+	}
+
+	return result;
 }
 
 /** Operations where content should be a Record, not a string. */
@@ -120,6 +131,7 @@ function coerceContent(content: unknown, operation: string): CoreWriteRequest['c
 				// Strip prototype-pollution keys before the object enters the core pipeline
 				delete safe['__proto__'];
 				delete safe['constructor'];
+				delete safe['prototype'];
 				return safe;
 			}
 		} catch { /* not JSON — pass through as string */ }
@@ -143,19 +155,37 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 	const result: CoreWriteRequest = {apiKeyId: keyId, operation, path, content};
 
 	if ('expectedModified' in args && args['expectedModified'] !== undefined) {
-		result.expectedModified = args['expectedModified'] as number;
+		// Validate rather than blind-cast (mirrors mapDeleteRequest): a NaN/Infinity/
+		// string value would never strict-equal a real mtime, spuriously CONFLICTing
+		// every write to the path.
+		const raw = args['expectedModified'];
+		if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+			throw new Error('mapWriteRequest: expectedModified must be a finite number');
+		}
+		result.expectedModified = raw;
 	}
 
 	if ('mode' in args && args['mode'] !== undefined) {
 		const mode = args['mode'];
-		if (mode !== 'merge' && mode !== 'replace') {
+		if (operation === 'frontmatter') {
+			if (mode !== 'merge' && mode !== 'replace') {
+				const shown = typeof mode === 'string' ? mode : typeof mode;
+				throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
+			}
+			result.mode = mode as FrontmatterWriteMode;
+		} else if (operation === 'note') {
+			// Partial note writes carry a markdown fragment — reject non-string content
+			// at the boundary so the client gets VALIDATION_ERROR, not a downstream crash.
+			if (typeof content !== 'string') {
+				throw new Error('mapWriteRequest: content must be a string for partial note writes');
+			}
+			result.notePartial = parseNoteWritePartial(args, result, 'mapWriteRequest');
+		} else {
 			const shown = typeof mode === 'string' ? mode : typeof mode;
-			throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
+			throw new Error(
+				`mapWriteRequest: mode is not valid for operation="${operation}" (got '${shown}')`,
+			);
 		}
-		if (operation !== 'frontmatter') {
-			throw new Error(`mapWriteRequest: mode is only valid for operation="frontmatter" (got operation='${operation}')`);
-		}
-		result.mode = mode as FrontmatterWriteMode;
 	}
 
 	return result;

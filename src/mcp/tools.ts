@@ -64,17 +64,29 @@ type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 // Zod schemas (spec T4.3)
 // ============================================================
 
-const kadoReadShape = {
+export const kadoReadShape = {
 	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field', 'tags']).describe('What to read. Extension-strict: note/frontmatter/dataview-inline-field/tags require a .md path; file requires a non-.md path. note = full markdown body. frontmatter = YAML metadata as JSON object. dataview-inline-field = inline "key:: value" fields as JSON. tags = frontmatter + inline tags as JSON (requires note.read OR frontmatter.read; with only frontmatter.read, inline tags are omitted and returnedTags="FrontmatterOnly"). file = raw bytes returned as base64 (use for .json/.pdf/.png/…).'),
 	path: z.string().describe('Vault-relative path, e.g. "Calendar/2026-03-31.md" for markdown operations or "Attachments/diagram.png" for file.'),
+	mode: z.enum(['firstXChars', 'section', 'range']).optional().describe('Partial-read mode for operation="note". Absent ⇒ full read. firstXChars: return the first `limit` Unicode code points of the body. section: return the content under a specific heading (use `heading` for first-match text, or `headingPath` for H1>H2 path). range: return a slice defined by `rangeBasis`, `start`, and `end` (line: 1-based start, inclusive end; char: 0-based start, exclusive end — ADR-4).'),
+	limit: z.number().int().positive().max(1_000_000_000).optional().describe('Number of Unicode code points to return. Required for mode=firstXChars. Ignored for other modes.'),
+	heading: z.string().optional().describe('Heading text to target (first match in the note). Used with mode=section. Mutually exclusive with headingPath — supply one or the other.'),
+	headingPath: z.array(z.string()).max(50).optional().describe('Hierarchical heading path, e.g. ["Chapter 1", "Section A"], for precise disambiguation. Used with mode=section. Mutually exclusive with heading.'),
+	rangeBasis: z.enum(['line', 'char']).optional().describe('Unit for `start` and `end`. Required for mode=range. line: start is 1-based, end is inclusive. char: start is 0-based (Unicode code points), end is exclusive. See ADR-4.'),
+	start: z.number().int().nonnegative().max(1_000_000_000).optional().describe('Start of the range. For rangeBasis=line: 1-based line number (inclusive). For rangeBasis=char: 0-based code-point offset (inclusive). Required for mode=range.'),
+	end: z.number().int().nonnegative().max(1_000_000_000).optional().describe('End of the range. For rangeBasis=line: line number (inclusive). For rangeBasis=char: code-point offset (exclusive). Required for mode=range.'),
 };
 
-const kadoWriteShape = {
+export const kadoWriteShape = {
 	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to write. Extension-strict: note/frontmatter/dataview-inline-field require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = full markdown body (string). frontmatter = YAML metadata (JSON object). dataview-inline-field = inline "key:: value" fields (JSON object). file = raw bytes as a base64 string, for any non-markdown file (.json/.pdf/.png/…).'),
 	path: z.string().describe('Vault-relative path. Must end in ".md" for note/frontmatter/dataview-inline-field (e.g. "100 Inbox/new-note.md"); must NOT end in ".md" for file (e.g. "100 Inbox/data.json").'),
-	content: z.unknown().describe('The content to write. String (markdown body) for note; JSON object for frontmatter and dataview-inline-field; base64-encoded string for file.'),
-	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file.'),
-	mode: z.enum(['merge', 'replace']).optional().describe('Only honoured for operation="frontmatter" (ignored otherwise). "merge" (default): deep-merge supplied keys with existing frontmatter — objects recurse, arrays REPLACE (no concat), scalars replace; untouched keys preserved. "replace": clear the existing frontmatter block, then write the supplied object as-is. Body content is byte-identical to before in both modes.'),
+	content: z.unknown().describe('The content to write. String (markdown body) for note; JSON object for frontmatter and dataview-inline-field; base64-encoded string for file. For partial note writes (append/prepend/insertUnderHeading/replaceSection/replaceRange), this is the text to add or use as replacement.'),
+	expectedModified: z.number().optional().describe('Required for updates to existing files. Set to the "modified" timestamp from a prior read. Omit only when creating a new file. Required for insertUnderHeading/replaceSection/replaceRange (ADR-5). Optional for append/prepend (lock-free operations).'),
+	mode: z.enum(['merge', 'replace', 'append', 'prepend', 'insertUnderHeading', 'replaceSection', 'replaceRange']).optional().describe('Write mode. For operation="frontmatter": "merge" (default) deep-merges supplied keys with existing frontmatter (objects recurse, arrays REPLACE, scalars replace; untouched keys preserved); "replace" clears the existing block and writes the supplied object as-is; body is byte-identical in both modes. For operation="note": "append" adds content after the last line (lock-free, expectedModified optional); "prepend" inserts content before the first line (lock-free, expectedModified optional); "insertUnderHeading" appends content under the matched heading (requires expectedModified, use `heading` or `headingPath` — ADR-5); "replaceSection" replaces all content under the matched heading (requires expectedModified); "replaceRange" replaces a line or character range (requires expectedModified, `rangeBasis`, `start`, `end` — ADR-4).'),
+	heading: z.string().optional().describe('Heading text to target (first match in the note). Used with mode=insertUnderHeading or mode=replaceSection. Mutually exclusive with headingPath — supply one or the other.'),
+	headingPath: z.array(z.string()).max(50).optional().describe('Hierarchical heading path, e.g. ["Chapter 1", "Section A"], for precise disambiguation. Used with mode=insertUnderHeading or mode=replaceSection. Mutually exclusive with heading.'),
+	rangeBasis: z.enum(['line', 'char']).optional().describe('Unit for `start` and `end`. Required for mode=replaceRange. line: start is 1-based, end is inclusive. char: start is 0-based (Unicode code points), end is exclusive. See ADR-4.'),
+	start: z.number().int().nonnegative().max(1_000_000_000).optional().describe('Start of the range to replace. For rangeBasis=line: 1-based line number (inclusive). For rangeBasis=char: 0-based code-point offset (inclusive). Required for mode=replaceRange.'),
+	end: z.number().int().nonnegative().max(1_000_000_000).optional().describe('End of the range to replace. For rangeBasis=line: line number (inclusive). For rangeBasis=char: code-point offset (exclusive). Required for mode=replaceRange.'),
 };
 
 const kadoDeleteShape = {
@@ -308,8 +320,17 @@ async function logAllowed(
 		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
 		const operation = String(coreReq.operation ?? '');
 		const dataType = extractDataType(coreReq);
-		const bodyTouched = isCoreWriteRequest(coreReq) && coreReq.operation === 'frontmatter' ? false : undefined;
-		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs, bodyTouched}));
+		// Partial note write: body is touched, record the mode for auditors.
+		// Frontmatter write: body is preserved byte-identical, so bodyTouched=false.
+		// All other ops (full note write, reads): leave both fields absent.
+		const isWrite = isCoreWriteRequest(coreReq);
+		const bodyTouched = isWrite && coreReq.operation === 'frontmatter' ? false
+			: isWrite && coreReq.operation === 'note' && coreReq.notePartial !== undefined ? true
+			: undefined;
+		const mode = isWrite && coreReq.operation === 'note' && coreReq.notePartial !== undefined
+			? coreReq.notePartial.mode
+			: undefined;
+		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'allowed', durationMs, bodyTouched, mode}));
 	} catch {
 		// Audit logging must never crash a tool call — log failure is non-fatal
 	}

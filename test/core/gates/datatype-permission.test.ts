@@ -103,6 +103,21 @@ function makeWriteRequest(
 	};
 }
 
+function makePartialWriteRequest(
+	path: string,
+	notePartial: CoreWriteRequest['notePartial'],
+	expectedModified?: number,
+): CoreWriteRequest {
+	return {
+		apiKeyId: 'kado_test-key',
+		operation: 'note',
+		path,
+		content: 'appended content',
+		notePartial,
+		...(expectedModified !== undefined ? {expectedModified} : {}),
+	};
+}
+
 function makeSearchRequest(): CoreSearchRequest {
 	return {apiKeyId: 'kado_test-key', operation: 'byTag'};
 }
@@ -622,5 +637,80 @@ describe('dataTypePermissionGate.evaluate() — delete requests', () => {
 			makeStandardWhitelistConfig(),
 		);
 		expect(result.allowed).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Partial note write — action inference (T2.1)
+// ---------------------------------------------------------------------------
+
+describe('dataTypePermissionGate.evaluate() — partial note write action inference', () => {
+	it('classifies partial write (append, no expectedModified) as update, not create', () => {
+		// Key grants note.update but NOT note.create — proves the gate used 'update'.
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: false, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makePartialWriteRequest('projects/note.md', {mode: 'append'}),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('classifies partial write (append) with expectedModified as update', () => {
+		// Key grants note.update but NOT note.create.
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: false, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makePartialWriteRequest('projects/note.md', {mode: 'append'}, 1700000000000),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('full-note write without expectedModified is still classified as create', () => {
+		// Unchanged regression: key grants note.create only.
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: true, read: false, update: false, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeWriteRequest('projects/note.md', 'note'),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('full-note write with expectedModified is still classified as update', () => {
+		// Unchanged regression: key grants note.update only.
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: false, read: false, update: true, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makeWriteRequest('projects/note.md', 'note', 1700000000000),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(true);
+	});
+
+	it('forbids partial write when key lacks note.update (only note.create granted)', () => {
+		// Partial write must be classified as 'update'; create-only key must be FORBIDDEN.
+		const keyPerms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			note: {create: true, read: false, update: false, delete: false},
+		};
+		const result = dataTypePermissionGate.evaluate(
+			makePartialWriteRequest('projects/note.md', {mode: 'append'}),
+			makeStandardWhitelistConfig(keyPerms),
+		);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('FORBIDDEN');
+			expect(result.error.gate).toBe('datatype-permission');
+		}
 	});
 });
