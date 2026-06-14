@@ -216,6 +216,7 @@ Partial reads let a client fetch only part of a note's body instead of the whole
 - `rangeBasis: "line"` — `start` is a **1-based** line number, `end` is **inclusive**.
 - `rangeBasis: "char"` — `start` is a **0-based** code-point offset, `end` is **exclusive**. Multibyte code points are never split.
 - Out-of-range bounds **clamp** to the body (not an error). Inverted (`start > end`) or below-minimum bounds (`start < 1` for line basis, `start < 0` for char basis) are rejected with `VALIDATION_ERROR` at the mapper boundary.
+- **Bounds caps:** `limit`, `start`, and `end` must each be ≤ 1,000,000,000, and `headingPath` must be ≤ 50 levels deep. Larger values are rejected with `VALIDATION_ERROR` (sanity bounds — no real note approaches them).
 
 **`truncated` semantics:** every partial-read response carries `truncated: boolean`.
 
@@ -357,7 +358,7 @@ For `operation="note"`, the `mode` parameter selects a **partial write** that ta
 | `prepend` | — | Insert `content` before the body (after the YAML frontmatter block, if any). |
 | `insertUnderHeading` | `heading` **or** `headingPath` | Insert `content` at the **end** of the matched heading's section (just before the next equal-or-higher heading, or EOF). The heading line and surrounding sections are left unchanged. |
 | `replaceSection` | `heading` **or** `headingPath` | Replace the **body** of the matched heading's section with `content`. The heading line itself is preserved; only the lines under it (up to the next equal-or-higher heading or EOF) are replaced. |
-| `replaceRange` | `rangeBasis`, `start`, `end` | Replace the addressed line or character span with `content`. Same basis rules as partial reads (ADR-4): `line` is 1-based inclusive, `char` is 0-based exclusive code points. |
+| `replaceRange` | `rangeBasis`, `start`, `end` | Replace the addressed line or character span with `content`. Same basis rules as partial reads (ADR-4): `line` is 1-based inclusive, `char` is 0-based exclusive code points. Unlike partial reads, a `start` past the end of the file is **rejected** (`VALIDATION_ERROR`), not clamped — writes never silently relocate or over-delete. |
 
 **`expectedModified` rule (ADR-5):**
 
@@ -374,14 +375,22 @@ For `operation="note"`, the `mode` parameter selects a **partial write** that ta
 
 | Code | When |
 |---|---|
-| `VALIDATION_ERROR` | Malformed mode/param combo: unknown mode, missing/invalid range bounds, inverted range, both or neither of `heading`/`headingPath`, or a required `expectedModified` omitted for insert/replace. Caught at the mapper boundary. |
+| `VALIDATION_ERROR` | Malformed mode/param combo: unknown mode, missing/invalid range bounds, inverted range, a bound above the caps, a `replaceRange` `start` past EOF, both or neither of `heading`/`headingPath`, non-string `content` for a partial write, or a required `expectedModified` omitted for insert/replace. Caught at the mapper boundary (or, for past-EOF ranges, in the adapter). |
 | `NOT_FOUND` | The target heading/section does not exist (for `insertUnderHeading`/`replaceSection`). Never a silent append. |
-| `CONFLICT` | Stale `expectedModified` (insert/replace), **or** the file is open and dirty (any mode). No mutation occurs. |
+| `CONFLICT` | Stale `expectedModified` (insert/replace), the file is open and dirty (any mode), **or** the heading index moved since it was read (stale-cache guard). No mutation occurs. |
 | `FORBIDDEN` | The key lacks `note.write` (writes) — partial writes use the same permission as full note writes. |
 
 **Audit log:** partial writes are recorded with `bodyTouched: true` and the `mode` value, so auditors can see which span-level operation ran.
 
 **Backward compatibility:** omitting `mode` on a note write behaves exactly as before — a full-body write using the legacy create-vs-update discrimination on `expectedModified`.
+
+#### Migration notes (partial read/write rollout)
+
+Partial read/write is **purely additive** — clients that never send `mode` are unaffected. Three things changed at the edges and are worth noting if you parse responses or error text:
+
+- **`truncated` is conditional.** It appears on `kado-read` responses **only** when a partial `mode` was requested, and is **absent** on full reads. Check for presence (e.g. `"truncated" in response`) rather than assuming the field exists.
+- **New `mode` values.** `kado-write`'s `mode` enum gained `append`/`prepend`/`insertUnderHeading`/`replaceSection`/`replaceRange` alongside the existing frontmatter `merge`/`replace`. The field is interpreted per `operation`.
+- **Validation tightened.** Supplying `mode` on an operation that doesn't support it now returns `VALIDATION_ERROR` (previously some combinations were silently ignored). Error **codes** are stable; error **message text** is not a contract — match on `code`, not on the message string.
 
 **Append to a note (lock-free):**
 
