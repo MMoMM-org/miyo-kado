@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through five tools: `kado-read`, `kado-write`, `kado-delete`, `kado-search`, and `kado-open-notes`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through six tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
@@ -30,6 +30,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
 - **Partial note read/write** -- read a slice (`firstXChars`, `section` by heading, `range` by line/char) and write in place (`append`/`prepend`, `insertUnderHeading`, `replaceSection`/`replaceRange`) without round-tripping the whole body; omitting the mode is byte-for-byte backward compatible
+- **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target)
 - **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP

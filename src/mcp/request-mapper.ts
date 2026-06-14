@@ -15,8 +15,10 @@ import type {
 	CoreSearchRequest,
 	CoreDeleteRequest,
 	CoreOpenNotesRequest,
+	CoreRenameRequest,
 	OpenNotesScope,
 	DeleteDataType,
+	RenameDataType,
 	FrontmatterWriteMode,
 	SearchFilter,
 } from '../types/canonical';
@@ -240,6 +242,47 @@ export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
 	}
 
 	return result;
+}
+
+/** Allowed operation values for kado-rename (file-level moves only). */
+const RENAME_DATA_TYPES = new Set<string>(['note', 'file']);
+
+/**
+ * Maps raw MCP tool arguments into a CoreRenameRequest.
+ *
+ * Validates that source and target share the operation's extension class
+ * (.md for note, non-.md for file) so a rename can never silently change a
+ * file's type, and rejects a no-op rename (source === target).
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if required fields are missing or invalid.
+ */
+export function mapRenameRequest(args: Args, keyId: string): CoreRenameRequest {
+	const operation = requireString(args, 'operation', 'mapRenameRequest');
+	if (!RENAME_DATA_TYPES.has(operation)) {
+		throw new Error(`mapRenameRequest: operation must be one of note|file (got '${operation}')`);
+	}
+	const source = requireString(args, 'source', 'mapRenameRequest');
+	const target = requireString(args, 'target', 'mapRenameRequest');
+	validateOperationExtension(operation, source, 'mapRenameRequest');
+	validateOperationExtension(operation, target, 'mapRenameRequest');
+	if (source === target) {
+		throw new Error('mapRenameRequest: source and target must differ');
+	}
+
+	const rawExpected = requirePresent(args, 'expectedModified', 'mapRenameRequest');
+	if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
+		throw new Error('mapRenameRequest: expectedModified must be a number');
+	}
+
+	return {
+		kind: 'rename',
+		apiKeyId: keyId,
+		operation: operation as RenameDataType,
+		source,
+		target,
+		expectedModified: rawExpected,
+	};
 }
 
 /**

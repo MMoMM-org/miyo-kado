@@ -13,10 +13,12 @@ import type {
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreRenameRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
+	CoreRenameResult,
 	CoreError,
 	DataType,
 	DeleteDataType,
@@ -27,6 +29,7 @@ import {
 	isCoreWriteRequest,
 	isCoreSearchRequest,
 	isCoreDeleteRequest,
+	isCoreRenameRequest,
 } from '../types/canonical';
 
 // ============================================================
@@ -49,7 +52,12 @@ export interface DeleteAdapter {
 	delete(request: CoreDeleteRequest): Promise<CoreDeleteResult>;
 }
 
-/** Registry of all adapters keyed by data type, plus search and delete adapters. */
+/** Adapter that renames/moves a vault file (note or binary), updating backlinks. */
+export interface RenameAdapter {
+	rename(request: CoreRenameRequest): Promise<CoreRenameResult>;
+}
+
+/** Registry of all adapters keyed by data type, plus search, delete, and rename adapters. */
 export interface AdapterRegistry {
 	note: ReadWriteAdapter;
 	frontmatter: ReadWriteAdapter;
@@ -58,13 +66,15 @@ export interface AdapterRegistry {
 	search: SearchAdapter;
 	/** Delete adapters — inline fields deliberately excluded. */
 	deleteAdapters: Record<DeleteDataType, DeleteAdapter>;
+	/** Rename/move adapter — operates on whole files (note or binary). */
+	rename: RenameAdapter;
 }
 
 // ============================================================
 // Router
 // ============================================================
 
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
+type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
 
 function validationError(message: string): CoreError {
 	return {code: 'VALIDATION_ERROR', message};
@@ -112,6 +122,11 @@ export function createOperationRouter(
 				return validationError(`Unknown delete operation: ${request.operation}`);
 			}
 			return deleteAdapter.delete(request);
+		}
+
+		// Rename — also discriminated by an explicit `kind` marker
+		if (isCoreRenameRequest(request)) {
+			return adapters.rename.rename(request);
 		}
 
 		if (isCoreWriteRequest(request)) {

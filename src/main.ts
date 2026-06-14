@@ -23,6 +23,7 @@ import {
 	createFileDeleteAdapter,
 	createFrontmatterDeleteAdapter,
 } from './obsidian/delete-adapter';
+import {createRenameAdapter} from './obsidian/rename-adapter';
 import {AuditLogger} from './core/audit-logger';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
@@ -68,6 +69,7 @@ export default class KadoPlugin extends Plugin {
 				file: createFileDeleteAdapter(this.app),
 				frontmatter: createFrontmatterDeleteAdapter(this.app),
 			},
+			rename: createRenameAdapter(this.app),
 		};
 
 		const router = createOperationRouter(registry);

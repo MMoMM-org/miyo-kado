@@ -12,6 +12,7 @@ import type {
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
+	CoreRenameResult,
 	CoreError,
 	CoreOpenNotesResult,
 } from '../types/canonical';
@@ -49,6 +50,15 @@ export function mapDeleteResult(result: CoreDeleteResult): CallToolResult {
 	const payload: Record<string, unknown> = {path: result.path};
 	if (result.modified !== undefined) payload['modified'] = result.modified;
 	return textResult(payload);
+}
+
+/** Serializes a CoreRenameResult (rename/move response) into a JSON CallToolResult. */
+export function mapRenameResult(result: CoreRenameResult): CallToolResult {
+	return textResult({
+		source: result.source,
+		target: result.target,
+		modified: result.modified,
+	});
 }
 
 /** Serializes a CoreSearchResult (paginated search response) into a JSON CallToolResult. */

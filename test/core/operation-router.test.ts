@@ -13,11 +13,14 @@ import type {
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreRenameRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
+	CoreRenameResult,
 	DeleteDataType,
+	RenameDataType,
 } from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -50,8 +53,27 @@ function makeDeleteRequest(
 	};
 }
 
+function makeRenameRequest(
+	operation: RenameDataType,
+	overrides?: Partial<CoreRenameRequest>,
+): CoreRenameRequest {
+	return {
+		kind: 'rename',
+		apiKeyId: 'kado_test-key',
+		operation,
+		source: 'notes/old.md',
+		target: 'notes/new.md',
+		expectedModified: 2000,
+		...overrides,
+	};
+}
+
 function makeFileResult(path = 'notes/test.md'): CoreFileResult {
 	return {path, content: 'body', created: 1000, modified: 2000, size: 4};
+}
+
+function makeRenameResult(source = 'notes/old.md', target = 'notes/new.md'): CoreRenameResult {
+	return {source, target, modified: 2000};
 }
 
 function makeWriteResult(path = 'notes/test.md'): CoreWriteResult {
@@ -85,6 +107,12 @@ function makeDeleteAdapter() {
 	};
 }
 
+function makeRenameAdapter() {
+	return {
+		rename: vi.fn(),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Test setup
 // ---------------------------------------------------------------------------
@@ -97,6 +125,7 @@ let searchAdapter: ReturnType<typeof makeSearchAdapter>;
 let noteDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let fileDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let frontmatterDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
+let renameAdapter: ReturnType<typeof makeRenameAdapter>;
 
 beforeEach(() => {
 	noteAdapter = makeReadWriteAdapter();
@@ -107,6 +136,7 @@ beforeEach(() => {
 	noteDeleteAdapter = makeDeleteAdapter();
 	fileDeleteAdapter = makeDeleteAdapter();
 	frontmatterDeleteAdapter = makeDeleteAdapter();
+	renameAdapter = makeRenameAdapter();
 });
 
 function makeRouter() {
@@ -121,6 +151,7 @@ function makeRouter() {
 			file: fileDeleteAdapter,
 			frontmatter: frontmatterDeleteAdapter,
 		},
+		rename: renameAdapter,
 	});
 }
 
@@ -373,6 +404,44 @@ describe('createOperationRouter() — delete routing', () => {
 		expect(noteAdapter.read).not.toHaveBeenCalled();
 		expect(noteAdapter.write).not.toHaveBeenCalled();
 		expect(searchAdapter.search).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Rename routing
+// ---------------------------------------------------------------------------
+
+describe('createOperationRouter() — rename routing', () => {
+	it('routes a rename request to the rename adapter and returns its result', async () => {
+		const expected = makeRenameResult();
+		renameAdapter.rename.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeRenameRequest('note'));
+
+		expect(renameAdapter.rename).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('routes a "file" rename (move) to the rename adapter', async () => {
+		const expected = makeRenameResult('a/img.png', 'b/img.png');
+		renameAdapter.rename.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeRenameRequest('file', {source: 'a/img.png', target: 'b/img.png'}));
+
+		expect(renameAdapter.rename).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('does not call delete/write adapters when routing a rename', async () => {
+		renameAdapter.rename.mockResolvedValue(makeRenameResult());
+
+		const route = makeRouter();
+		await route(makeRenameRequest('note'));
+
+		expect(noteDeleteAdapter.delete).not.toHaveBeenCalled();
+		expect(noteAdapter.write).not.toHaveBeenCalled();
 	});
 });
 

@@ -166,6 +166,42 @@ describe('validateConcurrency — delete request', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Rename requests (source-mtime guard, mirrors delete)
+// ---------------------------------------------------------------------------
+
+function makeRenameRequest(expectedModified: number): CoreRequest {
+	return {
+		kind: 'rename',
+		apiKeyId: 'kado_test-key',
+		operation: 'note',
+		source: 'notes/old.md',
+		target: 'notes/new.md',
+		expectedModified,
+	};
+}
+
+describe('validateConcurrency — rename request', () => {
+	it('returns allowed when expectedModified matches the source mtime', () => {
+		const result = validateConcurrency(makeRenameRequest(1700000000000), 1700000000000);
+		expect(result).toEqual({allowed: true});
+	});
+
+	it('returns CONFLICT when the source changed since the read', () => {
+		const result = validateConcurrency(makeRenameRequest(1700000000000), 1800000000000);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('CONFLICT');
+			expect(result.error.message).toContain('renaming');
+		}
+	});
+
+	it('returns allowed when the source is missing — adapter will emit NOT_FOUND', () => {
+		const result = validateConcurrency(makeRenameRequest(1700000000000), undefined);
+		expect(result).toEqual({allowed: true});
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Partial write — additive modes (ADR-5: lock-free)
 // ---------------------------------------------------------------------------
 

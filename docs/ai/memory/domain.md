@@ -31,6 +31,18 @@ Returns tags of a note as `{frontmatter: string[], inline: string[], all: string
 - Adapter skips `vault.read()` entirely in `frontmatter-only` scope (no disk I/O beyond metadataCache).
 - Type model: `ReadDataType = DataType | 'tags'`. `CoreReadRequest.operation: ReadDataType`. Writes/deletes stay on `DataType` — 'tags' is unreachable on those code paths by construction. Router uses `resolveReadAdapter()` which maps 'tags' to the note adapter uniformly.
 
+<!-- 2026-06-14 -->
+## kado-rename semantics (rename + move)
+`kado-rename` is the sixth MCP tool. One tool, two modes inferred from the paths (no mode flag): same parent folder ⇒ **rename**, different parent ⇒ **move**. Supports 2 data types: `note` (.md) and `file` (non-.md). Frontmatter/inline fields are excluded — they have no path of their own.
+- Execution: `app.fileManager.renameFile(file, target)` — the ONLY API that rewrites inbound `[[wikilinks]]` and markdown links. Never `vault.rename`/`adapter.rename` (those break backlinks). Same "use fileManager, not the adapter" rule as delete's `trashFile`.
+- `expectedModified` always required — optimistic concurrency on the SOURCE file (mirrors delete; ConcurrencyGuard has a rename branch). Refuses to clobber: CONFLICT if a file/folder already exists at `target`.
+- Extension-strict: both `source` and `target` must match the operation's class (note→.md, file→non-.md) and each other; a rename can never change a file's type. No-op (`source === target`) is VALIDATION_ERROR.
+- **Permission model** — the rename→update / move→delete+create policy lives in `evaluateRenamePermissions` (tools.ts), which composes the *existing* gate chain over synthetic single-path requests (zero new gates):
+  - **Rename** (same folder): requires `update` on BOTH source and target paths. Editing a note's name is a form of editing it; "who may update may rename." Checking both still gates correctly under filename-specific scopes.
+  - **Move** (cross folder): requires `delete` on source AND `create` on target — the file leaves one scope and enters another. `update` alone is NOT enough to move out; `create` alone is NOT enough to move in. Prevents an edit-only key from smuggling notes across scope boundaries.
+- Backlink updates touch notes the key may not have permission for. This is unavoidable (Obsidian rewrites links vault-wide) and accepted — it changes references, never content. Documented disclosure boundary, not a leak.
+- Router discriminates via explicit `kind: 'rename'` marker (like delete). Result: `{source, target, modified}` (mtime unchanged by a move).
+
 <!-- 2026-04-14 -->
 ## kado-delete semantics
 `kado-delete` is the fourth MCP tool (alongside read/write/search). It supports 3 data types: `note`, `file`, `frontmatter`. Inline fields are intentionally excluded (regex-based line removal too risky).

@@ -14,6 +14,7 @@ import {
 	mapWriteRequest,
 	mapSearchRequest,
 	mapDeleteRequest,
+	mapRenameRequest,
 	mapOpenNotesRequest,
 	parseHeadingTarget,
 } from '../../src/mcp/request-mapper';
@@ -23,6 +24,7 @@ import type {
 	CoreWriteRequest,
 	CoreSearchRequest,
 	CoreDeleteRequest,
+	CoreRenameRequest,
 	CoreOpenNotesRequest,
 	NoteWritePartial,
 } from '../../src/types/canonical';
@@ -767,6 +769,82 @@ describe('mapDeleteRequest()', () => {
 		expect(result.operation).toBe('note');
 		// keys field is only validated/attached for frontmatter; for note it's not required
 		// (implementation may pass through or omit — test just ensures no error)
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapRenameRequest
+// ---------------------------------------------------------------------------
+
+function makeRenameArgs(overrides?: Record<string, unknown>): Record<string, unknown> {
+	return {operation: 'note', source: 'a.md', target: 'b.md', expectedModified: 12345, ...overrides};
+}
+
+describe('mapRenameRequest()', () => {
+	it('maps a valid note rename request', () => {
+		const result = mapRenameRequest(makeRenameArgs(), KEY_ID) as CoreRenameRequest;
+
+		expect(result).toMatchObject({
+			kind: 'rename',
+			apiKeyId: KEY_ID,
+			operation: 'note',
+			source: 'a.md',
+			target: 'b.md',
+			expectedModified: 12345,
+		});
+	});
+
+	it('maps a valid file move request', () => {
+		const result = mapRenameRequest(
+			makeRenameArgs({operation: 'file', source: 'x/img.png', target: 'y/img.png'}),
+			KEY_ID,
+		) as CoreRenameRequest;
+
+		expect(result.operation).toBe('file');
+		expect(result.source).toBe('x/img.png');
+		expect(result.target).toBe('y/img.png');
+	});
+
+	it('rejects operation="frontmatter" with VALIDATION_ERROR', () => {
+		expect(() => mapRenameRequest(makeRenameArgs({operation: 'frontmatter'}), KEY_ID))
+			.toThrow(/operation must be one of note\|file/);
+	});
+
+	it('rejects missing source', () => {
+		expect(() => mapRenameRequest({operation: 'note', target: 'b.md', expectedModified: 1}, KEY_ID))
+			.toThrow(/missing required field "source"/);
+	});
+
+	it('rejects missing target', () => {
+		expect(() => mapRenameRequest({operation: 'note', source: 'a.md', expectedModified: 1}, KEY_ID))
+			.toThrow(/missing required field "target"/);
+	});
+
+	it('rejects missing expectedModified', () => {
+		expect(() => mapRenameRequest({operation: 'note', source: 'a.md', target: 'b.md'}, KEY_ID))
+			.toThrow(/missing required field "expectedModified"/);
+	});
+
+	it('rejects non-numeric expectedModified', () => {
+		expect(() => mapRenameRequest(makeRenameArgs({expectedModified: 'nope'}), KEY_ID))
+			.toThrow(/expectedModified must be a number/);
+	});
+
+	it('rejects identical source and target (no-op)', () => {
+		expect(() => mapRenameRequest(makeRenameArgs({source: 'a.md', target: 'a.md'}), KEY_ID))
+			.toThrow(/source and target must differ/);
+	});
+
+	it('rejects note rename targeting a non-.md path', () => {
+		expect(() => mapRenameRequest(makeRenameArgs({target: 'b.json'}), KEY_ID))
+			.toThrow(/operation="note" requires a \.md path/i);
+	});
+
+	it('rejects file rename targeting a .md path', () => {
+		expect(() => mapRenameRequest(
+			makeRenameArgs({operation: 'file', source: 'a.png', target: 'b.md'}),
+			KEY_ID,
+		)).toThrow(/operation="file" must not target a \.md path/i);
 	});
 });
 

@@ -22,7 +22,9 @@ import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import {createFrontmatterAdapter} from '../../src/obsidian/frontmatter-adapter';
 import {createInlineFieldAdapter} from '../../src/obsidian/inline-field-adapter';
 import {createSearchAdapter} from '../../src/obsidian/search-adapter';
-import type {KadoConfig, CoreError, CoreFileResult, CoreWriteResult, CoreSearchResult, CoreDeleteResult} from '../../src/types/canonical';
+import {createNoteDeleteAdapter, createFileDeleteAdapter, createFrontmatterDeleteAdapter} from '../../src/obsidian/delete-adapter';
+import {createRenameAdapter} from '../../src/obsidian/rename-adapter';
+import type {KadoConfig, CoreError, CoreFileResult, CoreWriteResult, CoreSearchResult, CoreDeleteResult, CoreRenameResult} from '../../src/types/canonical';
 
 // ============================================================
 // Config factory
@@ -165,6 +167,12 @@ function makeAdapters(app: ReturnType<typeof makeApp>) {
 		file: createNoteAdapter(app as never), // file adapter re-uses note path for tests
 		'dataview-inline-field': createInlineFieldAdapter(app as never),
 		search: createSearchAdapter(app as never),
+		deleteAdapters: {
+			note: createNoteDeleteAdapter(app as never),
+			file: createFileDeleteAdapter(app as never),
+			frontmatter: createFrontmatterDeleteAdapter(app as never),
+		},
+		rename: createRenameAdapter(app as never),
 	};
 }
 
@@ -220,7 +228,7 @@ async function runPipeline(
 	// Step 4: route to adapter.
 	// Mirrors tools.ts: adapter throws (NoteAdapterError, FrontmatterAdapterError, …)
 	// carry a `code` field and must be mapped to the appropriate error result.
-	let result: CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
+	let result: CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
 	try {
 		result = await router(request);
 	} catch (err: unknown) {
@@ -244,7 +252,9 @@ async function runPipeline(
 	if ('content' in result) {
 		return mapFileResult(result);
 	}
-	return mapWriteResult(result);
+	// This pipeline only drives read/write/search tools, so the remaining result
+	// is always a write result. Narrow explicitly for the widened RouteResult.
+	return mapWriteResult(result as CoreWriteResult);
 }
 
 function parseResult(callResult: unknown) {

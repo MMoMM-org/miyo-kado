@@ -1,6 +1,6 @@
 # Kado API Reference
 
-Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Five tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-search`, and `kado-open-notes`.
+Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Six tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
 
 ---
 
@@ -752,6 +752,142 @@ Delete uses `app.fileManager.trashFile()`, which respects the user's Obsidian se
 - **Permanently delete** — file is unrecoverable
 
 This gives the user — not the AI — final control over deletion recoverability.
+
+---
+
+## Tool: kado-rename
+
+Rename or move a file in the vault. Uses `app.fileManager.renameFile`, the only API that **updates backlinks automatically** — inbound `[[wikilinks]]` and markdown links pointing at the file are rewritten across the whole vault. Rename and move are the same operation; the mode is inferred from the paths.
+
+### Operations
+
+| Operation | Behavior |
+|---|---|
+| `note` | Rename/move a markdown file. Both `source` and `target` must end in `.md`. |
+| `file` | Rename/move a non-markdown file. Neither `source` nor `target` may end in `.md`. |
+
+### Rename vs Move (inferred, no flag)
+
+| Condition | Mode | Permissions required |
+|---|---|---|
+| `source` and `target` share the same parent folder | **rename** | `update` on the path (note/file), checked on both source and target |
+| `source` and `target` have different parent folders | **move** | `delete` on the source path **and** `create` on the target path |
+
+The split mirrors the trust boundary: renaming within a folder is a form of editing (so `update` suffices), while moving crosses folders, so it requires the right to remove the file from the source scope *and* create it in the target scope. An edit-only key cannot move notes into a folder it may not write to.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `operation` | `"note" \| "file"` | Yes | What to move. Frontmatter/inline fields are not supported (they have no path). |
+| `source` | `string` | Yes | Current vault-relative path of the file to move. |
+| `target` | `string` | Yes | Desired vault-relative path. Must not already exist (CONFLICT otherwise). Must share `source`'s extension class. |
+| `expectedModified` | `number` | **Yes (always)** | The `modified` timestamp from a prior read of the **source** file. CONFLICT if the source has changed since. |
+
+### Response Format
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | `string` | The original path. |
+| `target` | `string` | The new path. |
+| `modified` | `number` | The source file's `modified` timestamp (unchanged by a move). |
+
+### Rename Flow
+
+1. Call `kado-read` on the source to get its current `modified` timestamp.
+2. Call `kado-rename` with `expectedModified` set to that value.
+3. On `CONFLICT`, either the source changed since your read or the target already exists — re-read / pick another target.
+4. On `NOT_FOUND`, the source doesn't exist.
+
+### Examples
+
+**Rename a note in place (same folder → needs `update`):**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "source": "100 Inbox/draft.md",
+  "target": "100 Inbox/2026-budget.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "source": "100 Inbox/draft.md",
+  "target": "100 Inbox/2026-budget.md",
+  "modified": 1743379500000
+}
+```
+
+**Move a note across folders (→ needs `delete` on source + `create` on target):**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "source": "100 Inbox/2026-budget.md",
+  "target": "200 Notes/2026-budget.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "source": "100 Inbox/2026-budget.md",
+  "target": "200 Notes/2026-budget.md",
+  "modified": 1743379500000
+}
+```
+
+**VALIDATION_ERROR — no-op rename (source === target):**
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapRenameRequest: source and target must differ"
+}
+```
+
+**VALIDATION_ERROR — extension class mismatch:**
+
+```json
+// operation="note" with a non-.md target
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapRenameRequest: operation=\"note\" requires a .md path (got \"200 Notes/budget.txt\"). Use operation=\"file\" with base64 content for non-markdown files."
+}
+```
+
+**CONFLICT — target already exists:**
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "Target already exists: 200 Notes/2026-budget.md"
+}
+```
+
+**CONFLICT — stale expectedModified:**
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "File was updated in the background. Re-read before renaming."
+}
+```
+
+**NOT_FOUND — source does not exist:**
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "File not found: 100 Inbox/already-moved.md"
+}
+```
+
+### Backlink Updates Across Scope
+
+`fileManager.renameFile` rewrites links in **every** note that references the moved file, including notes outside the calling key's scope. This is unavoidable (Obsidian updates links vault-wide) and intentional — it changes link *references*, never note *content*. A key can therefore cause edits to link text in notes it cannot otherwise read or write.
 
 ---
 

@@ -70,6 +70,13 @@ export type ReadDataType = DataType | 'tags';
 /** Data types supported by kado-delete. Inline fields are intentionally excluded. */
 export type DeleteDataType = 'note' | 'frontmatter' | 'file';
 
+/**
+ * Data types supported by kado-rename. Rename is a file-level move, so only the
+ * two file-backed data types apply — frontmatter and inline fields are intra-file
+ * constructs with no path of their own.
+ */
+export type RenameDataType = 'note' | 'file';
+
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
 /** Supported search operation identifiers for CoreSearchRequest. */
@@ -192,8 +199,44 @@ export interface CoreDeleteResult {
 	modified?: number;
 }
 
+/**
+ * Request to rename or move a vault file (note or binary file).
+ *
+ * Rename vs move is inferred from the paths, not carried as a flag: when source
+ * and target share a parent folder it is a rename, otherwise a move. The
+ * distinction drives permission gating (rename → note/file update; move →
+ * delete on source + create on target) handled by the kado-rename tool, so the
+ * request itself stays mode-agnostic.
+ *
+ * `expectedModified` provides optimistic concurrency on the source file
+ * (same semantics as delete). Link updates in other notes are performed by
+ * Obsidian's fileManager.renameFile and are intentionally not gated — they
+ * rewrite references, never content.
+ */
+export interface CoreRenameRequest {
+	/** Explicit discriminator — CoreRenameRequest carries no `content` so a marker is needed. */
+	kind: 'rename';
+	apiKeyId: string;
+	operation: RenameDataType;
+	/** Current vault-relative path of the file to move. */
+	source: string;
+	/** Desired vault-relative path. Must not already exist. */
+	target: string;
+	/** Optimistic-concurrency guard against the source file's mtime. */
+	expectedModified: number;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
+}
+
+/** Result of a rename/move operation. `modified` is the source file's mtime (unchanged by a move). */
+export interface CoreRenameResult {
+	source: string;
+	target: string;
+	modified: number;
+}
+
 /** Union of all core request types flowing through the permission chain. */
-export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest;
+export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest;
 
 // ============================================================
 // Open Notes Requests and Results
@@ -537,6 +580,14 @@ export function isCoreSearchRequest(req: CoreRequest): req is CoreSearchRequest 
  */
 export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest {
 	return 'kind' in req && req.kind === 'delete';
+}
+
+/**
+ * Returns true when `req` is a CoreRenameRequest.
+ * Discriminated by the explicit `kind: 'rename'` marker.
+ */
+export function isCoreRenameRequest(req: CoreRequest): req is CoreRenameRequest {
+	return 'kind' in req && req.kind === 'rename';
 }
 
 /**

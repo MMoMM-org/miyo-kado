@@ -12,6 +12,7 @@ import {
 	mapWriteResult,
 	mapSearchResult,
 	mapDeleteResult,
+	mapRenameResult,
 	mapError,
 	mapOpenNotesResult,
 } from '../../src/mcp/response-mapper';
@@ -21,6 +22,7 @@ import type {
 	CoreSearchResult,
 	CoreSearchItem,
 	CoreDeleteResult,
+	CoreRenameResult,
 	CoreError,
 	CoreOpenNotesResult,
 	OpenNoteDescriptor,
@@ -333,6 +335,26 @@ describe('mapDeleteResult()', () => {
 	it('is not flagged as error', () => {
 		const mapped = mapDeleteResult({path: 'a.md'});
 		expect(mapped.isError).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapRenameResult
+// ---------------------------------------------------------------------------
+
+describe('mapRenameResult()', () => {
+	it('returns {source, target, modified} as JSON', () => {
+		const result: CoreRenameResult = {source: 'notes/old.md', target: 'notes/new.md', modified: 5000};
+		const mapped = mapRenameResult(result);
+
+		const body = JSON.parse(readText(mapped)) as Record<string, unknown>;
+		expect(body).toEqual({source: 'notes/old.md', target: 'notes/new.md', modified: 5000});
+	});
+
+	it('result has content type "text" and is not flagged as error', () => {
+		const mapped = mapRenameResult({source: 'a.md', target: 'b.md', modified: 1});
+		expect(mapped.content[0]?.type).toBe('text');
+		expect(mapped.isError).toBeFalsy();
 	});
 });
 

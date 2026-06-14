@@ -12,14 +12,20 @@ import {z} from 'zod';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, kadoReadShape, kadoWriteShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
+import {createDefaultGateChain} from '../../src/core/permission-chain';
 import type {
 	CoreRequest,
+	CoreRenameRequest,
+	CoreRenameResult,
 	CoreSearchRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreSearchItem,
 	CoreError,
+	CrudFlags,
+	DataTypePermissions,
+	PathPermission,
 	PermissionGate,
 	KadoConfig,
 	ApiKeyConfig,
@@ -206,16 +212,22 @@ function getFirstText(result: {content: {type: string; text?: string}[]}): strin
 // ---------------------------------------------------------------------------
 
 describe('registerTools()', () => {
-	it('registers exactly 5 tools on the server', () => {
+	it('registers exactly 6 tools on the server', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
-		expect(server.tools).toHaveLength(5);
+		expect(server.tools).toHaveLength(6);
 	});
 
 	it('registers a tool named kado-delete', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
 		expect(server.tools.map((t) => t.name)).toContain('kado-delete');
+	});
+
+	it('registers a tool named kado-rename', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
+		expect(server.tools.map((t) => t.name)).toContain('kado-rename');
 	});
 
 	it('registers a tool named kado-read', () => {
@@ -1727,5 +1739,209 @@ describe('kadoWriteShape — partial note write params', () => {
 			expectedModified: 88888,
 		});
 		expect(result.success).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-rename handler
+// ---------------------------------------------------------------------------
+
+describe('kado-rename handler', () => {
+	function getRenameHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === 'kado-rename')!.handler;
+	}
+
+	function makeRenameResult(overrides?: Partial<CoreRenameResult>): CoreRenameResult {
+		return {source: 'notes/old.md', target: 'notes/new.md', modified: 2000, ...overrides};
+	}
+
+	it('routes the rename request and returns the mapped result', async () => {
+		const router = vi.fn(async () => makeRenameResult({source: 'notes/a.md', target: 'notes/b.md'}));
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 2000)}));
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+
+		expect(result.isError).toBeFalsy();
+		expect(getFirstText(result)).toContain('notes/b.md');
+	});
+
+	it('passes keyId and source/target through to the router', async () => {
+		const router = vi.fn(async (req: CoreRequest) => {
+			const r = req as CoreRenameRequest;
+			expect(r.apiKeyId).toBe('kado_mover-key');
+			expect(r.source).toBe('notes/a.md');
+			expect(r.target).toBe('notes/b.md');
+			return makeRenameResult();
+		});
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 2000)}));
+
+		await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra('kado_mover-key'),
+		);
+		expect(router).toHaveBeenCalledOnce();
+	});
+
+	it('returns VALIDATION_ERROR for a no-op rename (source === target)', async () => {
+		const handler = getRenameHandler(makeDeps());
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/a.md', expectedModified: 1},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+	});
+
+	it('returns isError when permission is denied', async () => {
+		const deps = makeDeps({gates: [makeDenyGate(makeCoreError({code: 'FORBIDDEN'}))], getFileMtime: vi.fn(() => 2000)});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+	});
+
+	it('returns CONFLICT when the source mtime no longer matches expectedModified', async () => {
+		const router = vi.fn(async () => makeRenameResult());
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 9999)}));
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('CONFLICT');
+		expect(router).not.toHaveBeenCalled();
+	});
+
+	it('propagates NOT_FOUND thrown by the adapter (missing source)', async () => {
+		const router = vi.fn(async () => { throw {code: 'NOT_FOUND', message: 'File not found'}; });
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 2000)}));
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/missing.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('NOT_FOUND');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-rename permission policy (real gate chain)
+//   rename (same folder) → note/file UPDATE
+//   move (cross folder)   → DELETE on source + CREATE on target
+// ---------------------------------------------------------------------------
+
+describe('kado-rename permission policy', () => {
+	function crud(o: Partial<CrudFlags>): CrudFlags {
+		return {create: false, read: false, update: false, delete: false, ...o};
+	}
+	function allCrud(): CrudFlags {
+		return {create: true, read: true, update: true, delete: true};
+	}
+	function perms(note: CrudFlags): DataTypePermissions {
+		return {note, frontmatter: crud({}), file: crud({}), dataviewInlineField: crud({})};
+	}
+	function allPerms(): DataTypePermissions {
+		return {note: allCrud(), frontmatter: allCrud(), file: allCrud(), dataviewInlineField: allCrud()};
+	}
+
+	/** Global whitelists both folders fully; the key carries the path-scoped perms under test. */
+	function makePolicyDeps(keyPaths: PathPermission[], router?: ToolDependencies['router']): ToolDependencies {
+		const security = makeSecurityConfig({
+			paths: [
+				{path: 'projects/**', permissions: allPerms()},
+				{path: 'archive/**', permissions: allPerms()},
+			],
+		});
+		const key = makeApiKey('kado_test-key', {paths: keyPaths});
+		return makeDeps({
+			configManager: makeConfigManager({security, apiKeys: [key]}),
+			gates: createDefaultGateChain(),
+			getFileMtime: vi.fn(() => 2000),
+			router: router ?? vi.fn(async () => ({source: 'x', target: 'y', modified: 2000})),
+		});
+	}
+
+	function getRenameHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === 'kado-rename')!.handler;
+	}
+
+	it('allows an in-folder rename with only note.update', async () => {
+		const deps = makePolicyDeps([{path: 'projects/**', permissions: perms(crud({update: true}))}]);
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'projects/a.md', target: 'projects/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+	});
+
+	it('denies an in-folder rename when note.update is missing', async () => {
+		const deps = makePolicyDeps([{path: 'projects/**', permissions: perms(crud({read: true}))}]);
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'projects/a.md', target: 'projects/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+	});
+
+	it('allows a cross-folder move with delete on source AND create on target', async () => {
+		const deps = makePolicyDeps([
+			{path: 'projects/**', permissions: perms(crud({delete: true}))},
+			{path: 'archive/**', permissions: perms(crud({create: true}))},
+		]);
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'projects/a.md', target: 'archive/a.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+	});
+
+	it('denies a move when create on the target folder is missing', async () => {
+		const deps = makePolicyDeps([
+			{path: 'projects/**', permissions: perms(crud({delete: true}))},
+			{path: 'archive/**', permissions: perms(crud({read: true}))},
+		]);
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'projects/a.md', target: 'archive/a.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+	});
+
+	it('denies a move when delete on the source folder is missing (update alone is not enough)', async () => {
+		const deps = makePolicyDeps([
+			{path: 'projects/**', permissions: perms(crud({update: true}))},
+			{path: 'archive/**', permissions: perms(crud({create: true}))},
+		]);
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'projects/a.md', target: 'archive/a.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 });
