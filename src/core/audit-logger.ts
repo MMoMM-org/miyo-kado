@@ -12,7 +12,7 @@
  * CRITICAL: No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
-import type {AuditConfig} from '../types/canonical';
+import type {AuditConfig, NoteWriteMode} from '../types/canonical';
 
 // ============================================================
 // Types
@@ -43,7 +43,7 @@ export interface AuditEntry {
 	 * Note-partial write mode (append/prepend/insertUnderHeading/replaceSection/replaceRange).
 	 * Set only for partial note writes; absent on full note writes, frontmatter writes, and reads.
 	 */
-	mode?: string;
+	mode?: NoteWriteMode;
 }
 
 /** I/O callbacks injected into AuditLogger for file operations (no Obsidian dependency). */

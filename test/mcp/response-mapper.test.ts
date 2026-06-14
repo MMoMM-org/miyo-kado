@@ -150,6 +150,14 @@ describe('mapFileResult()', () => {
 
 		expect('truncated' in body).toBe(false);
 	});
+
+	it('includes truncated:false in JSON when result is explicitly not truncated', () => {
+		const result = mapFileResult(makeFileResult({truncated: false}));
+		const body = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+
+		expect('truncated' in body).toBe(true);
+		expect(body['truncated']).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------
