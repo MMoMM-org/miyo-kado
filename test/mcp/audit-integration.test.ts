@@ -211,6 +211,12 @@ function getHandler(toolName: string, deps: ToolDependencies) {
 	return server.tools.find((t) => t.name === toolName)!.handler;
 }
 
+function firstEntry(entries: AuditEntry[]): AuditEntry {
+	const entry = entries[0];
+	if (!entry) throw new Error('expected at least one audit entry');
+	return entry;
+}
+
 // ---------------------------------------------------------------------------
 // Allowed tool call — audit entry logged
 // ---------------------------------------------------------------------------
@@ -314,8 +320,8 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].bodyTouched).toBe(true);
-		expect(entries[0].mode).toBe('append');
+		expect(firstEntry(entries).bodyTouched).toBe(true);
+		expect(firstEntry(entries).mode).toBe('append');
 	});
 
 	it('sets bodyTouched:true and mode on partial note write (replaceSection)', async () => {
@@ -339,8 +345,8 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].bodyTouched).toBe(true);
-		expect(entries[0].mode).toBe('replaceSection');
+		expect(firstEntry(entries).bodyTouched).toBe(true);
+		expect(firstEntry(entries).mode).toBe('replaceSection');
 	});
 
 	it('omits mode on full note write (no notePartial)', async () => {
@@ -355,7 +361,7 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].mode).toBeUndefined();
+		expect(firstEntry(entries).mode).toBeUndefined();
 	});
 
 	it('omits mode on frontmatter write', async () => {
@@ -370,7 +376,7 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].mode).toBeUndefined();
+		expect(firstEntry(entries).mode).toBeUndefined();
 	});
 });
 
