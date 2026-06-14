@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-13 |
-| **Current Phase** | Ready for implementation |
-| **Last Updated** | 2026-06-13 |
+| **Current Phase** | Implemented — all 5 phases complete |
+| **Last Updated** | 2026-06-14 |
 | **Tracking** | [#69](https://github.com/MMoMM-org/miyo-kado/issues/69) |
 
 ## Documents
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | Approved by user |
 | solution.md | completed | Approved by user; 8 ADRs confirmed |
-| plan/ | completed | 5 TDD phases approved; implementation deferred |
+| plan/ | completed | 5 TDD phases — all implemented (2026-06-14) |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -38,3 +38,4 @@
 | 2026-06-13 | Plan drafted: 5 TDD phases | Foundations → gate chain (ADR-2/5) → request-mapper → adapter → MCP/docs/E2E; ADR-2 three-site change isolated across phases 2+4 |
 | 2026-06-13 | Validation (4 perspectives) — resolved 3 gaps | F1 `insertUnderHeading` → end of section; F2 empty `content` on replace deletes the span; F3 section-read `truncated`=true when content outside (consistent with range/firstXChars) |
 | 2026-06-13 | Validation — mechanical fixes | ADR-2/5/6/7/8 checkboxes corrected; phase-1 Edge-Cases ref PRD not SDD; ADR-2 scoped note-only (file-adapter unaffected); matchHeadingPath algorithm specified; metadataCache `position.start.line` verification added to phase-4 |
+| 2026-06-14 | Phase 5 complete — feature shipped | MCP Zod surface (`mode`+addressing params on kado-read/kado-write), `truncated` in read response, audit `mode`+`bodyTouched:true` for partial writes, api-reference docs, and full-pipeline E2E + backward-compat regression. 1328 tests green; zero new test-typecheck errors over the pre-existing repo backlog. Ready for PR closing #69 |

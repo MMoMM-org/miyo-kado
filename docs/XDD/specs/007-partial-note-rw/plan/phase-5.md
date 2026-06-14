@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: MCP surface, docs & end-to-end"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -53,7 +53,7 @@ Exposes the capability to MCP clients, makes it observable and documented, and p
   4. Validate: no stale claims; cross-check against the Zod schema and adapter behaviour; no literal NUL/control bytes (auto-memory `git_nul_byte_in_text_files`)
   5. Success: contract fully documented `[ref: PRD/AC Feature 3]`
 
-- [ ] **T5.4 End-to-end & backward-compat** `[activity: validate]`
+- [x] **T5.4 End-to-end & backward-compat** `[activity: validate]`
 
   1. Prime: Read `[ref: SDD/Runtime View]` flows and `[ref: PRD/User Journey Maps]`
   2. Test: end-to-end through the full pipeline (request-mapper → gate chain → adapter) for a representative read mode and write mode incl. the additive-lock-free and dirty-editor CONFLICT paths; **backward-compat regression** — a no-`mode` read and write behave identically to pre-feature; optionally a live test per `docs/live-testing.md`
@@ -61,6 +61,7 @@ Exposes the capability to MCP clients, makes it observable and documented, and p
   4. Validate: full `npx vitest run` green; `npm run build` clean; `npx tsc -p tsconfig.test.json` clean across all touched test files; `npm run lint` (eslint src/) clean
   5. Success: every PRD acceptance criterion exercised; zero regression on no-mode paths `[ref: PRD/Success Metrics]` `[ref: SDD/Quality Requirements]`
 
-- [ ] **T5.5 Phase Validation** `[activity: validate]`
+- [x] **T5.5 Phase Validation** `[activity: validate]`
 
   - Full suite + build + test typecheck + lint all green. Update `docs/XDD/specs/007-partial-note-rw/README.md` status and the memory index. Ready for PR closing #69.
+  - Result: `npx vitest run` 1328 passed (45 files); `npm run build` clean; eslint `src/` clean (stylelint absent locally — known env gap); `tsc -p tsconfig.test.json` adds zero new errors across the 4 touched test files (counts match base 054f083: tools=7, tool-roundtrip=2, response-mapper=52, audit-integration=32 — all pre-existing repo backlog, untouched).
