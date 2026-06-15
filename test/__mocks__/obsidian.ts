@@ -131,6 +131,29 @@ export class Modal {
 	onClose(): void {}
 }
 
+/**
+ * Minimal FuzzySuggestModal mock. Real rendering is internal to Obsidian; tests
+ * exercise the subclass contract directly: getItems(), getItemText(), and
+ * onChooseItem(). `chooseItem(i)` is a test helper to simulate a selection.
+ */
+export abstract class FuzzySuggestModal<T> {
+	app: App;
+	inputEl: HTMLInputElement = document.createElement('input');
+	constructor(app: App) {
+		this.app = app;
+	}
+	setPlaceholder(_text: string): void {}
+	open = vi.fn();
+	close = vi.fn();
+	abstract getItems(): T[];
+	abstract getItemText(item: T): string;
+	abstract onChooseItem(item: T, evt?: MouseEvent | KeyboardEvent): void;
+	/** Test helper: simulate the user choosing an item. */
+	chooseItem(item: T): void {
+		this.onChooseItem(item);
+	}
+}
+
 export class Notice {
 	static _instances: Notice[] = [];
 	constructor(public message: string, public timeout?: number) {
