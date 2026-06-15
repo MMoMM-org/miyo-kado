@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/MMoMM-org/miyo-kado/compare/0.13.0...0.14.0) (2026-06-15)
+
+
+### Features
+
+* kado-rename tool (rename + move with backlink updates) ([#73](https://github.com/MMoMM-org/miyo-kado/issues/73)) ([2bf5d83](https://github.com/MMoMM-org/miyo-kado/commit/2bf5d830eb8b97860e29e985ae6ffcead3eec0a8))
+
 # [0.13.0](https://github.com/MMoMM-org/miyo-kado/compare/0.12.0...0.13.0) (2026-06-14)
 
 
