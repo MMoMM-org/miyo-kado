@@ -75,11 +75,20 @@ caller can't answer). Kado does **not** flip that user setting. Instead: (1) `ka
 registered only when `alwaysUpdateLinks` is on OR the opt-in `renameWhenLinkUpdateOff` is on
 (default off) — so by default the tool isn't exposed when it would hang; (2) the opt-in is
 shown in settings only when auto-update-links is off, behind a confirmation modal; (3) each
-rename runs under `renameTimeoutMs` (default 60 s) and returns a `TIMEOUT` error instead of
-hanging. The registration gate is recomputed per request (the MCP server runs the
-registration callback on every call), so setting changes take effect immediately. A one-time
-on-load modal (`maybeWarnRenameDisabled`, gated by `renameWarningAcknowledged`) warns the
-user when rename is disabled because auto-update-links is off.
+rename runs under `renameTimeoutMs` (default 60 s). The registration gate is recomputed per
+request (the MCP server runs the registration callback on every call), so setting changes take
+effect immediately. A one-time on-load modal (`maybeWarnRenameDisabled`, gated by
+`renameWarningAcknowledged`) warns the user when rename is disabled because auto-update-links is
+off.
+
+**ADR-8 refinement (live-verified):** Obsidian actually MOVES the file immediately on
+`renameFile`; the dialog gates only the inbound-link rewrite and the promise we await. So a
+"timeout" almost always means the file is already renamed and only the link update is pending.
+The handler therefore checks the vault on timeout and returns a **success with
+`linkUpdatePending: true`** (plus a self-describing `note`: rename happened, don't retry, enable
+auto-update to avoid a per-rename dialog) — emitting a bare `TIMEOUT` error only when the file
+genuinely did not move. "Don't update" in the dialog moves the file but leaves inbound links
+stale; this is Obsidian's own behavior, surfaced honestly rather than hidden.
 
 ## Constitution alignment
 - Security L1: two-layer check on both paths, fail-fast before any fs op. ✓

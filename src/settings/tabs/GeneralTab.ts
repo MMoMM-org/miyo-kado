@@ -110,8 +110,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 	} else {
 		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
 		const riskDesc = containerEl.ownerDocument.createDocumentFragment();
-		riskDesc.append('Obsidian’s "Automatically update internal links" is off, so renaming pops a confirmation dialog an AI cannot answer. ');
-		riskDesc.append('Leave off (recommended) and the kado-rename tool is not exposed. Turn on to expose it anyway — renames then run under a timeout and return a timeout error if the dialog blocks them. ');
+		riskDesc.append('While auto-update-links is off, kado-rename is not exposed. Turn on to expose it anyway — renaming works, but each rename prompts a link-update dialog and inbound links update only when you answer it. ');
 		const riskLink = containerEl.ownerDocument.createElement('a');
 		riskLink.textContent = 'Details';
 		riskLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
@@ -145,7 +144,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 		if (config.renameWhenLinkUpdateOff) {
 			new Setting(containerEl)
 				.setName('Rename timeout')
-				.setDesc('Seconds to wait for a rename before it gives up (default 60).')
+				.setDesc('Seconds to wait for the link-update dialog before the call returns (the file is already renamed by then; default 60).')
 				.addText(text => text
 					.setValue(String(Math.round(config.renameTimeoutMs / 1000)))
 					.onChange(async (value) => {

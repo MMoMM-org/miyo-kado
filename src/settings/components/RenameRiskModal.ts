@@ -46,19 +46,23 @@ export class RenameRiskModal extends Modal {
 
 		contentEl.createEl('p', {text:
 			'Obsidian’s "Automatically update internal links" setting is currently off. '
-			+ 'While it is off, the kado-rename tool is disabled — renaming or moving a file '
-			+ 'pops a confirmation dialog asking whether to update links, and an AI calling '
-			+ 'kado-rename cannot answer it, so the rename would block until the timeout and '
-			+ 'return a TIMEOUT error.',
+			+ 'While it is off, the kado-rename tool is not exposed to AI clients.',
+		});
+		contentEl.createEl('p', {text:
+			'If you enable it here, renaming still works — the file is moved immediately — '
+			+ 'but Obsidian shows a confirmation dialog asking whether to update inbound links '
+			+ 'on every rename. Until you answer that dialog, the file is renamed yet its inbound '
+			+ 'links are left unchanged (the tool reports "linkUpdatePending"). For many renames '
+			+ 'that means one dialog each.',
 		});
 		contentEl.createEl('p', {text:
 			'Recommended: turn on "Automatically update internal links" in Obsidian '
-			+ '(Settings → Files and links). Then renames work reliably and backlinks '
-			+ 'are updated automatically — no need to enable anything here.',
+			+ '(Settings → Files and links). Then renames are silent, inbound links are updated '
+			+ 'automatically, and no dialog appears — no need to enable anything here.',
 		});
 
 		const docsP = contentEl.createEl('p');
-		docsP.append('Enable anyway only if you accept occasional TIMEOUT results. ');
+		docsP.append('Enable anyway only if you accept a link-update dialog on each rename. ');
 		const link = docsP.createEl('a', {text: 'Learn more'});
 		link.href = DOCS_URL;
 		link.target = '_blank';
