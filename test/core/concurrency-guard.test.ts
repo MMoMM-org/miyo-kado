@@ -199,6 +199,14 @@ describe('validateConcurrency — rename request', () => {
 		const result = validateConcurrency(makeRenameRequest(1700000000000), undefined);
 		expect(result).toEqual({allowed: true});
 	});
+
+	it('returns CONFLICT when expectedModified is NaN against a real mtime (defense-in-depth)', () => {
+		const result = validateConcurrency(makeRenameRequest(NaN), 1700000000000);
+		expect(result.allowed).toBe(false);
+		if (!result.allowed) {
+			expect(result.error.code).toBe('CONFLICT');
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------

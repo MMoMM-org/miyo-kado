@@ -1944,4 +1944,45 @@ describe('kado-rename permission policy', () => {
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
+
+	// Root-level files: parentDir('a.md') === '' — exercise the rename-vs-move
+	// inference at the vault root.
+	function makeRootDeps(keyNote: CrudFlags, router?: ToolDependencies['router']): ToolDependencies {
+		const security = makeSecurityConfig({paths: [{path: '**', permissions: allPerms()}]});
+		const key = makeApiKey('kado_test-key', {paths: [{path: '**', permissions: perms(keyNote)}]});
+		return makeDeps({
+			configManager: makeConfigManager({security, apiKeys: [key]}),
+			gates: createDefaultGateChain(),
+			getFileMtime: vi.fn(() => 2000),
+			router: router ?? vi.fn(async () => ({source: 'x', target: 'y', modified: 2000})),
+		});
+	}
+
+	it('allows a root→root rename with note.update', async () => {
+		const handler = getRenameHandler(makeRootDeps(crud({update: true})));
+		const result = await handler(
+			{operation: 'note', source: 'a.md', target: 'b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+	});
+
+	it('allows a root→subfolder move with delete+create', async () => {
+		const handler = getRenameHandler(makeRootDeps(crud({delete: true, create: true})));
+		const result = await handler(
+			{operation: 'note', source: 'a.md', target: 'sub/a.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+	});
+
+	it('denies a root→subfolder move when only update is granted', async () => {
+		const handler = getRenameHandler(makeRootDeps(crud({update: true})));
+		const result = await handler(
+			{operation: 'note', source: 'a.md', target: 'sub/a.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+	});
 });

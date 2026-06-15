@@ -16,9 +16,10 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
-import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest, CoreRenameRequest, CoreWriteRequest, CoreDeleteRequest, GateResult} from '../types/canonical';
+import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
+import {evaluateRenamePermissions} from '../core/rename-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest} from './request-mapper';
@@ -41,12 +42,11 @@ import {kadoLog} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
 import {authenticateGate} from '../core/gates/authenticate';
+import type {RouteResult} from '../core/operation-router';
 
 // ============================================================
 // Public types
 // ============================================================
-
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
 
 /** Dependencies injected into the MCP tool handlers. */
 export interface ToolDependencies {
@@ -282,57 +282,6 @@ function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, 
 	return notes.filter((note) => isPathPermittedForKey(note.path, key, config));
 }
 
-/** Returns the parent folder of a vault path ('' for a root-level file). */
-function parentDir(path: string): string {
-	const i = path.lastIndexOf('/');
-	return i === -1 ? '' : path.slice(0, i);
-}
-
-/**
- * Evaluates permission for a rename/move by composing the existing gate chain
- * over synthetic single-path requests — the rename→update / move→delete+create
- * policy lives here, in one place, expressed literally:
- *
- *   - Rename (same parent folder): require `update` on BOTH source and target.
- *     Same folder normally means identical permissions, but checking both still
- *     gates correctly when a key's scope is filename-specific.
- *   - Move (different parent folder): require `delete` on source AND `create` on
- *     target — the file leaves one scope and enters another.
- *
- * Reusing the full chain means global-scope, key-scope, path traversal, and
- * datatype-permission are all enforced on every path with zero gate changes.
- */
-function evaluateRenamePermissions(
-	request: CoreRenameRequest,
-	config: KadoConfig,
-	gates: PermissionGate[],
-): {result: GateResult; mode: 'rename' | 'move'} {
-	const {apiKeyId, operation, source, target} = request;
-	const mode: 'rename' | 'move' = parentDir(source) === parentDir(target) ? 'rename' : 'move';
-
-	if (mode === 'rename') {
-		// Synthetic write with expectedModified set → inferCrudAction = 'update'.
-		for (const path of [source, target]) {
-			const synth: CoreWriteRequest = {apiKeyId, operation, path, content: '', expectedModified: 0};
-			const r = evaluatePermissions(synth, config, gates);
-			if (!r.allowed) return {result: r, mode};
-		}
-		return {result: {allowed: true}, mode};
-	}
-
-	// Move: delete on source.
-	const delSynth: CoreDeleteRequest = {kind: 'delete', apiKeyId, operation, path: source, expectedModified: 0};
-	const delRes = evaluatePermissions(delSynth, config, gates);
-	if (!delRes.allowed) return {result: delRes, mode};
-
-	// Move: create on target (synthetic write WITHOUT expectedModified → 'create').
-	const createSynth: CoreWriteRequest = {apiKeyId, operation, path: target, content: ''};
-	const createRes = evaluatePermissions(createSynth, config, gates);
-	if (!createRes.allowed) return {result: createRes, mode};
-
-	return {result: {allowed: true}, mode};
-}
-
 function extractDataType(request: CoreRequest): DataType {
 	if (isCoreSearchRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
@@ -371,17 +320,18 @@ async function logAllowed(
 		} catch { /* audit logging must never crash a tool call */ }
 		return;
 	}
-	const renameReq = request as CoreRequest;
-	if (isCoreRenameRequest(renameReq)) {
-		kadoLog(`${tool} allowed`, {key: truncateKeyId(keyId), operation: renameReq.operation, source: renameReq.source, target: renameReq.target, durationMs});
+	const coreReq = request as CoreRequest;
+	if (isCoreRenameRequest(coreReq)) {
+		// Rename has no single `path`/`dataType`, so it bypasses debugFields/extractDataType:
+		// path=source, query=target (auditors derive rename-vs-move from the two folders),
+		// dataType=operation ('note'|'file').
+		kadoLog(`${tool} allowed`, {key: truncateKeyId(keyId), operation: coreReq.operation, source: coreReq.source, target: coreReq.target, durationMs});
 		if (!auditLogger) return;
 		try {
-			// path=source, query=target — auditors can derive rename-vs-move from the two folders.
-			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: renameReq.operation, dataType: renameReq.operation, path: renameReq.source, query: renameReq.target, decision: 'allowed', durationMs}));
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: coreReq.operation, dataType: coreReq.operation, path: coreReq.source, query: coreReq.target, decision: 'allowed', durationMs}));
 		} catch { /* audit logging must never crash a tool call */ }
 		return;
 	}
-	const coreReq = request as CoreRequest;
 	kadoLog(`${tool} allowed`, {...debugFields(keyId, coreReq), durationMs});
 	if (!auditLogger) return;
 	try {
@@ -420,16 +370,15 @@ async function logDenied(
 		} catch { /* audit logging must never crash a tool call */ }
 		return;
 	}
-	const renameReq = request as CoreRequest;
-	if (isCoreRenameRequest(renameReq)) {
-		kadoLog(`${tool} denied`, {key: truncateKeyId(keyId), operation: renameReq.operation, source: renameReq.source, target: renameReq.target, gate});
+	const coreReq = request as CoreRequest;
+	if (isCoreRenameRequest(coreReq)) {
+		kadoLog(`${tool} denied`, {key: truncateKeyId(keyId), operation: coreReq.operation, source: coreReq.source, target: coreReq.target, gate});
 		if (!auditLogger) return;
 		try {
-			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: renameReq.operation, dataType: renameReq.operation, path: renameReq.source, query: renameReq.target, decision: 'denied', gate}));
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: coreReq.operation, dataType: coreReq.operation, path: coreReq.source, query: coreReq.target, decision: 'denied', gate}));
 		} catch { /* audit logging must never crash a tool call */ }
 		return;
 	}
-	const coreReq = request as CoreRequest;
 	kadoLog(`${tool} denied`, {...debugFields(keyId, coreReq), gate});
 	if (!auditLogger) return;
 	try {

@@ -12,9 +12,10 @@
 import {describe, it, expect, vi} from 'vitest';
 import {App, TFile, TFolder, MarkdownView, Notice, WorkspaceLeaf, createMockTFile, createMockCachedMetadata} from '../__mocks__/obsidian';
 import type {HeadingCache} from '../__mocks__/obsidian';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest} from '../../src/mcp/request-mapper';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapError} from '../../src/mcp/response-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapRenameRequest} from '../../src/mcp/request-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapRenameResult, mapError} from '../../src/mcp/response-mapper';
 import {evaluatePermissions, createDefaultGateChain} from '../../src/core/permission-chain';
+import {evaluateRenamePermissions} from '../../src/core/rename-policy';
 import {validateConcurrency} from '../../src/core/concurrency-guard';
 import {createOperationRouter} from '../../src/core/operation-router';
 import {ConfigManager} from '../../src/core/config-manager';
@@ -185,7 +186,7 @@ async function runPipeline(
 	app: ReturnType<typeof makeApp>,
 	toolArgs: Record<string, unknown>,
 	keyId: string,
-	toolName: 'kado-read' | 'kado-write' | 'kado-search',
+	toolName: 'kado-read' | 'kado-write' | 'kado-search' | 'kado-rename',
 ) {
 	const gates = createDefaultGateChain();
 	const adapters = makeAdapters(app);
@@ -193,25 +194,36 @@ async function runPipeline(
 
 	// Step 1: map MCP args to canonical request.
 	// Mirrors tools.ts: mapper throws become VALIDATION_ERROR.
-	let request: ReturnType<typeof mapReadRequest> | ReturnType<typeof mapWriteRequest> | ReturnType<typeof mapSearchRequest>;
+	let request: ReturnType<typeof mapReadRequest> | ReturnType<typeof mapWriteRequest> | ReturnType<typeof mapSearchRequest> | ReturnType<typeof mapRenameRequest>;
 	try {
 		request =
 			toolName === 'kado-read'
 				? mapReadRequest(toolArgs, keyId)
 				: toolName === 'kado-write'
 					? mapWriteRequest(toolArgs, keyId)
-					: mapSearchRequest(toolArgs, keyId);
+					: toolName === 'kado-rename'
+						? mapRenameRequest(toolArgs, keyId)
+						: mapSearchRequest(toolArgs, keyId);
 	} catch (err: unknown) {
 		return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 	}
 
-	// Step 2: evaluate permissions
-	const permResult = evaluatePermissions(request, config, gates);
-	if (!permResult.allowed) {
-		return mapError(permResult.error);
+	// Step 2: evaluate permissions. Rename has its own two-path policy and must
+	// NOT go through the single-path gate chain directly (mirrors tools.ts).
+	if (toolName === 'kado-rename') {
+		const renameReq = request as ReturnType<typeof mapRenameRequest>;
+		const {result: permResult} = evaluateRenamePermissions(renameReq, config, gates);
+		if (!permResult.allowed) {
+			return mapError(permResult.error);
+		}
+	} else {
+		const permResult = evaluatePermissions(request, config, gates);
+		if (!permResult.allowed) {
+			return mapError(permResult.error);
+		}
 	}
 
-	// Step 3: concurrency guard for writes
+	// Step 3: concurrency guard for writes (path mtime) and renames (source mtime)
 	if (toolName === 'kado-write') {
 		const writeReq = request as {expectedModified?: number; path: string};
 		let currentMtime: number | undefined;
@@ -220,6 +232,13 @@ async function runPipeline(
 			currentMtime = file ? file.stat.mtime : undefined;
 		}
 		const concResult = validateConcurrency(request, currentMtime);
+		if (!concResult.allowed) {
+			return mapError(concResult.error);
+		}
+	} else if (toolName === 'kado-rename') {
+		const renameReq = request as ReturnType<typeof mapRenameRequest>;
+		const file = app.vault.getFileByPath(renameReq.source);
+		const concResult = validateConcurrency(request, file ? file.stat.mtime : undefined);
 		if (!concResult.allowed) {
 			return mapError(concResult.error);
 		}
@@ -252,8 +271,9 @@ async function runPipeline(
 	if ('content' in result) {
 		return mapFileResult(result);
 	}
-	// This pipeline only drives read/write/search tools, so the remaining result
-	// is always a write result. Narrow explicitly for the widened RouteResult.
+	if ('source' in result) {
+		return mapRenameResult(result);
+	}
 	return mapWriteResult(result as CoreWriteResult);
 }
 
@@ -1589,6 +1609,98 @@ describe('End-to-end tool call pipeline', () => {
 			// vault.create must have been called, not vault.process
 			expect(app.vault.create).toHaveBeenCalledOnce();
 			expect(app.vault.process).not.toHaveBeenCalled();
+		});
+	});
+
+	// --------------------------------------------------------
+	// kado-rename: full pipeline (mapper → rename policy → guard → adapter)
+	// --------------------------------------------------------
+
+	describe('kado-rename', () => {
+		it('renames a note in-folder end-to-end (update permission)', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+
+			const file = createMockTFile({
+				path: 'projects/draft.md',
+				name: 'draft.md',
+				stat: {ctime: 1000, mtime: 2000, size: 42},
+			});
+			// projects/ folder exists; the target file does not.
+			wireVaultTree(app, [file]);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			const renameFile = vi.fn().mockResolvedValue(undefined);
+			(app.fileManager as unknown as {renameFile: typeof renameFile}).renameFile = renameFile;
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', source: 'projects/draft.md', target: 'projects/final.md', expectedModified: 2000},
+				'test-key',
+				'kado-rename',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.source).toBe('projects/draft.md');
+			expect(body.target).toBe('projects/final.md');
+			expect(renameFile).toHaveBeenCalledWith(file, 'projects/final.md');
+		});
+
+		it('denies a cross-folder move when the key lacks delete on the source (FORBIDDEN)', async () => {
+			const config = makeTestConfig(); // key: note CRU on projects/**, no delete
+			const app = makeApp();
+
+			const file = createMockTFile({
+				path: 'projects/draft.md',
+				name: 'draft.md',
+				stat: {ctime: 1000, mtime: 2000, size: 42},
+			});
+			wireVaultTree(app, [file]);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			const renameFile = vi.fn().mockResolvedValue(undefined);
+			(app.fileManager as unknown as {renameFile: typeof renameFile}).renameFile = renameFile;
+
+			// Different parent folder ⇒ move ⇒ requires delete(source)+create(target);
+			// the key has neither delete nor create-elsewhere, so it must be denied.
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', source: 'projects/draft.md', target: 'projects/archive/draft.md', expectedModified: 2000},
+				'test-key',
+				'kado-rename',
+			);
+
+			expect(result.isError).toBe(true);
+			expect(parseResult(result).code).toBe('FORBIDDEN');
+			expect(renameFile).not.toHaveBeenCalled();
+		});
+
+		it('returns CONFLICT when the source changed since the read', async () => {
+			const config = makeTestConfig();
+			const app = makeApp();
+
+			const file = createMockTFile({
+				path: 'projects/draft.md',
+				name: 'draft.md',
+				stat: {ctime: 1000, mtime: 2000, size: 42},
+			});
+			wireVaultTree(app, [file]);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			const renameFile = vi.fn().mockResolvedValue(undefined);
+			(app.fileManager as unknown as {renameFile: typeof renameFile}).renameFile = renameFile;
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', source: 'projects/draft.md', target: 'projects/final.md', expectedModified: 1999},
+				'test-key',
+				'kado-rename',
+			);
+
+			expect(result.isError).toBe(true);
+			expect(parseResult(result).code).toBe('CONFLICT');
+			expect(renameFile).not.toHaveBeenCalled();
 		});
 	});
 });

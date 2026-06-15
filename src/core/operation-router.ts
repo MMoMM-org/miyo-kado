@@ -74,7 +74,8 @@ export interface AdapterRegistry {
 // Router
 // ============================================================
 
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
+/** Union of every value an adapter route can return — shared with the MCP tool layer. */
+export type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
 
 function validationError(message: string): CoreError {
 	return {code: 'VALIDATION_ERROR', message};

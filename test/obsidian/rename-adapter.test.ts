@@ -25,11 +25,21 @@ interface AppOverrides {
 	renameFile?: ReturnType<typeof vi.fn>;
 }
 
+/**
+ * Default getAbstractFileByPath simulates a vault where parent folders exist and
+ * the target file does not: paths with a dot (a file) resolve to null (free),
+ * paths without (a folder) resolve to a truthy folder stub. Tests override this
+ * to simulate an occupied target or a missing parent folder.
+ */
+function defaultGetAbstractFileByPath() {
+	return vi.fn((p: string) => (p.includes('.') ? null : {path: p}));
+}
+
 function makeApp(overrides?: AppOverrides) {
 	return {
 		vault: {
 			getFileByPath: overrides?.getFileByPath ?? vi.fn(),
-			getAbstractFileByPath: overrides?.getAbstractFileByPath ?? vi.fn().mockReturnValue(null),
+			getAbstractFileByPath: overrides?.getAbstractFileByPath ?? defaultGetAbstractFileByPath(),
 		},
 		fileManager: {
 			renameFile: overrides?.renameFile ?? vi.fn().mockResolvedValue(undefined),
@@ -114,5 +124,54 @@ describe('createRenameAdapter() — rename()', () => {
 
 		await expect(adapter.rename(makeRenameRequest())).rejects.toBeDefined();
 		expect(renameFile).not.toHaveBeenCalled();
+	});
+
+	it('allows a case-only rename (target resolves to the same file)', async () => {
+		const file = makeTFile('notes/Old.md');
+		const renameFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({
+			getFileByPath: vi.fn().mockReturnValue(file),
+			// Case-insensitive FS: the target resolves back to the SAME source file.
+			getAbstractFileByPath: vi.fn((p: string) => (p === 'notes/old.md' ? file : {path: p})),
+			renameFile,
+		});
+		const adapter = createRenameAdapter(app as never);
+
+		const result = await adapter.rename(makeRenameRequest({source: 'notes/Old.md', target: 'notes/old.md'}));
+
+		expect(renameFile).toHaveBeenCalledWith(file, 'notes/old.md');
+		expect(result.target).toBe('notes/old.md');
+	});
+
+	it('throws VALIDATION_ERROR when the target parent folder does not exist', async () => {
+		const renameFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({
+			getFileByPath: vi.fn().mockReturnValue(makeTFile('100 Inbox/a.md')),
+			getAbstractFileByPath: vi.fn().mockReturnValue(null), // target free AND parent missing
+			renameFile,
+		});
+		const adapter = createRenameAdapter(app as never);
+
+		await expect(adapter.rename(makeRenameRequest({source: '100 Inbox/a.md', target: '200 Notes/a.md'})))
+			.rejects
+			.toMatchObject({code: 'VALIDATION_ERROR'});
+		expect(renameFile).not.toHaveBeenCalled();
+	});
+
+	it('maps a renameFile failure to CONFLICT when the target became occupied (race)', async () => {
+		const file = makeTFile('x/old.md');
+		const occupant = makeTFile('x/new.md');
+		let targetChecks = 0;
+		const getAbstractFileByPath = vi.fn((p: string) => {
+			if (p === 'x/new.md') { targetChecks += 1; return targetChecks === 1 ? null : occupant; }
+			return {path: p}; // parent exists
+		});
+		const renameFile = vi.fn().mockRejectedValue(new Error('already exists'));
+		const app = makeApp({getFileByPath: vi.fn().mockReturnValue(file), getAbstractFileByPath, renameFile});
+		const adapter = createRenameAdapter(app as never);
+
+		await expect(adapter.rename(makeRenameRequest({source: 'x/old.md', target: 'x/new.md'})))
+			.rejects
+			.toMatchObject({code: 'CONFLICT'});
 	});
 });

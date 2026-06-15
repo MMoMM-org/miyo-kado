@@ -22,7 +22,7 @@ import type {
 	FrontmatterWriteMode,
 	SearchFilter,
 } from '../types/canonical';
-import {validatePath} from '../core/gates/path-access';
+import {validatePath, normalizePath} from '../core/gates/path-access';
 import {parseNoteReadPartial, parseNoteWritePartial, parseHeadingTarget} from './partial-mapper';
 
 // Re-exported for tests and callers that addressed it here before the split.
@@ -262,8 +262,11 @@ export function mapRenameRequest(args: Args, keyId: string): CoreRenameRequest {
 	if (!RENAME_DATA_TYPES.has(operation)) {
 		throw new Error(`mapRenameRequest: operation must be one of note|file (got '${operation}')`);
 	}
-	const source = requireString(args, 'source', 'mapRenameRequest');
-	const target = requireString(args, 'target', 'mapRenameRequest');
+	// Canonicalize both paths once at the boundary (strip leading/duplicate slashes)
+	// so rename-vs-move classification, permission gating, the mtime lookup, the
+	// clobber check, and the actual rename all operate on the identical string.
+	const source = normalizePath(requireString(args, 'source', 'mapRenameRequest'));
+	const target = normalizePath(requireString(args, 'target', 'mapRenameRequest'));
 	validateOperationExtension(operation, source, 'mapRenameRequest');
 	validateOperationExtension(operation, target, 'mapRenameRequest');
 	if (source === target) {

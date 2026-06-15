@@ -16,7 +16,7 @@ import type {CoreRequest, GateResult, KadoConfig, PermissionGate} from '../../ty
 const TRAVERSAL_PATTERN = /(?:^|[/\\])\.\.(?:[/\\]|$)/;
 
 /** Normalizes a path: strips leading slash, collapses consecutive slashes. */
-function normalizePath(raw: string): string {
+export function normalizePath(raw: string): string {
 	return raw.replace(/^\/+/, '').replace(/\/\/+/g, '/');
 }
 
