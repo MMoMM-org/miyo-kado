@@ -896,7 +896,7 @@ The split mirrors the trust boundary: renaming within a folder is a form of edit
 
 **TIMEOUT — rename blocked by Obsidian's confirmation dialog:**
 
-Only possible when the "Enable rename when auto-update-links is off" opt-in is used. Turn on "Automatically update internal links" in Obsidian for reliable renames.
+Only possible when the "Enable rename when auto-update-links is off" opt-in is used. Turn on "Automatically update internal links" in Obsidian for reliable renames. Note: a `TIMEOUT` means Kado stopped waiting — Obsidian's rename is still pending behind the dialog, so if the user *later* answers it, the file is still moved in the vault even though the API already reported `TIMEOUT` (Obsidian's in-flight rename cannot be cancelled).
 
 ```json
 {
