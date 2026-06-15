@@ -23,6 +23,9 @@ import {
 	createFileDeleteAdapter,
 	createFrontmatterDeleteAdapter,
 } from './obsidian/delete-adapter';
+import {createRenameAdapter} from './obsidian/rename-adapter';
+import {getAlwaysUpdateLinks} from './obsidian/vault-config';
+import {RenameRiskModal} from './settings/components/RenameRiskModal';
 import {AuditLogger} from './core/audit-logger';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
@@ -68,6 +71,7 @@ export default class KadoPlugin extends Plugin {
 				file: createFileDeleteAdapter(this.app),
 				frontmatter: createFrontmatterDeleteAdapter(this.app),
 			},
+			rename: createRenameAdapter(this.app),
 		};
 
 		const router = createOperationRouter(registry);
@@ -137,7 +141,14 @@ export default class KadoPlugin extends Plugin {
 
 		this.mcpServer = new KadoMcpServer(
 			this.configManager,
-			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app}),
+			(server) => {
+				// Gate kado-rename: only register when renaming won't hit Obsidian's blocking
+				// "update links?" modal — i.e. auto-update-links is on, or the user opted in.
+				// Re-evaluated each time the server (re)starts.
+				const cfg = this.configManager.getConfig();
+				const renameToolEnabled = getAlwaysUpdateLinks(this.app) || cfg.renameWhenLinkUpdateOff;
+				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app, renameToolEnabled});
+			},
 			this.manifest.version,
 		);
 		this.register(() => this.mcpServer.stop());
@@ -147,7 +158,36 @@ export default class KadoPlugin extends Plugin {
 		}
 		this.settingsTab = new KadoSettingsTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
+
+		// Warn once, after layout is ready, when renaming is effectively disabled because
+		// Obsidian's "Automatically update internal links" is off. Skipped if the user has
+		// already opted in or dismissed the warning. onLayoutReady (not layout-ready event)
+		// so it also fires when the plugin is enabled after Obsidian has started.
+		this.app.workspace.onLayoutReady(() => this.maybeWarnRenameDisabled());
+
 		kadoLog('Plugin loaded', {version: this.manifest.version});
+	}
+
+	/** Shows the rename-disabled warning modal when auto-update-links is off and not yet acknowledged. */
+	private maybeWarnRenameDisabled(): void {
+		const cfg = this.configManager.getConfig();
+		if (getAlwaysUpdateLinks(this.app)) return;        // renaming works silently — nothing to warn about
+		if (cfg.renameWhenLinkUpdateOff) return;            // already opted in
+		if (cfg.renameWarningAcknowledged) return;          // already seen and dismissed
+		new RenameRiskModal(this.app, {
+			title: 'Kado rename is disabled',
+			confirmLabel: 'Enable rename anyway',
+			dismissLabel: "Don't show again",
+			onConfirm: () => {
+				cfg.renameWhenLinkUpdateOff = true;
+				cfg.renameWarningAcknowledged = true;
+				void this.saveSettings();
+			},
+			onDismiss: () => {
+				cfg.renameWarningAcknowledged = true;
+				void this.saveSettings();
+			},
+		}).open();
 	}
 
 	onunload(): void {

@@ -130,6 +130,13 @@ describe('createDefaultConfig', () => {
 		expect(config.debugLogging).toBe(false);
 	});
 
+	it('defaults rename gating off and timeout to 60s', () => {
+		const config = createDefaultConfig();
+		expect(config.renameWhenLinkUpdateOff).toBe(false);
+		expect(config.renameTimeoutMs).toBe(60_000);
+		expect(config.renameWarningAcknowledged).toBe(false);
+	});
+
 	it('produces independent objects on each call', () => {
 		const a = createDefaultConfig();
 		const b = createDefaultConfig();

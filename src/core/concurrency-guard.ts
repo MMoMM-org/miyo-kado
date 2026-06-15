@@ -13,7 +13,7 @@
  * CRITICAL: No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
-import {isCoreWriteRequest, isCoreDeleteRequest} from '../types/canonical';
+import {isCoreWriteRequest, isCoreDeleteRequest, isCoreRenameRequest} from '../types/canonical';
 import type {CoreRequest, GateResult} from '../types/canonical';
 
 /**
@@ -40,6 +40,26 @@ export function validateConcurrency(request: CoreRequest, currentMtime: number |
 			error: {
 				code: 'CONFLICT',
 				message: 'File was updated in the background. Re-read before deleting.',
+			},
+		};
+	}
+
+	// Rename requests mirror delete semantics on the SOURCE file: it must exist
+	// and its mtime must match expectedModified before the move proceeds.
+	if (isCoreRenameRequest(request)) {
+		if (currentMtime === undefined) {
+			// Source missing — the adapter returns NOT_FOUND; stay silent so the
+			// caller surfaces NOT_FOUND rather than CONFLICT.
+			return {allowed: true};
+		}
+		if (request.expectedModified === currentMtime) {
+			return {allowed: true};
+		}
+		return {
+			allowed: false,
+			error: {
+				code: 'CONFLICT',
+				message: 'File was updated in the background. Re-read before renaming.',
 			},
 		};
 	}

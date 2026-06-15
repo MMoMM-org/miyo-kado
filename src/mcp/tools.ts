@@ -17,16 +17,18 @@ import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protoco
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
 import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
-import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest} from '../types/canonical';
+import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
+import {evaluateRenamePermissions} from '../core/rename-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapError, mapOpenNotesResult} from './response-mapper';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapOpenNotesRequest} from './request-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapError, mapOpenNotesResult} from './response-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
+	CoreRenameResult,
 	CoreSearchItem,
 	KadoConfig,
 	ApiKeyConfig,
@@ -40,12 +42,11 @@ import {kadoLog} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
 import {authenticateGate} from '../core/gates/authenticate';
+import type {RouteResult} from '../core/operation-router';
 
 // ============================================================
 // Public types
 // ============================================================
-
-type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreError;
 
 /** Dependencies injected into the MCP tool handlers. */
 export interface ToolDependencies {
@@ -56,6 +57,13 @@ export interface ToolDependencies {
 	auditLogger?: AuditLogger;
 	/** Obsidian App instance — required by the kado-open-notes tool handler. */
 	app: App;
+	/**
+	 * Whether to register the kado-rename tool. Computed at server-build time as
+	 * (Obsidian alwaysUpdateLinks) OR (config.renameWhenLinkUpdateOff). When false,
+	 * kado-rename is not registered at all — renaming with auto-update-links off would
+	 * block on Obsidian's confirmation modal. Defaults to true when omitted (tests).
+	 */
+	renameToolEnabled?: boolean;
 }
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -96,6 +104,13 @@ const kadoDeleteShape = {
 	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file.'),
 	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
 	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
+};
+
+const kadoRenameShape = {
+	operation: z.enum(['note', 'file']).describe('What to move. Extension-strict: note requires .md paths; file requires non-.md paths. Both source and target must share the same extension class — a rename can never change a file\'s type (mismatches return VALIDATION_ERROR).'),
+	source: z.string().describe('Current vault-relative path of the file to move, e.g. "100 Inbox/draft.md".'),
+	target: z.string().describe('Desired vault-relative path, e.g. "100 Inbox/final.md" (rename) or "200 Notes/final.md" (move). Must not already exist — returns CONFLICT otherwise.'),
+	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read of the SOURCE file. Returns CONFLICT if the source changed since.'),
 };
 
 export const kadoOpenNotesShape = {
@@ -142,6 +157,27 @@ export const KADO_SEARCH_TOOL_DESCRIPTION =
 
 function isCoreError(value: RouteResult): value is CoreError {
 	return 'code' in value && 'message' in value && !('content' in value) && !('items' in value);
+}
+
+/** Sentinel returned by raceWithTimeout when the work did not settle in time. */
+const TIMED_OUT = Symbol('timed-out');
+
+/**
+ * Races `work` against a timer. Resolves to the work's value, or `TIMED_OUT` if the
+ * timer wins. A rejection from `work` propagates (so adapter errors still surface).
+ * On timeout the caller must attach a no-op catch to `work` to avoid an unhandled
+ * rejection if it settles later (e.g. after the user dismisses a blocking modal).
+ */
+async function raceWithTimeout(work: Promise<RouteResult>, timeoutMs: number): Promise<RouteResult | typeof TIMED_OUT> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+		timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+	});
+	try {
+		return await Promise.race([work, timeout]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
 }
 
 function extractKeyId(extra: Extra): string | undefined {
@@ -313,6 +349,17 @@ async function logAllowed(
 		return;
 	}
 	const coreReq = request as CoreRequest;
+	if (isCoreRenameRequest(coreReq)) {
+		// Rename has no single `path`/`dataType`, so it bypasses debugFields/extractDataType:
+		// path=source, query=target (auditors derive rename-vs-move from the two folders),
+		// dataType=operation ('note'|'file').
+		kadoLog(`${tool} allowed`, {key: truncateKeyId(keyId), operation: coreReq.operation, source: coreReq.source, target: coreReq.target, durationMs});
+		if (!auditLogger) return;
+		try {
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: coreReq.operation, dataType: coreReq.operation, path: coreReq.source, query: coreReq.target, decision: 'allowed', durationMs}));
+		} catch { /* audit logging must never crash a tool call */ }
+		return;
+	}
 	kadoLog(`${tool} allowed`, {...debugFields(keyId, coreReq), durationMs});
 	if (!auditLogger) return;
 	try {
@@ -352,6 +399,14 @@ async function logDenied(
 		return;
 	}
 	const coreReq = request as CoreRequest;
+	if (isCoreRenameRequest(coreReq)) {
+		kadoLog(`${tool} denied`, {key: truncateKeyId(keyId), operation: coreReq.operation, source: coreReq.source, target: coreReq.target, gate});
+		if (!auditLogger) return;
+		try {
+			await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation: coreReq.operation, dataType: coreReq.operation, path: coreReq.source, query: coreReq.target, decision: 'denied', gate}));
+		} catch { /* audit logging must never crash a tool call */ }
+		return;
+	}
 	kadoLog(`${tool} denied`, {...debugFields(keyId, coreReq), gate});
 	if (!auditLogger) return;
 	try {
@@ -379,6 +434,11 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	registerWriteTool(server, deps);
 	registerSearchTool(server, deps);
 	registerDeleteTool(server, deps);
+	// Only register rename when it is safe: Obsidian's auto-update-links is on, or the
+	// user explicitly opted in. Otherwise renameFile would block on a confirmation modal.
+	if (deps.renameToolEnabled !== false) {
+		registerRenameTool(server, deps);
+	}
 	registerOpenNotesTool(server, deps);
 }
 
@@ -513,6 +573,79 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			const asError = err as {code?: string; message?: string};
 			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-delete error', {...debugFields(keyId, request), code, err: String(err)});
+			if (code !== 'INTERNAL_ERROR') {
+				return mapError({code, message: asError.message ?? String(err)});
+			}
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
+		}
+	});
+}
+
+function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
+	server.registerTool('kado-rename', {description: 'Rename or move a file in the Obsidian vault (operation=note for .md, operation=file for non-.md). Inbound links (`[[wikilinks]]` and markdown links) are updated automatically when Obsidian\'s "Automatically update internal links" is on. Rename = same folder, different name; move = different folder. Permissions: a rename needs note/file UPDATE on the path; a move needs DELETE on the source folder AND CREATE on the target folder. Always requires expectedModified — read the source first and pass its "modified" timestamp. Returns CONFLICT if the source changed or the target already exists, NOT_FOUND if the source is missing, VALIDATION_ERROR on bad/mismatched paths. If "Automatically update internal links" is OFF, Obsidian shows a per-rename confirmation dialog: the file is still moved immediately, but the response may include "linkUpdatePending": true meaning inbound links await the user\'s answer — do NOT retry in that case (the rename already happened). A bare TIMEOUT (no move) is only returned if the file did not move at all.', inputSchema: kadoRenameShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+		const keyId = extractKeyId(extra);
+		if (!keyId) return missingAuthError();
+
+		let request;
+		try {
+			request = mapRenameRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
+
+		const {result: perm} = evaluateRenamePermissions(request, deps.configManager.getConfig(), deps.gates);
+		if (!perm.allowed) {
+			await logDenied('kado-rename', deps.auditLogger, keyId, request, perm.error.gate);
+			return mapError(perm.error);
+		}
+
+		const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
+		if (!concurrency.allowed) {
+			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
+			return mapError(concurrency.error);
+		}
+
+		const startMs = performance.now();
+		try {
+			// Guard against a hang: when Obsidian's auto-update-links is off, renameFile
+			// blocks on a confirmation modal that an MCP caller cannot answer. Bound the
+			// wait and report TIMEOUT instead of leaving the client hanging forever.
+			const timeoutMs = deps.configManager.getConfig().renameTimeoutMs;
+			const work = deps.router(request);
+			const raced = await raceWithTimeout(work, timeoutMs);
+			if (raced === TIMED_OUT) {
+				work.catch(() => { /* late settle after timeout must not become an unhandled rejection */ });
+				// Obsidian moves the file IMMEDIATELY; the "update links?" dialog only gates the
+				// inbound-link rewrite (and the promise we were awaiting). So on timeout the rename
+				// has almost always already happened — check the vault and report success with
+				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved file
+				// (source still present / target absent) is a real TIMEOUT.
+				const targetMtime = deps.getFileMtime(request.target);
+				const sourceGone = deps.getFileMtime(request.source) === undefined;
+				if (targetMtime !== undefined && sourceGone) {
+					kadoLog('kado-rename allowed', {key: truncateKeyId(keyId), linkUpdatePending: true});
+					await logAllowed('kado-rename', deps.auditLogger, keyId, request, startMs);
+					return mapRenameResult({source: request.source, target: request.target, modified: targetMtime, linkUpdatePending: true});
+				}
+				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
+				await logDenied('kado-rename', deps.auditLogger, keyId, request, 'timeout');
+				return mapError({
+					code: 'TIMEOUT',
+					message: `Rename did not complete within ${timeoutMs} ms and the file was not moved. Obsidian's "Automatically update internal links" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames.`,
+				});
+			}
+			const result = raced;
+			if (isCoreError(result)) {
+				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: result.code});
+				return mapError(result);
+			}
+			await logAllowed('kado-rename', deps.auditLogger, keyId, request, startMs);
+			return mapRenameResult(result as CoreRenameResult);
+		} catch (err: unknown) {
+			// RenameAdapterError carries NOT_FOUND (missing source), CONFLICT (target exists) — surface those.
+			const asError = err as {code?: string; message?: string};
+			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
+			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
 				return mapError({code, message: asError.message ?? String(err)});
 			}

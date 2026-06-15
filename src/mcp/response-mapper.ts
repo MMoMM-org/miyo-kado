@@ -12,6 +12,7 @@ import type {
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
+	CoreRenameResult,
 	CoreError,
 	CoreOpenNotesResult,
 } from '../types/canonical';
@@ -48,6 +49,26 @@ export function mapWriteResult(result: CoreWriteResult): CallToolResult {
 export function mapDeleteResult(result: CoreDeleteResult): CallToolResult {
 	const payload: Record<string, unknown> = {path: result.path};
 	if (result.modified !== undefined) payload['modified'] = result.modified;
+	return textResult(payload);
+}
+
+/** Serializes a CoreRenameResult (rename/move response) into a JSON CallToolResult. */
+export function mapRenameResult(result: CoreRenameResult): CallToolResult {
+	const payload: Record<string, unknown> = {
+		source: result.source,
+		target: result.target,
+		modified: result.modified,
+	};
+	if (result.linkUpdatePending) {
+		payload['linkUpdatePending'] = true;
+		// Self-describing note so the caller (often an LLM) interprets the state correctly
+		// without needing the tool schema at hand.
+		payload['note'] = 'The file WAS renamed/moved, but Obsidian is waiting for the user to confirm '
+			+ 'updating its inbound links (a dialog is open in Obsidian). Inbound links stay unchanged until '
+			+ 'the user answers it. Do NOT retry this rename — it already happened. For multiple renames, ask '
+			+ 'the user to enable "Automatically update internal links" (Obsidian → Files and links) so renames '
+			+ 'are silent and do not queue a dialog each.';
+	}
 	return textResult(payload);
 }
 

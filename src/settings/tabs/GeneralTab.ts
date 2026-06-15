@@ -5,6 +5,8 @@
 import {Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
 import {VaultFolderModal} from '../components/VaultFolderModal';
+import {RenameRiskModal} from '../components/RenameRiskModal';
+import {getAlwaysUpdateLinks} from '../../obsidian/vault-config';
 
 export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, onRedisplay: () => void): void {
 	const config = plugin.configManager.getConfig();
@@ -95,6 +97,64 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 				void plugin.saveSettings();
 				onRedisplay();
 			}));
+
+	// ── Rename Tool Section ──
+	new Setting(containerEl).setName('Rename').setHeading();
+
+	const autoUpdateLinks = getAlwaysUpdateLinks(plugin.app);
+	if (autoUpdateLinks) {
+		// Safe case: Obsidian updates links silently, so kado-rename is registered and reliable.
+		new Setting(containerEl)
+			.setName('Rename tool')
+			.setDesc('Obsidian updates internal links automatically. Renaming is enabled.');
+	} else {
+		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
+		const riskDesc = containerEl.ownerDocument.createDocumentFragment();
+		riskDesc.append('While auto-update-links is off, kado-rename is not exposed. Turn on to expose it anyway — renaming works, but each rename prompts a link-update dialog and inbound links update only when you answer it. ');
+		const riskLink = containerEl.ownerDocument.createElement('a');
+		riskLink.textContent = 'Details';
+		riskLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
+		riskLink.target = '_blank';
+		riskDesc.appendChild(riskLink);
+		riskDesc.append('.');
+
+		new Setting(containerEl)
+			.setName('Enable rename when auto-update-links is off')
+			.setDesc(riskDesc)
+			.addToggle(toggle => toggle
+				.setValue(config.renameWhenLinkUpdateOff)
+				.onChange((value) => {
+					if (value) {
+						// Require explicit acknowledgement before enabling.
+						new RenameRiskModal(plugin.app, {
+							onConfirm: () => {
+								config.renameWhenLinkUpdateOff = true;
+								config.renameWarningAcknowledged = true;
+								void plugin.saveSettings().then(() => onRedisplay());
+							},
+						}).open();
+						// Revert the visual toggle until the modal confirms (redisplay reflects truth).
+						toggle.setValue(false);
+					} else {
+						config.renameWhenLinkUpdateOff = false;
+						void plugin.saveSettings().then(() => onRedisplay());
+					}
+				}));
+
+		if (config.renameWhenLinkUpdateOff) {
+			new Setting(containerEl)
+				.setName('Rename timeout')
+				.setDesc('Seconds to wait for the link-update dialog before the call returns (the file is already renamed by then; default 60).')
+				.addText(text => text
+					.setValue(String(Math.round(config.renameTimeoutMs / 1000)))
+					.onChange(async (value) => {
+						const secs = Number(value);
+						if (!Number.isFinite(secs) || secs <= 0) return;
+						config.renameTimeoutMs = Math.round(secs * 1000);
+						await plugin.saveSettings();
+					}));
+		}
+	}
 
 	// ── Audit Logging Section ──
 	const audit = config.audit;

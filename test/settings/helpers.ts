@@ -42,6 +42,9 @@ export function defaultConfig(): KadoConfig {
 			maxRetainedLogs: 3,
 		},
 		debugLogging: false,
+		renameWhenLinkUpdateOff: false,
+		renameTimeoutMs: 60000,
+		renameWarningAcknowledged: false,
 	};
 }
 

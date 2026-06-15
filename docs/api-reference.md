@@ -1,6 +1,6 @@
 # Kado API Reference
 
-Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Five tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-search`, and `kado-open-notes`.
+Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Six tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
 
 ---
 
@@ -752,6 +752,191 @@ Delete uses `app.fileManager.trashFile()`, which respects the user's Obsidian se
 - **Permanently delete** — file is unrecoverable
 
 This gives the user — not the AI — final control over deletion recoverability.
+
+---
+
+## Tool: kado-rename
+
+Rename or move a file in the vault. Uses `app.fileManager.renameFile`, the only API that **updates backlinks automatically** — inbound `[[wikilinks]]` and markdown links pointing at the file are rewritten across the whole vault. Rename and move are the same operation; the mode is inferred from the paths.
+
+### Availability (conditional registration)
+
+`kado-rename` is **only registered** when renaming can complete without user interaction. Obsidian shows a blocking "update links?" confirmation dialog during a rename when its **Settings → Files and links → Automatically update internal links** option is off — an AI caller cannot answer that dialog, so the rename would hang. Kado therefore registers the tool only when:
+
+- Obsidian's **"Automatically update internal links" is ON** (recommended — renames are silent and reliable), **or**
+- the Kado setting **"Enable rename when auto-update-links is off"** is ON (General tab; off by default, requires an explicit confirmation). Kado never changes the Obsidian setting itself.
+
+When neither holds, `kado-rename` does not appear in `tools/list`. The check is re-evaluated on every request, so toggling either setting takes effect on the next tool call (no server restart needed).
+
+When the opt-in is used (auto-update-links off), Obsidian still **moves the file immediately**, but pops a per-rename "update links?" dialog and only finishes once the user answers it. Kado bounds that wait with a configurable timeout (**Rename timeout**, default 60 s):
+
+- If the user answers within the timeout → normal success (links updated, or left stale if they chose "Don't update").
+- If the timeout elapses while the dialog is still open → the response is a **success with `"linkUpdatePending": true`** (the file was already moved; inbound links await the user's answer). Do **not** retry — the rename happened.
+- Only if the file did not move at all → a bare `TIMEOUT` error.
+
+For multiple renames this means one dialog per file — strongly prefer turning **"Automatically update internal links" on** so renames are silent.
+
+### Operations
+
+| Operation | Behavior |
+|---|---|
+| `note` | Rename/move a markdown file. Both `source` and `target` must end in `.md`. |
+| `file` | Rename/move a non-markdown file. Neither `source` nor `target` may end in `.md`. |
+
+### Rename vs Move (inferred, no flag)
+
+| Condition | Mode | Permissions required |
+|---|---|---|
+| `source` and `target` share the same parent folder | **rename** | `update` on the path (note/file), checked on both source and target |
+| `source` and `target` have different parent folders | **move** | `delete` on the source path **and** `create` on the target path |
+
+The split mirrors the trust boundary: renaming within a folder is a form of editing (so `update` suffices), while moving crosses folders, so it requires the right to remove the file from the source scope *and* create it in the target scope. An edit-only key cannot move notes into a folder it may not write to.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `operation` | `"note" \| "file"` | Yes | What to move. Frontmatter/inline fields are not supported (they have no path). |
+| `source` | `string` | Yes | Current vault-relative path of the file to move. |
+| `target` | `string` | Yes | Desired vault-relative path. Must not already exist (CONFLICT otherwise). Must share `source`'s extension class. |
+| `expectedModified` | `number` | **Yes (always)** | The `modified` timestamp from a prior read of the **source** file. CONFLICT if the source has changed since. |
+
+### Response Format
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | `string` | The original path. |
+| `target` | `string` | The new path. |
+| `modified` | `number` | The source file's `modified` timestamp (unchanged by a move). |
+
+### Rename Flow
+
+1. Call `kado-read` on the source to get its current `modified` timestamp.
+2. Call `kado-rename` with `expectedModified` set to that value.
+3. On `CONFLICT`, either the source changed since your read or the target already exists — re-read / pick another target.
+4. On `NOT_FOUND`, the source doesn't exist.
+
+### Examples
+
+**Rename a note in place (same folder → needs `update`):**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "source": "100 Inbox/draft.md",
+  "target": "100 Inbox/2026-budget.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "source": "100 Inbox/draft.md",
+  "target": "100 Inbox/2026-budget.md",
+  "modified": 1743379500000
+}
+```
+
+**Move a note across folders (→ needs `delete` on source + `create` on target):**
+
+```json
+// Request arguments
+{
+  "operation": "note",
+  "source": "100 Inbox/2026-budget.md",
+  "target": "200 Notes/2026-budget.md",
+  "expectedModified": 1743379500000
+}
+
+// Response content
+{
+  "source": "100 Inbox/2026-budget.md",
+  "target": "200 Notes/2026-budget.md",
+  "modified": 1743379500000
+}
+```
+
+**VALIDATION_ERROR — no-op rename (source === target):**
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapRenameRequest: source and target must differ"
+}
+```
+
+**VALIDATION_ERROR — extension class mismatch:**
+
+```json
+// operation="note" with a non-.md target
+{
+  "code": "VALIDATION_ERROR",
+  "message": "mapRenameRequest: operation=\"note\" requires a .md path (got \"200 Notes/budget.txt\"). Use operation=\"file\" with base64 content for non-markdown files."
+}
+```
+
+**CONFLICT — target already exists:**
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "Target already exists: 200 Notes/2026-budget.md"
+}
+```
+
+**CONFLICT — stale expectedModified:**
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "File was updated in the background. Re-read before renaming."
+}
+```
+
+**NOT_FOUND — source does not exist:**
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "File not found: 100 Inbox/already-moved.md"
+}
+```
+
+**linkUpdatePending — moved, but link-update dialog still open (timeout, file already moved):**
+
+Returned as a normal (non-error) result when the opt-in is used and the user hasn't answered the dialog within the timeout. The file is already renamed; inbound links update once the user answers (or stay stale if they choose "Don't update"). Do not retry.
+
+```json
+{
+  "source": "100 Inbox/draft.md",
+  "target": "200 Notes/draft.md",
+  "modified": 1743380200000,
+  "linkUpdatePending": true,
+  "note": "The file WAS renamed/moved, but Obsidian is waiting for the user to confirm updating its inbound links … Do NOT retry this rename — it already happened. For multiple renames, ask the user to enable \"Automatically update internal links\" …"
+}
+```
+
+**TIMEOUT — file did not move at all:**
+
+Only when the opt-in is used and the rename genuinely failed to move the file within the timeout. Turn on "Automatically update internal links" in Obsidian for reliable renames.
+
+```json
+{
+  "code": "TIMEOUT",
+  "message": "Rename did not complete within 60000 ms and the file was not moved. Obsidian's \"Automatically update internal links\" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames."
+}
+```
+
+```json
+{
+  "code": "TIMEOUT",
+  "message": "Rename did not complete within 60000 ms. Obsidian's \"Automatically update internal links\" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames."
+}
+```
+
+### Backlink Updates Across Scope
+
+`fileManager.renameFile` rewrites links in **every** note that references the moved file, including notes outside the calling key's scope. This is unavoidable (Obsidian updates links vault-wide) and intentional — it changes link *references*, never note *content*. A key can therefore cause edits to link text in notes it cannot otherwise read or write.
 
 ---
 

@@ -74,6 +74,9 @@ export class App {
 		off: vi.fn(),
 		getLeavesOfType: vi.fn(() => []),
 		openLinkText: vi.fn(async () => {}),
+		// Registers a layout-ready callback. Tests do not auto-invoke it, so onload
+		// stays side-effect-free (no modal pop) — the real Obsidian calls it.
+		onLayoutReady: vi.fn(),
 	};
 	metadataCache = {
 		getFileCache: vi.fn((_file: TFile): CachedMetadata | null => null),

@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through five tools: `kado-read`, `kado-write`, `kado-delete`, `kado-search`, and `kado-open-notes`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through six tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
@@ -30,10 +30,25 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
 - **Partial note read/write** -- read a slice (`firstXChars`, `section` by heading, `range` by line/char) and write in place (`append`/`prepend`, `insertUnderHeading`, `replaceSection`/`replaceRange`) without round-tripping the whole body; omitting the mode is byte-for-byte backward compatible
+- **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target). Works best with Obsidian's "Automatically update internal links" on (silent, links updated); with it off the tool is hidden unless you opt in, and then each rename prompts Obsidian's link-update dialog (the file still moves, but inbound links update only when you answer)
 - **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
+
+## Architecture & the MiYo ecosystem
+
+MiYo Kado is one component of the **MiYo** multi-repo system. Kado is the Obsidian-side
+MCP gateway: it owns the vault access-control model (two-layer path eligibility + per-key
+CRUD scopes) and exposes the MCP tool surface that companion tools such as **MiYo Tomo**
+consume. The authoritative record for cross-repo contracts, system-level architecture, and
+governance decisions lives in **MiYo Kokoro**; this repo's local design docs (below, and
+`docs/XDD/specs/`) defer to Kokoro for project-wide principles. Cross-component contract
+changes (e.g. new MCP tools) are handed off to Kokoro via `_outbox/for-kokoro/`.
+
+Internally Kado follows a four-layer clean architecture: MCP boundary (`src/mcp/`) →
+permission gates + policy (`src/core/`) → Obsidian adapters (`src/obsidian/`) → canonical
+types (`src/types/`). See [How It Works](docs/how-it-works.md) for the enforcement flow.
 
 ## Documentation
 

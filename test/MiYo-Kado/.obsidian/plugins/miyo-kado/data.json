@@ -101,7 +101,9 @@
       "project/*",
       "miyo/kado",
       "finance"
-    ]
+    ],
+    "allowActiveNote": false,
+    "allowOtherNotes": false
   },
   "apiKeys": [
     {
@@ -204,7 +206,9 @@
         "project/*",
         "miyo/kado",
         "finance"
-      ]
+      ],
+      "allowActiveNote": false,
+      "allowOtherNotes": false
     },
     {
       "id": "kado_e8ffd8c0-c6b6-4402-bacc-abd04bdba330",
@@ -213,7 +217,9 @@
       "createdAt": 1775041945969,
       "listMode": "whitelist",
       "paths": [],
-      "tags": []
+      "tags": [],
+      "allowActiveNote": false,
+      "allowOtherNotes": false
     },
     {
       "id": "kado_91d353cb-6115-4f4b-b907-8ecc5c697357",
@@ -254,7 +260,9 @@
       ],
       "tags": [
         "engineering"
-      ]
+      ],
+      "allowActiveNote": false,
+      "allowOtherNotes": false
     }
   ],
   "audit": {
@@ -264,5 +272,8 @@
     "maxSizeBytes": 10485760,
     "maxRetainedLogs": 3
   },
-  "debugLogging": false
+  "debugLogging": false,
+  "renameWhenLinkUpdateOff": true,
+  "renameTimeoutMs": 60000,
+  "renameWarningAcknowledged": true
 }

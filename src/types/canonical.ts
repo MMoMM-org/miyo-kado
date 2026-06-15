@@ -70,6 +70,13 @@ export type ReadDataType = DataType | 'tags';
 /** Data types supported by kado-delete. Inline fields are intentionally excluded. */
 export type DeleteDataType = 'note' | 'frontmatter' | 'file';
 
+/**
+ * Data types supported by kado-rename. Rename is a file-level move, so only the
+ * two file-backed data types apply — frontmatter and inline fields are intra-file
+ * constructs with no path of their own.
+ */
+export type RenameDataType = 'note' | 'file';
+
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 
 /** Supported search operation identifiers for CoreSearchRequest. */
@@ -192,8 +199,50 @@ export interface CoreDeleteResult {
 	modified?: number;
 }
 
+/**
+ * Request to rename or move a vault file (note or binary file).
+ *
+ * Rename vs move is inferred from the paths, not carried as a flag: when source
+ * and target share a parent folder it is a rename, otherwise a move. The
+ * distinction drives permission gating (rename → note/file update; move →
+ * delete on source + create on target) handled by the kado-rename tool, so the
+ * request itself stays mode-agnostic.
+ *
+ * `expectedModified` provides optimistic concurrency on the source file
+ * (same semantics as delete). Link updates in other notes are performed by
+ * Obsidian's fileManager.renameFile and are intentionally not gated — they
+ * rewrite references, never content.
+ */
+export interface CoreRenameRequest {
+	/** Explicit discriminator — CoreRenameRequest carries no `content` so a marker is needed. */
+	kind: 'rename';
+	apiKeyId: string;
+	operation: RenameDataType;
+	/** Current vault-relative path of the file to move. */
+	source: string;
+	/** Desired vault-relative path. Must not already exist. */
+	target: string;
+	/** Optimistic-concurrency guard against the source file's mtime. */
+	expectedModified: number;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
+}
+
+/** Result of a rename/move operation. `modified` is the source file's mtime (unchanged by a move). */
+export interface CoreRenameResult {
+	source: string;
+	target: string;
+	modified: number;
+	/**
+	 * Set true when the file was renamed on disk but Obsidian is still awaiting the user's
+	 * "update links?" confirmation dialog (auto-update-links off): the move is done, inbound
+	 * links may not be updated yet. Surfaced so the caller does NOT retry the rename.
+	 */
+	linkUpdatePending?: boolean;
+}
+
 /** Union of all core request types flowing through the permission chain. */
-export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest;
+export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest;
 
 // ============================================================
 // Open Notes Requests and Results
@@ -307,6 +356,7 @@ export type CoreErrorCode =
 	| 'NOT_FOUND'
 	| 'CONFLICT'
 	| 'VALIDATION_ERROR'
+	| 'TIMEOUT'
 	| 'INTERNAL_ERROR';
 
 /** Structured error returned by core operations and permission gates. */
@@ -428,6 +478,23 @@ export interface KadoConfig {
 	audit: AuditConfig;
 	/** Emit kadoLog debug messages to the developer console. Default: false (per Obsidian plugin guidelines). */
 	debugLogging: boolean;
+	/**
+	 * Opt-in: register and run kado-rename even when Obsidian's "Automatically update
+	 * internal links" setting is OFF. Default false. When OFF, kado-rename is only
+	 * registered if Obsidian's setting is ON (otherwise renameFile pops a blocking
+	 * confirmation dialog and the call would hang). When the user enables this, the
+	 * tool runs under `renameTimeoutMs` and reports TIMEOUT instead of hanging.
+	 * Only surfaced in settings when Obsidian's auto-update-links is OFF.
+	 */
+	renameWhenLinkUpdateOff: boolean;
+	/** Timeout (ms) for a single kado-rename call before it returns TIMEOUT. Default 60000. */
+	renameTimeoutMs: number;
+	/**
+	 * Set once the user has seen and dismissed the "rename is disabled" warning shown on
+	 * load when Obsidian's auto-update-links is off. Prevents nagging on every startup.
+	 * Default false. Reset is implicit: closing the modal without choosing leaves it false.
+	 */
+	renameWarningAcknowledged: boolean;
 }
 
 // ============================================================
@@ -498,6 +565,9 @@ export function createDefaultConfig(): KadoConfig {
 			maxRetainedLogs: 3,
 		},
 		debugLogging: false,
+		renameWhenLinkUpdateOff: false,
+		renameTimeoutMs: 60_000,
+		renameWarningAcknowledged: false,
 	};
 }
 
@@ -537,6 +607,14 @@ export function isCoreSearchRequest(req: CoreRequest): req is CoreSearchRequest 
  */
 export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest {
 	return 'kind' in req && req.kind === 'delete';
+}
+
+/**
+ * Returns true when `req` is a CoreRenameRequest.
+ * Discriminated by the explicit `kind: 'rename'` marker.
+ */
+export function isCoreRenameRequest(req: CoreRequest): req is CoreRenameRequest {
+	return 'kind' in req && req.kind === 'rename';
 }
 
 /**
