@@ -307,6 +307,32 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 		expect(disabled).toHaveLength(12);
 	});
 
+	it('bounds a bare folder key path by a glob global path (maybe-allowed/** ceiling)', () => {
+		const container = renderSandbox();
+		// Global allows maybe-allowed/** but blocks frontmatter create + delete.
+		const restricted: DataTypePermissions = {
+			note: {create: true, read: true, update: true, delete: true},
+			frontmatter: {create: false, read: true, update: true, delete: false},
+			file: {create: true, read: true, update: true, delete: true},
+			dataviewInlineField: {create: true, read: true, update: true, delete: true},
+		};
+		// The folder browser stores the bare folder name, not the glob pattern.
+		const key = makeApiKey({
+			id: 'kado_bare',
+			paths: [{path: 'maybe-allowed', permissions: createDefaultPermissions()}],
+		});
+		const {plugin} = mockPluginWithSecurity(
+			[{path: 'maybe-allowed/**', permissions: restricted}],
+			[key],
+		);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+
+		// Ceiling resolved despite bare-vs-glob: only FM create + delete greyed.
+		const disabled = container.querySelectorAll('.kado-path-entry .kado-dot[aria-disabled="true"]');
+		expect(disabled).toHaveLength(2);
+	});
+
 	it('adds the folder chosen in the browser as the key path', () => {
 		const container = renderSandbox();
 		const key = makeApiKey({id: 'kado_f', paths: []});

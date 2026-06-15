@@ -165,9 +165,12 @@ function renderKeyPermissions(
 		const keyPath = key.paths[i];
 		if (!keyPath) continue;
 		// Ceiling = the most specific GLOBAL path that contains this key path.
-		// A narrowed key path (e.g. 'Atlas/202 Notes' under global 'Atlas') has
-		// no exact global match, so resolve by ancestor instead of equality.
-		const globalPath = findMostSpecificEntry(globalSecurity.paths, keyPath.path);
+		// Resolve the key path as a folder SUBTREE (trailing slash) so a bare
+		// folder like 'maybe-allowed' is covered by a glob global 'maybe-allowed/**'
+		// — without the slash, matchGlob('maybe-allowed/**', 'maybe-allowed') is
+		// false and the matrix would render unbounded.
+		const ceilingProbe = keyPath.path.endsWith('/') ? keyPath.path : `${keyPath.path}/`;
+		const globalPath = findMostSpecificEntry(globalSecurity.paths, ceilingProbe);
 		renderKeyPathEntry(pathsContainer, keyPath, globalPath?.permissions, key.listMode, plugin, () => {
 			key.paths.splice(i, 1);
 			void plugin.saveSettings();
