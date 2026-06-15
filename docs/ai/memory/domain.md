@@ -57,9 +57,11 @@ Returns tags of a note as `{frontmatter: string[], inline: string[], all: string
 - Permission gate uses `delete: true/false` from CrudFlags — same mechanism as read/write/update.
 - Router discriminates via explicit `kind: 'delete'` marker on CoreDeleteRequest (other request types don't have a `kind` field).
 
-<!-- 2026-04-08 -->
+<!-- 2026-04-08, updated 2026-06-15 -->
 ## Access mode is per-key, not inherited from global
 Each API key has its own access mode (whitelist/blacklist) configured independently. There is no inheritance from a global default — the access mode toggle shown per key is authoritative, not read-only. When implementing permission enforcement, resolve the mode from the key's own config, never fall back to a global setting.
+
+**Key paths may narrow to subfolders of global paths (#74).** A key path is no longer restricted to the exact global path strings — it can be any subfolder under a globally-allowed path (e.g. global `Atlas` → key `Atlas/202 Notes`). Enforcement needs no special handling: the chain runs global-scope (Gate 1) AND key-scope (Gate 2), both via `resolveScope`, so a narrowed path passes both while a sibling is denied by key-scope. When a key has both a broad path and a narrower one inside it, most-specific-wins applies (decisions.md 2026-05-09), so a key can have broad CRUD with a tighter read-only island (e.g. `allowed` full + `allowed/sub` read-only). The settings UI exposes this through one folder browser: the key's **+ add path** opens `VaultFolderModal` — now built on Obsidian's native `FuzzySuggestModal` — scoped to the union of global path prefixes (`folderPrefixOf` of each global path, `**` → whole vault). The browser returns a **bare folder path** (`maybe-allowed`, not `maybe-allowed/**`); a bare folder = whole subtree by Kado's `isBareName` expansion, so `/**` is never required. The key path's permission ceiling is the most-specific *containing* global entry (`findMostSpecificEntry`, shared with `resolveScope`), resolved by probing the key path **as a folder subtree (trailing slash)** so a bare folder is covered by a glob global — see [[matchglob-bare-folder-vs-glob]]. Unavailable CRUD cells grey out when the parent global path is itself restricted.
 
 <!-- 2026-04-12 -->
 ## Full vault access pattern is `**`

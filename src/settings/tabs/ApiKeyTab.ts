@@ -9,9 +9,12 @@ import {Modal, Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
 import type {ApiKeyConfig, DataTypePermissions, KadoConfig, ListMode, PathPermission} from '../../types/canonical';
 import {createDefaultPermissions} from '../../types/canonical';
+import {folderPrefixOf} from '../../core/glob-match';
+import {findMostSpecificEntry} from '../../core/gates/scope-resolver';
 import {renderPermissionMatrix} from '../components/PermissionMatrix';
 import {renderTagEntry} from '../components/TagEntry';
 import {renderOpenNotesSection} from '../components/OpenNotesSection';
+import {VaultFolderModal} from '../components/VaultFolderModal';
 
 export function renderApiKeyTab(
 	containerEl: HTMLElement,
@@ -28,10 +31,7 @@ export function renderApiKeyTab(
 	}
 
 	renderKeyManagement(containerEl, key, plugin, onRedisplay);
-	// containerEl is the tab content root (created fresh on each display() and
-	// emptied on tab switch). Threading it down so the picker can scope its
-	// outside-click listener to this DOM instead of the global document.
-	renderKeyPermissions(containerEl, containerEl, key, plugin, onRedisplay);
+	renderKeyPermissions(containerEl, key, plugin, onRedisplay);
 	renderDangerZone(containerEl, key, config, plugin, onSwitchTab);
 }
 
@@ -99,13 +99,24 @@ function renderKeyManagement(
 
 function renderKeyPermissions(
 	containerEl: HTMLElement,
-	tabRoot: HTMLElement,
 	key: ApiKeyConfig,
 	plugin: KadoPlugin,
 	onRedisplay: () => void,
 ): void {
 	const config = plugin.configManager.getConfig();
 	const globalSecurity = config.security;
+
+	// Adds a path to the key, guarding exact duplicates. The path is any folder
+	// within the global scope — a whole global path or a subfolder of one.
+	const addPath = (path: string): void => {
+		if (key.paths.some(p => p.path === path)) {
+			new Notice(`Path '${path}' is already assigned to this key.`);
+			return;
+		}
+		key.paths.push({path, permissions: createDefaultPermissions()});
+		void plugin.saveSettings();
+		onRedisplay();
+	};
 
 	new Setting(containerEl).setName('Permissions').setHeading();
 
@@ -153,7 +164,13 @@ function renderKeyPermissions(
 	for (let i = 0; i < key.paths.length; i++) {
 		const keyPath = key.paths[i];
 		if (!keyPath) continue;
-		const globalPath = globalSecurity.paths.find(p => p.path === keyPath.path);
+		// Ceiling = the most specific GLOBAL path that contains this key path.
+		// Resolve the key path as a folder SUBTREE (trailing slash) so a bare
+		// folder like 'maybe-allowed' is covered by a glob global 'maybe-allowed/**'
+		// — without the slash, matchGlob('maybe-allowed/**', 'maybe-allowed') is
+		// false and the matrix would render unbounded.
+		const ceilingProbe = keyPath.path.endsWith('/') ? keyPath.path : `${keyPath.path}/`;
+		const globalPath = findMostSpecificEntry(globalSecurity.paths, ceilingProbe);
 		renderKeyPathEntry(pathsContainer, keyPath, globalPath?.permissions, key.listMode, plugin, () => {
 			key.paths.splice(i, 1);
 			void plugin.saveSettings();
@@ -161,11 +178,20 @@ function renderKeyPermissions(
 		});
 	}
 
-	// Add path — only from global paths not yet assigned to this key
+	// Add path — opens one folder browser scoped to the global scope. The user
+	// picks any folder within an allowed path: a whole global path or a subfolder
+	// of one (narrowing). Folders outside the global scope are not offered.
 	const addPathContainer = containerEl.createDiv();
 	const addPathBtn = addPathContainer.createEl('button', {cls: 'kado-add-btn', text: '+ add path'});
 	addPathBtn.addEventListener('click', () => {
-		renderGlobalPathPicker(addPathContainer, tabRoot, globalSecurity.paths, key, plugin, onRedisplay);
+		if (globalSecurity.paths.length === 0) {
+			new Notice('No global paths defined in global security. Add paths there first.');
+			return;
+		}
+		// Literal folder prefix of each global path (e.g. 'allowed/**' → 'allowed';
+		// '**' → '' = whole vault). The modal lists each prefix and its subfolders.
+		const prefixes = [...new Set(globalSecurity.paths.map(p => folderPrefixOf(p.path)))];
+		new VaultFolderModal(plugin.app, (folder) => addPath(folder), prefixes).open();
 	});
 
 	// ── Tags Section ──
@@ -226,60 +252,6 @@ function renderKeyPathEntry(
 		maxPermissions,
 		listMode,
 		onChange: () => void plugin.saveSettings(),
-	});
-}
-
-function renderGlobalPathPicker(
-	containerEl: HTMLElement,
-	tabRoot: HTMLElement,
-	globalPaths: PathPermission[],
-	key: ApiKeyConfig,
-	plugin: KadoPlugin,
-	onRedisplay: () => void,
-): void {
-	const assignedPaths = new Set(key.paths.map(p => p.path));
-	const available = globalPaths.filter(p => !assignedPaths.has(p.path));
-
-	if (available.length === 0) {
-		new Notice('All global paths are already assigned to this key.');
-		return;
-	}
-
-	// Inline picker rendered below the button
-	const picker = containerEl.createDiv({cls: 'kado-picker-list'});
-	const closeAbort = new AbortController();
-
-	const closePicker = (): void => {
-		closeAbort.abort();
-		picker.remove();
-	};
-
-	for (const globalPath of available) {
-		const item = picker.createEl('button', {cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
-		item.addEventListener('click', () => {
-			key.paths.push({path: globalPath.path, permissions: createDefaultPermissions()});
-			void plugin.saveSettings();
-			onRedisplay();
-		});
-	}
-
-	// Focus first item for keyboard accessibility
-	const firstItem = picker.querySelector<HTMLElement>('.kado-picker-item');
-	firstItem?.focus();
-
-	// Close picker on outside click or Escape.
-	// Listener is scoped to tabRoot (the API key tab content) instead of
-	// the global document so it dies with the DOM when the tab is rebuilt
-	// or the settings panel closes — no manual unregister required.
-	// The setTimeout(0) defers registration to the next tick so the click
-	// that opened the picker doesn't immediately close it.
-	window.setTimeout(() => {
-		tabRoot.addEventListener('click', (e: MouseEvent) => {
-			if (!picker.contains(e.target as Node)) closePicker();
-		}, {signal: closeAbort.signal});
-	}, 0);
-	picker.addEventListener('keydown', (e: KeyboardEvent) => {
-		if (e.key === 'Escape') closePicker();
 	});
 }
 

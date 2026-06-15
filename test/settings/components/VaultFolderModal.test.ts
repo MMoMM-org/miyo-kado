@@ -1,8 +1,10 @@
 /**
- * Behavioral tests for VaultFolderModal (M18).
+ * Behavioral tests for VaultFolderModal.
  *
- * Covers: list renders from mock vault, filter narrows results, selection
- * calls onSelect with the folder path.
+ * VaultFolderModal is built on Obsidian's FuzzySuggestModal — the native
+ * fuzzy-search rendering is internal to Obsidian, so these tests exercise the
+ * subclass contract: getItems() (scoped folder list), getItemText() (labels),
+ * and onChooseItem() (selection callback).
  */
 
 import {describe, it, expect, vi} from 'vitest';
@@ -20,88 +22,92 @@ function makeAppWithFolders(paths: string[]): App {
 	return app;
 }
 
-describe('VaultFolderModal — rendering', () => {
-	it('lists ** (Full vault) first, then all folders sorted alphabetically', () => {
+describe('VaultFolderModal — unrestricted', () => {
+	it('offers ** (Full vault) first, then all folders sorted alphabetically', () => {
 		const app = makeAppWithFolders(['zeta', 'alpha', 'mu']);
-		const modal = new VaultFolderModal(
-			app as never,
-			vi.fn(),
-		);
+		const modal = new VaultFolderModal(app as never, vi.fn());
 
-		modal.open();
-
-		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		expect(items).toHaveLength(4);
-		expect(items[0].textContent).toBe('** (Full vault)');
-		expect(items[1].textContent).toBe('alpha');
-		expect(items[2].textContent).toBe('mu');
-		expect(items[3].textContent).toBe('zeta');
+		expect(modal.getItems()).toEqual(['**', 'alpha', 'mu', 'zeta']);
 	});
 
-	it('shows ** (Full vault) even when vault has no folders', () => {
+	it('labels the full-vault sentinel but leaves folder paths as-is', () => {
+		const app = makeAppWithFolders(['notes']);
+		const modal = new VaultFolderModal(app as never, vi.fn());
+
+		expect(modal.getItemText('**')).toBe('** (Full vault)');
+		expect(modal.getItemText('notes')).toBe('notes');
+	});
+
+	it('offers ** even when the vault has no folders', () => {
 		const app = makeAppWithFolders([]);
-		const modal = new VaultFolderModal(
-			app as never,
-			vi.fn(),
-		);
+		const modal = new VaultFolderModal(app as never, vi.fn());
 
-		modal.open();
-
-		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		expect(items).toHaveLength(1);
-		expect(items[0].textContent).toBe('** (Full vault)');
-		expect(modal.contentEl.querySelector('.kado-picker-empty')).toBeNull();
+		expect(modal.getItems()).toEqual(['**']);
 	});
-});
 
-describe('VaultFolderModal — interactivity', () => {
-	it('clicking ** (Full vault) fires onSelect with **', () => {
-		const app = makeAppWithFolders(['notes', 'archive']);
+	it('choosing ** fires onSelect with **', () => {
+		const app = makeAppWithFolders(['notes']);
 		const onSelect = vi.fn();
-		const modal = new VaultFolderModal(
-			app as never,
-			onSelect,
-		);
+		const modal = new VaultFolderModal(app as never, onSelect);
 
-		modal.open();
-
-		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		(items[0] as HTMLElement).click();
+		modal.onChooseItem('**');
 
 		expect(onSelect).toHaveBeenCalledWith('**');
 	});
 
-	it('clicking a folder fires onSelect with its path', () => {
+	it('choosing a folder fires onSelect with its path', () => {
 		const app = makeAppWithFolders(['notes', 'archive']);
 		const onSelect = vi.fn();
-		const modal = new VaultFolderModal(
-			app as never,
-			onSelect,
-		);
+		const modal = new VaultFolderModal(app as never, onSelect);
 
-		modal.open();
-
-		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		// items[0] is ** (Full vault), items[1] is archive, items[2] is notes
-		(items[1] as HTMLElement).click();
+		modal.onChooseItem('archive');
 
 		expect(onSelect).toHaveBeenCalledWith('archive');
 	});
+});
 
-	it('filtering narrows the folder list', () => {
-		const app = makeAppWithFolders(['notes/daily', 'notes/weekly', 'archive']);
-		const modal = new VaultFolderModal(
-			app as never,
-			vi.fn(),
-		);
+describe('VaultFolderModal — subtree restriction', () => {
+	it('lists only the base folder and its descendants, hiding the full-vault entry', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/202 Notes', 'Atlas/Journal', 'Other', 'Other/x']);
+		const modal = new VaultFolderModal(app as never, vi.fn(), ['Atlas']);
 
-		modal.open();
+		const items = modal.getItems();
+		expect(items).toEqual(['Atlas', 'Atlas/202 Notes', 'Atlas/Journal']);
+		expect(items).not.toContain('**');
+	});
 
-		const search = modal.contentEl.querySelector('.kado-picker-search') as HTMLInputElement;
-		search.value = 'notes';
-		search.dispatchEvent(new Event('input', {bubbles: true}));
+	it('does not match sibling folders that share a name prefix', () => {
+		const app = makeAppWithFolders(['Atlas', 'AtlasArchive', 'Atlas/202 Notes']);
+		const modal = new VaultFolderModal(app as never, vi.fn(), ['Atlas']);
 
-		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
-		expect(items).toHaveLength(2);
+		expect(modal.getItems()).toEqual(['Atlas', 'Atlas/202 Notes']);
+	});
+
+	it('unions multiple prefixes (each global path subtree)', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/Sub', 'Projects', 'Projects/A', 'Other']);
+		const modal = new VaultFolderModal(app as never, vi.fn(), ['Atlas', 'Projects']);
+
+		const items = modal.getItems();
+		expect(items).toEqual(['Atlas', 'Atlas/Sub', 'Projects', 'Projects/A']);
+		expect(items).not.toContain('Other');
+	});
+
+	it('with an empty prefix (full-vault global) lists all folders but no ** entry', () => {
+		const app = makeAppWithFolders(['notes', 'archive']);
+		const modal = new VaultFolderModal(app as never, vi.fn(), ['']);
+
+		const items = modal.getItems();
+		expect(items).toEqual(['archive', 'notes']);
+		expect(items).not.toContain('**');
+	});
+
+	it('choosing a restricted subfolder fires onSelect with its path', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/202 Notes']);
+		const onSelect = vi.fn();
+		const modal = new VaultFolderModal(app as never, onSelect, ['Atlas']);
+
+		modal.onChooseItem('Atlas/202 Notes');
+
+		expect(onSelect).toHaveBeenCalledWith('Atlas/202 Notes');
 	});
 });

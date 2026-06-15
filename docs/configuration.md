@@ -123,7 +123,7 @@ Each API key is an independent access credential with its own scope.
 Each key has:
 
 - **Access mode** -- independent whitelist/blacklist, intersected with global scope
-- **Paths** -- picked from global paths, each with their own CRUD permissions per data type
+- **Paths** -- each with their own CRUD permissions per data type. **+ add path** opens a folder browser (Obsidian's native fuzzy picker) limited to folders *within* the global scope: pick a whole global path or any subfolder of one to narrow the key for least-privilege access (e.g. global `Atlas` → key `Atlas/202 Notes`). Just pick the folder -- no need to type `/**`; a folder name already covers everything inside it. A narrowed path's permissions are still capped by its parent global path, so unavailable CRUD cells appear greyed out. When a key has both a broad path and a narrower one inside it, the **most specific entry wins** for the paths it covers -- so a key can have broad access with a tighter island (e.g. `allowed` full CRUD but `allowed/sub` read-only).
 - **Tags** -- subset of global tags, controls which tags the key can search by
 
 For details on how global and key scopes intersect, see [How It Works -- Scope Intersection](how-it-works.md#scope-intersection).

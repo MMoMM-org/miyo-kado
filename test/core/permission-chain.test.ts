@@ -7,6 +7,9 @@
 
 import {describe, it, expect} from 'vitest';
 import {evaluatePermissions, createDefaultGateChain} from '../../src/core/permission-chain';
+import {globalScopeGate} from '../../src/core/gates/global-scope';
+import {keyScopeGate} from '../../src/core/gates/key-scope';
+import {createAllPermissions} from '../../src/core/gates/scope-resolver';
 import type {CoreRequest, KadoConfig, PermissionGate, GateResult} from '../../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -262,5 +265,58 @@ describe('evaluatePermissions — single key resolution (M6)', () => {
 		if (!result.allowed) {
 			expect(result.error.code).toBe('UNAUTHORIZED');
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Subfolder narrowing (#74) — documents that enforcement already supports a key
+// path narrowed below a global path via the existing two-gate AND. No gate
+// changes were needed for the feature; this guards against regressions.
+// ---------------------------------------------------------------------------
+
+describe('subfolder narrowing — global-scope AND key-scope', () => {
+	function narrowedConfig(): KadoConfig {
+		const cfg = makeConfig();
+		// Global allows all of Atlas; key is narrowed to one subfolder under it.
+		cfg.security.paths = [{path: 'Atlas', permissions: createAllPermissions()}];
+		cfg.apiKeys = [{
+			id: 'kado_test-key',
+			label: 'k',
+			enabled: true,
+			createdAt: 0,
+			listMode: 'whitelist',
+			paths: [{path: 'Atlas/202 Notes', permissions: createAllPermissions()}],
+			tags: [],
+			allowActiveNote: false,
+			allowOtherNotes: false,
+		}];
+		return cfg;
+	}
+
+	function noteRequest(path: string): CoreRequest {
+		return {apiKeyId: 'kado_test-key', operation: 'note', path};
+	}
+
+	it('allows a path inside the narrowed subfolder (passes both scope gates)', () => {
+		const cfg = narrowedConfig();
+		const req = noteRequest('Atlas/202 Notes/topic.md');
+
+		expect(globalScopeGate.evaluate(req, cfg).allowed).toBe(true);
+		expect(keyScopeGate.evaluate(req, cfg).allowed).toBe(true);
+	});
+
+	it('denies a sibling subfolder at the key-scope gate even though global allows it', () => {
+		const cfg = narrowedConfig();
+		const req = noteRequest('Atlas/Other/topic.md');
+
+		expect(globalScopeGate.evaluate(req, cfg).allowed).toBe(true);
+		expect(keyScopeGate.evaluate(req, cfg).allowed).toBe(false);
+	});
+
+	it('denies a path outside the global scope at the global-scope gate', () => {
+		const cfg = narrowedConfig();
+		const req = noteRequest('Other/topic.md');
+
+		expect(globalScopeGate.evaluate(req, cfg).allowed).toBe(false);
 	});
 });
