@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/MMoMM-org/miyo-kado/compare/0.14.0...0.15.0) (2026-06-15)
+
+
+### Features
+
+* narrow API-key paths to subfolders of global paths ([#74](https://github.com/MMoMM-org/miyo-kado/issues/74)) ([#76](https://github.com/MMoMM-org/miyo-kado/issues/76)) ([a98482f](https://github.com/MMoMM-org/miyo-kado/commit/a98482f0a50e2c58ef2bbfd46c983dfaeaa09fd9))
+
 # [0.14.0](https://github.com/MMoMM-org/miyo-kado/compare/0.13.0...0.14.0) (2026-06-15)
 
 
