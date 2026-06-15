@@ -582,7 +582,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 }
 
 function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
-	server.registerTool('kado-rename', {description: 'Rename or move a file in the Obsidian vault (operation=note for .md, operation=file for non-.md). Backlinks (`[[wikilinks]]` and markdown links) pointing at the file are updated automatically. Rename = same folder, different name; move = different folder. Permissions follow that split: a rename needs note/file UPDATE on the path; a move needs DELETE on the source folder AND CREATE on the target folder. Always requires expectedModified — read the source first and pass its "modified" timestamp. Returns CONFLICT if the source changed since your read or if the target already exists, NOT_FOUND if the source is missing, VALIDATION_ERROR if source/target extensions differ from the operation or from each other.', inputSchema: kadoRenameShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+	server.registerTool('kado-rename', {description: 'Rename or move a file in the Obsidian vault (operation=note for .md, operation=file for non-.md). Inbound links (`[[wikilinks]]` and markdown links) are updated automatically when Obsidian\'s "Automatically update internal links" is on. Rename = same folder, different name; move = different folder. Permissions: a rename needs note/file UPDATE on the path; a move needs DELETE on the source folder AND CREATE on the target folder. Always requires expectedModified — read the source first and pass its "modified" timestamp. Returns CONFLICT if the source changed or the target already exists, NOT_FOUND if the source is missing, VALIDATION_ERROR on bad/mismatched paths. If "Automatically update internal links" is OFF, Obsidian shows a per-rename confirmation dialog: the file is still moved immediately, but the response may include "linkUpdatePending": true meaning inbound links await the user\'s answer — do NOT retry in that case (the rename already happened). A bare TIMEOUT (no move) is only returned if the file did not move at all.', inputSchema: kadoRenameShape}, async (args, extra: Extra): Promise<CallToolResult> => {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 
@@ -615,11 +615,23 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			const raced = await raceWithTimeout(work, timeoutMs);
 			if (raced === TIMED_OUT) {
 				work.catch(() => { /* late settle after timeout must not become an unhandled rejection */ });
+				// Obsidian moves the file IMMEDIATELY; the "update links?" dialog only gates the
+				// inbound-link rewrite (and the promise we were awaiting). So on timeout the rename
+				// has almost always already happened — check the vault and report success with
+				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved file
+				// (source still present / target absent) is a real TIMEOUT.
+				const targetMtime = deps.getFileMtime(request.target);
+				const sourceGone = deps.getFileMtime(request.source) === undefined;
+				if (targetMtime !== undefined && sourceGone) {
+					kadoLog('kado-rename allowed', {key: truncateKeyId(keyId), linkUpdatePending: true});
+					await logAllowed('kado-rename', deps.auditLogger, keyId, request, startMs);
+					return mapRenameResult({source: request.source, target: request.target, modified: targetMtime, linkUpdatePending: true});
+				}
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
 				await logDenied('kado-rename', deps.auditLogger, keyId, request, 'timeout');
 				return mapError({
 					code: 'TIMEOUT',
-					message: `Rename did not complete within ${timeoutMs} ms. Obsidian's "Automatically update internal links" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames.`,
+					message: `Rename did not complete within ${timeoutMs} ms and the file was not moved. Obsidian's "Automatically update internal links" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames.`,
 				});
 			}
 			const result = raced;

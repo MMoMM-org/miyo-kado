@@ -766,7 +766,15 @@ Rename or move a file in the vault. Uses `app.fileManager.renameFile`, the only 
 - Obsidian's **"Automatically update internal links" is ON** (recommended — renames are silent and reliable), **or**
 - the Kado setting **"Enable rename when auto-update-links is off"** is ON (General tab; off by default, requires an explicit confirmation). Kado never changes the Obsidian setting itself.
 
-When neither holds, `kado-rename` does not appear in `tools/list`. The check is re-evaluated on every request, so toggling either setting takes effect on the next tool call (no server restart needed). When the opt-in is used, every rename runs under a configurable timeout (**Rename timeout**, default 60 s) and returns a `TIMEOUT` error rather than hanging if the dialog blocks it.
+When neither holds, `kado-rename` does not appear in `tools/list`. The check is re-evaluated on every request, so toggling either setting takes effect on the next tool call (no server restart needed).
+
+When the opt-in is used (auto-update-links off), Obsidian still **moves the file immediately**, but pops a per-rename "update links?" dialog and only finishes once the user answers it. Kado bounds that wait with a configurable timeout (**Rename timeout**, default 60 s):
+
+- If the user answers within the timeout → normal success (links updated, or left stale if they chose "Don't update").
+- If the timeout elapses while the dialog is still open → the response is a **success with `"linkUpdatePending": true`** (the file was already moved; inbound links await the user's answer). Do **not** retry — the rename happened.
+- Only if the file did not move at all → a bare `TIMEOUT` error.
+
+For multiple renames this means one dialog per file — strongly prefer turning **"Automatically update internal links" on** so renames are silent.
 
 ### Operations
 
@@ -894,9 +902,30 @@ The split mirrors the trust boundary: renaming within a folder is a form of edit
 }
 ```
 
-**TIMEOUT — rename blocked by Obsidian's confirmation dialog:**
+**linkUpdatePending — moved, but link-update dialog still open (timeout, file already moved):**
 
-Only possible when the "Enable rename when auto-update-links is off" opt-in is used. Turn on "Automatically update internal links" in Obsidian for reliable renames. Note: a `TIMEOUT` means Kado stopped waiting — Obsidian's rename is still pending behind the dialog, so if the user *later* answers it, the file is still moved in the vault even though the API already reported `TIMEOUT` (Obsidian's in-flight rename cannot be cancelled).
+Returned as a normal (non-error) result when the opt-in is used and the user hasn't answered the dialog within the timeout. The file is already renamed; inbound links update once the user answers (or stay stale if they choose "Don't update"). Do not retry.
+
+```json
+{
+  "source": "100 Inbox/draft.md",
+  "target": "200 Notes/draft.md",
+  "modified": 1743380200000,
+  "linkUpdatePending": true,
+  "note": "The file WAS renamed/moved, but Obsidian is waiting for the user to confirm updating its inbound links … Do NOT retry this rename — it already happened. For multiple renames, ask the user to enable \"Automatically update internal links\" …"
+}
+```
+
+**TIMEOUT — file did not move at all:**
+
+Only when the opt-in is used and the rename genuinely failed to move the file within the timeout. Turn on "Automatically update internal links" in Obsidian for reliable renames.
+
+```json
+{
+  "code": "TIMEOUT",
+  "message": "Rename did not complete within 60000 ms and the file was not moved. Obsidian's \"Automatically update internal links\" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames."
+}
+```
 
 ```json
 {

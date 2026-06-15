@@ -233,6 +233,12 @@ export interface CoreRenameResult {
 	source: string;
 	target: string;
 	modified: number;
+	/**
+	 * Set true when the file was renamed on disk but Obsidian is still awaiting the user's
+	 * "update links?" confirmation dialog (auto-update-links off): the move is done, inbound
+	 * links may not be updated yet. Surfaced so the caller does NOT retry the rename.
+	 */
+	linkUpdatePending?: boolean;
 }
 
 /** Union of all core request types flowing through the permission chain. */

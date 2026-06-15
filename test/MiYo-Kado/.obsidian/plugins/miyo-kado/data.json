@@ -273,7 +273,7 @@
     "maxRetainedLogs": 3
   },
   "debugLogging": false,
-  "renameWhenLinkUpdateOff": false,
+  "renameWhenLinkUpdateOff": true,
   "renameTimeoutMs": 60000,
   "renameWarningAcknowledged": true
 }

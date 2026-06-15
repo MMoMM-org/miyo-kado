@@ -1858,6 +1858,28 @@ describe('kado-rename handler', () => {
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('TIMEOUT');
 	});
+
+	it('on timeout, returns success with linkUpdatePending when the file actually moved', async () => {
+		// Obsidian moves the file immediately and only blocks on the link-update dialog,
+		// so by timeout the source is gone and the target exists.
+		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const deps = makeDeps({
+			configManager: makeConfigManager({renameTimeoutMs: 20}),
+			getFileMtime: vi.fn((p: string) => (p === 'notes/b.md' ? 3000 : undefined)),
+			router: router as unknown as ToolDependencies['router'],
+		});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+		const body = JSON.parse(getFirstText(result)) as {target: string; linkUpdatePending?: boolean; note?: string};
+		expect(body.linkUpdatePending).toBe(true);
+		expect(body.target).toBe('notes/b.md');
+		expect(body.note).toContain('Do NOT retry');
+	});
 });
 
 // ---------------------------------------------------------------------------
