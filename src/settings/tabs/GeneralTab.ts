@@ -111,13 +111,13 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
 		const riskDesc = containerEl.ownerDocument.createDocumentFragment();
 		riskDesc.append('Obsidian’s "Automatically update internal links" is off, so renaming pops a confirmation dialog an AI cannot answer. ');
-		riskDesc.append('Leave off (recommended) and the kado-rename tool is not registered. Turn on to register it anyway — renames then run under a timeout and return TIMEOUT if the dialog blocks them. ');
+		riskDesc.append('Leave off (recommended) and the kado-rename tool is not exposed. Turn on to expose it anyway — renames then run under a timeout and return a timeout error if the dialog blocks them. ');
 		const riskLink = containerEl.ownerDocument.createElement('a');
 		riskLink.textContent = 'Details';
 		riskLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
 		riskLink.target = '_blank';
 		riskDesc.appendChild(riskLink);
-		riskDesc.append('. Changes take effect after the server restarts (toggle Server → Enable).');
+		riskDesc.append('.');
 
 		new Setting(containerEl)
 			.setName('Enable rename when auto-update-links is off')
@@ -127,9 +127,12 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 				.onChange((value) => {
 					if (value) {
 						// Require explicit acknowledgement before enabling.
-						new RenameRiskModal(plugin.app, () => {
-							config.renameWhenLinkUpdateOff = true;
-							void plugin.saveSettings().then(() => onRedisplay());
+						new RenameRiskModal(plugin.app, {
+							onConfirm: () => {
+								config.renameWhenLinkUpdateOff = true;
+								config.renameWarningAcknowledged = true;
+								void plugin.saveSettings().then(() => onRedisplay());
+							},
 						}).open();
 						// Revert the visual toggle until the modal confirms (redisplay reflects truth).
 						toggle.setValue(false);

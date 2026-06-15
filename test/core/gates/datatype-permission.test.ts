@@ -84,6 +84,7 @@ function makeConfig(security: SecurityConfig, apiKeys: ApiKeyConfig[]): KadoConf
 		debugLogging: false,
 		renameWhenLinkUpdateOff: false,
 		renameTimeoutMs: 60000,
+		renameWarningAcknowledged: false,
 	};
 }
 

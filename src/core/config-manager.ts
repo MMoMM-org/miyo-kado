@@ -95,6 +95,7 @@ export class ConfigManager {
 			renameTimeoutMs: typeof partial.renameTimeoutMs === 'number' && Number.isFinite(partial.renameTimeoutMs) && partial.renameTimeoutMs > 0
 				? partial.renameTimeoutMs
 				: defaults.renameTimeoutMs,
+			renameWarningAcknowledged: partial.renameWarningAcknowledged === true,
 		};
 	}
 

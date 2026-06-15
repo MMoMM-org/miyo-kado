@@ -483,6 +483,12 @@ export interface KadoConfig {
 	renameWhenLinkUpdateOff: boolean;
 	/** Timeout (ms) for a single kado-rename call before it returns TIMEOUT. Default 60000. */
 	renameTimeoutMs: number;
+	/**
+	 * Set once the user has seen and dismissed the "rename is disabled" warning shown on
+	 * load when Obsidian's auto-update-links is off. Prevents nagging on every startup.
+	 * Default false. Reset is implicit: closing the modal without choosing leaves it false.
+	 */
+	renameWarningAcknowledged: boolean;
 }
 
 // ============================================================
@@ -555,6 +561,7 @@ export function createDefaultConfig(): KadoConfig {
 		debugLogging: false,
 		renameWhenLinkUpdateOff: false,
 		renameTimeoutMs: 60_000,
+		renameWarningAcknowledged: false,
 	};
 }
 

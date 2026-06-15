@@ -44,6 +44,7 @@ export function defaultConfig(): KadoConfig {
 		debugLogging: false,
 		renameWhenLinkUpdateOff: false,
 		renameTimeoutMs: 60000,
+		renameWarningAcknowledged: false,
 	};
 }
 

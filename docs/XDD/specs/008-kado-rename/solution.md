@@ -76,7 +76,10 @@ registered only when `alwaysUpdateLinks` is on OR the opt-in `renameWhenLinkUpda
 (default off) — so by default the tool isn't exposed when it would hang; (2) the opt-in is
 shown in settings only when auto-update-links is off, behind a confirmation modal; (3) each
 rename runs under `renameTimeoutMs` (default 60 s) and returns a `TIMEOUT` error instead of
-hanging. Registration flag is recomputed at server (re)start.
+hanging. The registration gate is recomputed per request (the MCP server runs the
+registration callback on every call), so setting changes take effect immediately. A one-time
+on-load modal (`maybeWarnRenameDisabled`, gated by `renameWarningAcknowledged`) warns the
+user when rename is disabled because auto-update-links is off.
 
 ## Constitution alignment
 - Security L1: two-layer check on both paths, fail-fast before any fs op. ✓

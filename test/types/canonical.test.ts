@@ -134,6 +134,7 @@ describe('createDefaultConfig', () => {
 		const config = createDefaultConfig();
 		expect(config.renameWhenLinkUpdateOff).toBe(false);
 		expect(config.renameTimeoutMs).toBe(60_000);
+		expect(config.renameWarningAcknowledged).toBe(false);
 	});
 
 	it('produces independent objects on each call', () => {

@@ -1,22 +1,39 @@
 /**
- * RenameRiskModal — confirmation shown when the user enables the kado-rename tool
- * while Obsidian's "Automatically update internal links" setting is OFF.
+ * RenameRiskModal — warns that kado-rename is disabled while Obsidian's
+ * "Automatically update internal links" setting is off.
+ *
+ * Shown two ways:
+ *  - automatically on plugin load when auto-update-links is off (informational
+ *    warning, so the user knows rename won't work until they act), and
+ *  - when the user turns on the "Enable rename when auto-update-links is off"
+ *    toggle in settings (explicit confirmation).
  *
  * Renaming through the MCP server then risks Obsidian's blocking "update links?"
  * dialog, which an AI caller cannot answer — so the rename will time out. The user
- * must explicitly acknowledge this trade-off before the tool is enabled.
+ * must explicitly choose to enable it anyway. Closing the modal without choosing
+ * leaves everything unchanged.
  */
 
 import {App, Modal, Setting} from 'obsidian';
 
 const DOCS_URL = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
 
-export class RenameRiskModal extends Modal {
-	private readonly onConfirm: () => void;
+export interface RenameRiskOptions {
+	/** Called when the user chooses to enable rename despite the risk. */
+	onConfirm: () => void;
+	/** Called when the user explicitly declines (e.g. "Don't show again"). Optional. */
+	onDismiss?: () => void;
+	title?: string;
+	confirmLabel?: string;
+	dismissLabel?: string;
+}
 
-	constructor(app: App, onConfirm: () => void) {
+export class RenameRiskModal extends Modal {
+	private readonly opts: RenameRiskOptions;
+
+	constructor(app: App, opts: RenameRiskOptions) {
 		super(app);
-		this.onConfirm = onConfirm;
+		this.opts = opts;
 	}
 
 	onOpen(): void {
@@ -24,18 +41,19 @@ export class RenameRiskModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('kado-rename-risk');
 
-		this.setTitle('Enable rename without auto-update links?');
+		this.setTitle(this.opts.title ?? 'Enable rename without auto-update links?');
 
 		contentEl.createEl('p', {text:
 			'Obsidian’s "Automatically update internal links" setting is currently off. '
-			+ 'When it is off, renaming or moving a file pops a confirmation dialog asking whether '
-			+ 'to update links. An AI calling kado-rename cannot answer that dialog, so the rename '
-			+ 'will block until the timeout and then return a TIMEOUT error.',
+			+ 'While it is off, the kado-rename tool is disabled — renaming or moving a file '
+			+ 'pops a confirmation dialog asking whether to update links, and an AI calling '
+			+ 'kado-rename cannot answer it, so the rename would block until the timeout and '
+			+ 'return a TIMEOUT error.',
 		});
 		contentEl.createEl('p', {text:
 			'Recommended: turn on "Automatically update internal links" in Obsidian '
-			+ '(Settings → Files and links) instead — then renames work reliably and backlinks '
-			+ 'are updated automatically.',
+			+ '(Settings → Files and links). Then renames work reliably and backlinks '
+			+ 'are updated automatically — no need to enable anything here.',
 		});
 
 		const docsP = contentEl.createEl('p');
@@ -47,13 +65,16 @@ export class RenameRiskModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton(btn => btn
-				.setButtonText('Cancel')
-				.onClick(() => this.close()))
+				.setButtonText(this.opts.dismissLabel ?? 'Cancel')
+				.onClick(() => {
+					this.opts.onDismiss?.();
+					this.close();
+				}))
 			.addButton(btn => btn
-				.setButtonText('Enable anyway')
+				.setButtonText(this.opts.confirmLabel ?? 'Enable anyway')
 				.setWarning()
 				.onClick(() => {
-					this.onConfirm();
+					this.opts.onConfirm();
 					this.close();
 				}));
 	}

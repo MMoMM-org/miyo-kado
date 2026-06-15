@@ -86,6 +86,7 @@ function makeTestConfig(): KadoConfig {
 		debugLogging: false,
 		renameWhenLinkUpdateOff: false,
 		renameTimeoutMs: 60000,
+		renameWarningAcknowledged: false,
 	};
 }
 
@@ -845,6 +846,7 @@ describe('End-to-end tool call pipeline', () => {
 				debugLogging: false,
 				renameWhenLinkUpdateOff: false,
 				renameTimeoutMs: 60000,
+				renameWarningAcknowledged: false,
 			};
 		}
 

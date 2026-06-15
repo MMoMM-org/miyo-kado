@@ -766,7 +766,7 @@ Rename or move a file in the vault. Uses `app.fileManager.renameFile`, the only 
 - Obsidian's **"Automatically update internal links" is ON** (recommended — renames are silent and reliable), **or**
 - the Kado setting **"Enable rename when auto-update-links is off"** is ON (General tab; off by default, requires an explicit confirmation). Kado never changes the Obsidian setting itself.
 
-When neither holds, `kado-rename` does not appear in `tools/list`. Changing either setting takes effect after the MCP server restarts. When the opt-in is used, every rename runs under a configurable timeout (**Rename timeout**, default 60 s) and returns a `TIMEOUT` error rather than hanging if the dialog blocks it.
+When neither holds, `kado-rename` does not appear in `tools/list`. The check is re-evaluated on every request, so toggling either setting takes effect on the next tool call (no server restart needed). When the opt-in is used, every rename runs under a configurable timeout (**Rename timeout**, default 60 s) and returns a `TIMEOUT` error rather than hanging if the dialog blocks it.
 
 ### Operations
 
