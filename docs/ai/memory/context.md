@@ -9,26 +9,15 @@ and 008 (kado-rename) have shipped to master. Cross-repo contract handoffs for t
 rename tool (Kokoro contract + refinements, Tomo availability) are out; Kokoro
 confirmed done.
 
-## Open tech debt (deferred review items)
+## Open tech debt
 
-Carried over from the v1 hardening review (2026-04-01). All low priority, none blocking.
-
-### R1/H5 — Audit buffered writes
-- Location: `src/main.ts` / `src/core/audit-logger.ts`
-- Concern: audit write reads the full log on every entry; should buffer + batch append.
-- Reason deferred: significant write-chain refactor; C1 fix already added `.catch()` recovery.
-
-### R14/L4 — Unbounded glob pattern complexity
-- Location: `src/core/glob-match.ts`
-- Concern: no validation on pattern length/depth; ReDoS potential.
-- Status: largely mitigated — patterns are memoized and "small and finite" by design;
-  admin-only config surface. Keep as a watch item, not active work.
-
-### R15/L8 — evictStaleEntries only triggers at 10K IPs
-- Location: `src/mcp/server.ts` (`MAX_TRACKED_IPS = 10_000`)
-- Concern: stale rate-limit entries never cleaned until the 10K threshold.
-- Reason deferred: negligible impact in single-user Obsidian deployment.
-
-<!-- Pruned 2026-06-15 (/memory-cleanup): Spec 002 UI-settings implementation status
-     (merged), R2/H9 (resolved — Kokoro contract submitted), R7/M6 (resolved — resolvedKey
-     cache added across the gate chain), R13/M18 (resolved — test/settings/** now exists). -->
+None tracked. The v1-hardening review items (2026-04-01) are all closed:
+- R1/H5 (audit buffered writes) — DONE: `audit-logger.ts` buffers + batch-flushes
+  (500ms timer / `flush()` on unload); `main.ts` writes via `adapter.append`, size via
+  `adapter.stat` (no read-modify-write).
+- R14/L4 (glob ReDoS) — DONE: `validateGlobPattern` caps length (256) + consecutive
+  `**` (3), wired into the settings path editor (`PathEntry.ts`); regex cache evicts at 1000.
+- R15/L8 (rate-limit eviction) — DONE: periodic 60s timer (`evictExpiredEntries`,
+  `server.ts`) clears expired entries regardless of map size.
+- R2/H9, R7/M6, R13/M18 — resolved earlier (Kokoro contract submitted; `resolvedKey`
+  cache across the gate chain; `test/settings/**` now exists).
