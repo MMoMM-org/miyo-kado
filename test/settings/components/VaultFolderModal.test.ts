@@ -112,7 +112,7 @@ describe('VaultFolderModal — subtree restriction', () => {
 		const modal = new VaultFolderModal(
 			app as never,
 			vi.fn(),
-			'Atlas',
+			['Atlas'],
 		);
 
 		modal.open();
@@ -128,7 +128,7 @@ describe('VaultFolderModal — subtree restriction', () => {
 		const modal = new VaultFolderModal(
 			app as never,
 			vi.fn(),
-			'Atlas',
+			['Atlas'],
 		);
 
 		modal.open();
@@ -138,12 +138,28 @@ describe('VaultFolderModal — subtree restriction', () => {
 		expect(labels).toEqual(['Atlas', 'Atlas/202 Notes']);
 	});
 
+	it('unions multiple prefixes (each global path subtree)', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/Sub', 'Projects', 'Projects/A', 'Other']);
+		const modal = new VaultFolderModal(
+			app as never,
+			vi.fn(),
+			['Atlas', 'Projects'],
+		);
+
+		modal.open();
+
+		const labels = Array.from(modal.contentEl.querySelectorAll('.kado-picker-item'))
+			.map((el) => el.textContent);
+		expect(labels).toEqual(['Atlas', 'Atlas/Sub', 'Projects', 'Projects/A']);
+		expect(labels).not.toContain('Other');
+	});
+
 	it('with an empty prefix (full-vault global) shows all folders but no Full vault entry', () => {
 		const app = makeAppWithFolders(['notes', 'archive']);
 		const modal = new VaultFolderModal(
 			app as never,
 			vi.fn(),
-			'',
+			[''],
 		);
 
 		modal.open();
@@ -160,7 +176,7 @@ describe('VaultFolderModal — subtree restriction', () => {
 		const modal = new VaultFolderModal(
 			app as never,
 			onSelect,
-			'Atlas',
+			['Atlas'],
 		);
 
 		modal.open();

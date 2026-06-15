@@ -123,7 +123,7 @@ Each API key is an independent access credential with its own scope.
 Each key has:
 
 - **Access mode** -- independent whitelist/blacklist, intersected with global scope
-- **Paths** -- picked from global paths, each with their own CRUD permissions per data type. Use **⊂ narrow** next to a global path in the picker to scope the key to a *subfolder* of that path (e.g. global `Atlas` → key `Atlas/202 Notes`) for least-privilege access. A narrowed path's permissions are still capped by its parent global path.
+- **Paths** -- each with their own CRUD permissions per data type. **+ add path** opens a folder browser limited to folders *within* the global scope: pick a whole global path or any subfolder of one to narrow the key for least-privilege access (e.g. global `Atlas` → key `Atlas/202 Notes`). A narrowed path's permissions are still capped by its parent global path, so unavailable CRUD cells appear greyed out.
 - **Tags** -- subset of global tags, controls which tags the key can search by
 
 For details on how global and key scopes intersect, see [How It Works -- Scope Intersection](how-it-works.md#scope-intersection).

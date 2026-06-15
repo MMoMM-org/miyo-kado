@@ -20,7 +20,7 @@ import type {ApiKeyConfig, DataTypePermissions, PathPermission} from '../../../s
 const {vfmInstances} = vi.hoisted(() => ({
 	vfmInstances: [] as Array<{
 		onSelect: (path: string) => void;
-		restrictToPrefix: string | undefined;
+		restrictToPrefixes: string[] | undefined;
 		opened: boolean;
 	}>,
 }));
@@ -28,11 +28,11 @@ const {vfmInstances} = vi.hoisted(() => ({
 vi.mock('../../../src/settings/components/VaultFolderModal', () => ({
 	VaultFolderModal: class {
 		onSelect: (path: string) => void;
-		restrictToPrefix: string | undefined;
+		restrictToPrefixes: string[] | undefined;
 		opened = false;
-		constructor(_app: unknown, onSelect: (path: string) => void, restrictToPrefix?: string) {
+		constructor(_app: unknown, onSelect: (path: string) => void, restrictToPrefixes?: string[]) {
 			this.onSelect = onSelect;
-			this.restrictToPrefix = restrictToPrefix;
+			this.restrictToPrefixes = restrictToPrefixes;
 			vfmInstances.push(this);
 		}
 		open(): void {
@@ -257,12 +257,12 @@ describe('renderApiKeyTab — OpenNotesSection toggle wiring', () => {
 });
 
 describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
-	it('renders a narrow button for each global path in the add-path picker', () => {
+	it('opens one folder browser scoped to all global path prefixes', () => {
 		const container = renderSandbox();
 		const key = makeApiKey({id: 'kado_n', paths: []});
 		const {plugin} = mockPluginWithSecurity(
 			[
-				{path: 'Atlas', permissions: createDefaultPermissions()},
+				{path: 'Atlas/**', permissions: createDefaultPermissions()},
 				{path: 'Projects', permissions: createDefaultPermissions()},
 			],
 			[key],
@@ -271,10 +271,13 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
 		clickAddPath(container);
 
-		expect(container.querySelectorAll('.kado-narrow-btn')).toHaveLength(2);
+		expect(vfmInstances).toHaveLength(1);
+		// 'Atlas/**' → prefix 'Atlas'; 'Projects' → 'Projects'.
+		expect(vfmInstances[0]?.restrictToPrefixes).toEqual(['Atlas', 'Projects']);
+		expect(vfmInstances[0]?.opened).toBe(true);
 	});
 
-	it('shows a Notice and no picker when no global paths are defined', () => {
+	it('shows a Notice and opens no browser when no global paths are defined', () => {
 		const container = renderSandbox();
 		const key = makeApiKey({id: 'kado_empty', paths: []});
 		const {plugin} = mockPluginWithSecurity([], [key]);
@@ -282,7 +285,7 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
 		clickAddPath(container);
 
-		expect(container.querySelector('.kado-picker-list')).toBeNull();
+		expect(vfmInstances).toHaveLength(0);
 	});
 
 	it('bounds a narrowed key path matrix by its ancestor global path permissions', () => {
@@ -304,24 +307,22 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 		expect(disabled).toHaveLength(12);
 	});
 
-	it('opens VaultFolderModal restricted to the global path subtree and adds the chosen subfolder', () => {
+	it('adds the folder chosen in the browser as the key path', () => {
 		const container = renderSandbox();
 		const key = makeApiKey({id: 'kado_f', paths: []});
 		const {plugin, saveSettings} = mockPluginWithSecurity(
-			[{path: 'Atlas', permissions: createDefaultPermissions()}],
+			[{path: 'Atlas/**', permissions: createDefaultPermissions()}],
 			[key],
 		);
 		const onRedisplay = vi.fn();
 
 		renderApiKeyTab(container, plugin, key.id, onRedisplay, vi.fn());
 		clickAddPath(container);
-		click(container.querySelector('.kado-narrow-btn') as HTMLElement);
 
 		expect(vfmInstances).toHaveLength(1);
-		expect(vfmInstances[0]?.restrictToPrefix).toBe('Atlas');
-		expect(vfmInstances[0]?.opened).toBe(true);
+		expect(vfmInstances[0]?.restrictToPrefixes).toEqual(['Atlas']);
 
-		// Simulate the user picking a subfolder in the modal.
+		// Simulate the user picking a subfolder in the browser.
 		vfmInstances[0]?.onSelect('Atlas/202 Notes');
 
 		expect(key.paths.map(p => p.path)).toContain('Atlas/202 Notes');
@@ -329,7 +330,7 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 		expect(onRedisplay).toHaveBeenCalled();
 	});
 
-	it('refuses to add a duplicate narrowed path', () => {
+	it('refuses to add a duplicate path', () => {
 		const container = renderSandbox();
 		const key = makeApiKey({
 			id: 'kado_d',
@@ -342,7 +343,6 @@ describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
 
 		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
 		clickAddPath(container);
-		click(container.querySelector('.kado-narrow-btn') as HTMLElement);
 		vfmInstances[0]?.onSelect('Atlas/202 Notes');
 
 		expect(key.paths.filter(p => p.path === 'Atlas/202 Notes')).toHaveLength(1);

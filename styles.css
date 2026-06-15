@@ -332,40 +332,6 @@
 	text-align: center;
 }
 
-/* Picker row: "add whole path" button + "narrow to subfolder" action */
-.kado-picker-row {
-	display: flex;
-	align-items: stretch;
-	gap: 4px;
-}
-
-.kado-picker-row .kado-picker-item {
-	flex: 1 1 auto;
-	width: auto;
-}
-
-.kado-picker-item.is-assigned {
-	opacity: 0.5;
-	cursor: default;
-}
-
-.kado-narrow-btn {
-	flex: 0 0 auto;
-	padding: 6px 10px;
-	min-block-size: 44px;
-	cursor: pointer;
-	font-size: var(--font-small);
-	border: none;
-	background: none;
-	border-radius: 4px;
-	color: var(--text-accent);
-	white-space: nowrap;
-}
-
-.kado-narrow-btn:hover {
-	background: var(--background-modifier-hover);
-}
-
 /* List mode toggle */
 .kado-listmode {
 	display: flex;
