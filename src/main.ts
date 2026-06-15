@@ -24,6 +24,7 @@ import {
 	createFrontmatterDeleteAdapter,
 } from './obsidian/delete-adapter';
 import {createRenameAdapter} from './obsidian/rename-adapter';
+import {getAlwaysUpdateLinks} from './obsidian/vault-config';
 import {AuditLogger} from './core/audit-logger';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
@@ -139,7 +140,14 @@ export default class KadoPlugin extends Plugin {
 
 		this.mcpServer = new KadoMcpServer(
 			this.configManager,
-			(server) => registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app}),
+			(server) => {
+				// Gate kado-rename: only register when renaming won't hit Obsidian's blocking
+				// "update links?" modal — i.e. auto-update-links is on, or the user opted in.
+				// Re-evaluated each time the server (re)starts.
+				const cfg = this.configManager.getConfig();
+				const renameToolEnabled = getAlwaysUpdateLinks(this.app) || cfg.renameWhenLinkUpdateOff;
+				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app, renameToolEnabled});
+			},
 			this.manifest.version,
 		);
 		this.register(() => this.mcpServer.stop());

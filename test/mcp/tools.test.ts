@@ -230,6 +230,13 @@ describe('registerTools()', () => {
 		expect(server.tools.map((t) => t.name)).toContain('kado-rename');
 	});
 
+	it('does NOT register kado-rename when renameToolEnabled is false (5 tools)', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps({renameToolEnabled: false}));
+		expect(server.tools.map((t) => t.name)).not.toContain('kado-rename');
+		expect(server.tools).toHaveLength(5);
+	});
+
 	it('registers a tool named kado-read', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
@@ -1832,6 +1839,24 @@ describe('kado-rename handler', () => {
 		);
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('NOT_FOUND');
+	});
+
+	it('returns TIMEOUT when the rename does not complete within renameTimeoutMs', async () => {
+		// Router never settles — simulates renameFile blocking on Obsidian's confirm dialog.
+		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const deps = makeDeps({
+			configManager: makeConfigManager({renameTimeoutMs: 20}),
+			getFileMtime: vi.fn(() => 2000),
+			router: router as unknown as ToolDependencies['router'],
+		});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'note', source: 'notes/a.md', target: 'notes/b.md', expectedModified: 2000},
+			makeExtra(),
+		);
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('TIMEOUT');
 	});
 });
 

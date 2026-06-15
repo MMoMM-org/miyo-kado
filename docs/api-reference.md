@@ -759,6 +759,15 @@ This gives the user — not the AI — final control over deletion recoverabilit
 
 Rename or move a file in the vault. Uses `app.fileManager.renameFile`, the only API that **updates backlinks automatically** — inbound `[[wikilinks]]` and markdown links pointing at the file are rewritten across the whole vault. Rename and move are the same operation; the mode is inferred from the paths.
 
+### Availability (conditional registration)
+
+`kado-rename` is **only registered** when renaming can complete without user interaction. Obsidian shows a blocking "update links?" confirmation dialog during a rename when its **Settings → Files and links → Automatically update internal links** option is off — an AI caller cannot answer that dialog, so the rename would hang. Kado therefore registers the tool only when:
+
+- Obsidian's **"Automatically update internal links" is ON** (recommended — renames are silent and reliable), **or**
+- the Kado setting **"Enable rename when auto-update-links is off"** is ON (General tab; off by default, requires an explicit confirmation). Kado never changes the Obsidian setting itself.
+
+When neither holds, `kado-rename` does not appear in `tools/list`. Changing either setting takes effect after the MCP server restarts. When the opt-in is used, every rename runs under a configurable timeout (**Rename timeout**, default 60 s) and returns a `TIMEOUT` error rather than hanging if the dialog blocks it.
+
 ### Operations
 
 | Operation | Behavior |
@@ -882,6 +891,17 @@ The split mirrors the trust boundary: renaming within a folder is a form of edit
 {
   "code": "NOT_FOUND",
   "message": "File not found: 100 Inbox/already-moved.md"
+}
+```
+
+**TIMEOUT — rename blocked by Obsidian's confirmation dialog:**
+
+Only possible when the "Enable rename when auto-update-links is off" opt-in is used. Turn on "Automatically update internal links" in Obsidian for reliable renames.
+
+```json
+{
+  "code": "TIMEOUT",
+  "message": "Rename did not complete within 60000 ms. Obsidian's \"Automatically update internal links\" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames."
 }
 ```
 

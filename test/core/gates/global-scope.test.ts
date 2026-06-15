@@ -70,6 +70,8 @@ function makeConfig(security: SecurityConfig): KadoConfig {
 		apiKeys: [],
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 		debugLogging: false,
+		renameWhenLinkUpdateOff: false,
+		renameTimeoutMs: 60000,
 	};
 }
 

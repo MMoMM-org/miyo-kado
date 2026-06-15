@@ -72,6 +72,11 @@ export function createRenameAdapter(app: App): RenameAdapter {
 				throw validationError(`Target folder does not exist: ${targetParent}`);
 			}
 
+			// NOTE: when Obsidian's "Automatically update internal links" setting is off,
+			// renameFile pops a BLOCKING "update links?" modal and never resolves under an
+			// MCP-driven call. Kado does NOT mutate that vault setting; instead the tool is
+			// only registered when it is safe (see isRenameToolEnabled) and the tool handler
+			// guards every call with a timeout (see registerRenameTool).
 			try {
 				await app.fileManager.renameFile(file, request.target);
 			} catch (err) {

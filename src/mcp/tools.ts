@@ -57,6 +57,13 @@ export interface ToolDependencies {
 	auditLogger?: AuditLogger;
 	/** Obsidian App instance — required by the kado-open-notes tool handler. */
 	app: App;
+	/**
+	 * Whether to register the kado-rename tool. Computed at server-build time as
+	 * (Obsidian alwaysUpdateLinks) OR (config.renameWhenLinkUpdateOff). When false,
+	 * kado-rename is not registered at all — renaming with auto-update-links off would
+	 * block on Obsidian's confirmation modal. Defaults to true when omitted (tests).
+	 */
+	renameToolEnabled?: boolean;
 }
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -150,6 +157,27 @@ export const KADO_SEARCH_TOOL_DESCRIPTION =
 
 function isCoreError(value: RouteResult): value is CoreError {
 	return 'code' in value && 'message' in value && !('content' in value) && !('items' in value);
+}
+
+/** Sentinel returned by raceWithTimeout when the work did not settle in time. */
+const TIMED_OUT = Symbol('timed-out');
+
+/**
+ * Races `work` against a timer. Resolves to the work's value, or `TIMED_OUT` if the
+ * timer wins. A rejection from `work` propagates (so adapter errors still surface).
+ * On timeout the caller must attach a no-op catch to `work` to avoid an unhandled
+ * rejection if it settles later (e.g. after the user dismisses a blocking modal).
+ */
+async function raceWithTimeout(work: Promise<RouteResult>, timeoutMs: number): Promise<RouteResult | typeof TIMED_OUT> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+		timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+	});
+	try {
+		return await Promise.race([work, timeout]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
 }
 
 function extractKeyId(extra: Extra): string | undefined {
@@ -406,7 +434,11 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	registerWriteTool(server, deps);
 	registerSearchTool(server, deps);
 	registerDeleteTool(server, deps);
-	registerRenameTool(server, deps);
+	// Only register rename when it is safe: Obsidian's auto-update-links is on, or the
+	// user explicitly opted in. Otherwise renameFile would block on a confirmation modal.
+	if (deps.renameToolEnabled !== false) {
+		registerRenameTool(server, deps);
+	}
 	registerOpenNotesTool(server, deps);
 }
 
@@ -575,7 +607,22 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 
 		const startMs = performance.now();
 		try {
-			const result = await deps.router(request);
+			// Guard against a hang: when Obsidian's auto-update-links is off, renameFile
+			// blocks on a confirmation modal that an MCP caller cannot answer. Bound the
+			// wait and report TIMEOUT instead of leaving the client hanging forever.
+			const timeoutMs = deps.configManager.getConfig().renameTimeoutMs;
+			const work = deps.router(request);
+			const raced = await raceWithTimeout(work, timeoutMs);
+			if (raced === TIMED_OUT) {
+				work.catch(() => { /* late settle after timeout must not become an unhandled rejection */ });
+				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
+				await logDenied('kado-rename', deps.auditLogger, keyId, request, 'timeout');
+				return mapError({
+					code: 'TIMEOUT',
+					message: `Rename did not complete within ${timeoutMs} ms. Obsidian's "Automatically update internal links" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames.`,
+				});
+			}
+			const result = raced;
 			if (isCoreError(result)) {
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: result.code});
 				return mapError(result);

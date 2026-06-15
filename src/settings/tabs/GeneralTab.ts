@@ -5,6 +5,8 @@
 import {Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
 import {VaultFolderModal} from '../components/VaultFolderModal';
+import {RenameRiskModal} from '../components/RenameRiskModal';
+import {getAlwaysUpdateLinks} from '../../obsidian/vault-config';
 
 export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, onRedisplay: () => void): void {
 	const config = plugin.configManager.getConfig();
@@ -95,6 +97,62 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 				void plugin.saveSettings();
 				onRedisplay();
 			}));
+
+	// ── Rename Tool Section ──
+	new Setting(containerEl).setName('Rename').setHeading();
+
+	const autoUpdateLinks = getAlwaysUpdateLinks(plugin.app);
+	if (autoUpdateLinks) {
+		// Safe case: Obsidian updates links silently, so kado-rename is registered and reliable.
+		new Setting(containerEl)
+			.setName('Rename tool')
+			.setDesc('Obsidian updates internal links automatically, so renames update backlinks without prompting.');
+	} else {
+		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
+		const riskDesc = containerEl.ownerDocument.createDocumentFragment();
+		riskDesc.append('Obsidian’s "Automatically update internal links" is off, so renaming pops a confirmation dialog an AI cannot answer. ');
+		riskDesc.append('Leave off (recommended) and the kado-rename tool is not registered. Turn on to register it anyway — renames then run under a timeout and return TIMEOUT if the dialog blocks them. ');
+		const riskLink = containerEl.ownerDocument.createElement('a');
+		riskLink.textContent = 'Details';
+		riskLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
+		riskLink.target = '_blank';
+		riskDesc.appendChild(riskLink);
+		riskDesc.append('. Changes take effect after the server restarts (toggle Server → Enable).');
+
+		new Setting(containerEl)
+			.setName('Enable rename when auto-update-links is off')
+			.setDesc(riskDesc)
+			.addToggle(toggle => toggle
+				.setValue(config.renameWhenLinkUpdateOff)
+				.onChange((value) => {
+					if (value) {
+						// Require explicit acknowledgement before enabling.
+						new RenameRiskModal(plugin.app, () => {
+							config.renameWhenLinkUpdateOff = true;
+							void plugin.saveSettings().then(() => onRedisplay());
+						}).open();
+						// Revert the visual toggle until the modal confirms (redisplay reflects truth).
+						toggle.setValue(false);
+					} else {
+						config.renameWhenLinkUpdateOff = false;
+						void plugin.saveSettings().then(() => onRedisplay());
+					}
+				}));
+
+		if (config.renameWhenLinkUpdateOff) {
+			new Setting(containerEl)
+				.setName('Rename timeout')
+				.setDesc('Seconds to wait for a rename before it gives up (default 60).')
+				.addText(text => text
+					.setValue(String(Math.round(config.renameTimeoutMs / 1000)))
+					.onChange(async (value) => {
+						const secs = Number(value);
+						if (!Number.isFinite(secs) || secs <= 0) return;
+						config.renameTimeoutMs = Math.round(secs * 1000);
+						await plugin.saveSettings();
+					}));
+		}
+	}
 
 	// ── Audit Logging Section ──
 	const audit = config.audit;

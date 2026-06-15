@@ -30,7 +30,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
 - **Partial note read/write** -- read a slice (`firstXChars`, `section` by heading, `range` by line/char) and write in place (`append`/`prepend`, `insertUnderHeading`, `replaceSection`/`replaceRange`) without round-tripping the whole body; omitting the mode is byte-for-byte backward compatible
-- **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target)
+- **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target). Requires Obsidian's "Automatically update internal links" to be on (otherwise the tool is hidden unless you opt in, since renaming would block on Obsidian's confirmation dialog)
 - **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP

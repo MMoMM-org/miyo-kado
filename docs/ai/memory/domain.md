@@ -42,6 +42,9 @@ Returns tags of a note as `{frontmatter: string[], inline: string[], all: string
   - **Move** (cross folder): requires `delete` on source AND `create` on target — the file leaves one scope and enters another. `update` alone is NOT enough to move out; `create` alone is NOT enough to move in. Prevents an edit-only key from smuggling notes across scope boundaries.
 - Backlink updates touch notes the key may not have permission for. This is unavoidable (Obsidian rewrites links vault-wide) and accepted — it changes references, never content. Documented disclosure boundary, not a leak.
 - Router discriminates via explicit `kind: 'rename'` marker (like delete). Result: `{source, target, modified}` (mtime unchanged by a move).
+- **Confirmation-dialog hazard (live-test finding):** when Obsidian's "Automatically update internal links" setting is OFF, `fileManager.renameFile` pops a BLOCKING modal that an MCP caller can't answer → the call hangs forever. Kado does NOT mutate the vault setting. Instead:
+  - **Conditional registration:** `kado-rename` is registered only when `getAlwaysUpdateLinks(app)` is true OR the opt-in `config.renameWhenLinkUpdateOff` is true (computed in main.ts at server (re)start, passed as `ToolDependencies.renameToolEnabled`). Otherwise the tool is absent from `tools/list`.
+  - **Timeout guard:** the handler races `router(request)` against `config.renameTimeoutMs` (default 60000); on timeout it returns a `TIMEOUT` CoreError (new code) instead of hanging, and swallows the late promise. `alwaysUpdateLinks` is read via `src/obsidian/vault-config.ts` (untyped `vault.getConfig`). Settings UI: General tab shows the opt-in toggle only when auto-update-links is off, behind a `RenameRiskModal` confirmation, plus the timeout field.
 
 <!-- 2026-04-14 -->
 ## kado-delete semantics

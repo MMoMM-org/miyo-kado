@@ -91,6 +91,10 @@ export class ConfigManager {
 			security: mergedSecurity,
 			apiKeys: keys,
 			debugLogging: partial.debugLogging ?? defaults.debugLogging,
+			renameWhenLinkUpdateOff: partial.renameWhenLinkUpdateOff === true,
+			renameTimeoutMs: typeof partial.renameTimeoutMs === 'number' && Number.isFinite(partial.renameTimeoutMs) && partial.renameTimeoutMs > 0
+				? partial.renameTimeoutMs
+				: defaults.renameTimeoutMs,
 		};
 	}
 

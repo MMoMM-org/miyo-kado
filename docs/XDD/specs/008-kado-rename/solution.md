@@ -68,6 +68,16 @@ and the rename call all use the identical string (no raw-vs-normalized divergenc
 updates links vault-wide, touching notes the key may not access; this changes references,
 not content, and is documented (domain.md / api-reference.md), not redacted.
 
+**ADR-8 — Confirmation-dialog hang: guard by conditional registration + timeout, never by
+mutating the vault setting.** Live testing showed `fileManager.renameFile` hangs forever when
+Obsidian's "Automatically update internal links" is off (it pops a blocking modal an MCP
+caller can't answer). Kado does **not** flip that user setting. Instead: (1) `kado-rename` is
+registered only when `alwaysUpdateLinks` is on OR the opt-in `renameWhenLinkUpdateOff` is on
+(default off) — so by default the tool isn't exposed when it would hang; (2) the opt-in is
+shown in settings only when auto-update-links is off, behind a confirmation modal; (3) each
+rename runs under `renameTimeoutMs` (default 60 s) and returns a `TIMEOUT` error instead of
+hanging. Registration flag is recomputed at server (re)start.
+
 ## Constitution alignment
 - Security L1: two-layer check on both paths, fail-fast before any fs op. ✓
 - Code Quality L1: policy + adapter in core/obsidian, MCP glue in mcp/. ✓

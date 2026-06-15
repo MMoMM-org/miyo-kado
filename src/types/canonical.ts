@@ -350,6 +350,7 @@ export type CoreErrorCode =
 	| 'NOT_FOUND'
 	| 'CONFLICT'
 	| 'VALIDATION_ERROR'
+	| 'TIMEOUT'
 	| 'INTERNAL_ERROR';
 
 /** Structured error returned by core operations and permission gates. */
@@ -471,6 +472,17 @@ export interface KadoConfig {
 	audit: AuditConfig;
 	/** Emit kadoLog debug messages to the developer console. Default: false (per Obsidian plugin guidelines). */
 	debugLogging: boolean;
+	/**
+	 * Opt-in: register and run kado-rename even when Obsidian's "Automatically update
+	 * internal links" setting is OFF. Default false. When OFF, kado-rename is only
+	 * registered if Obsidian's setting is ON (otherwise renameFile pops a blocking
+	 * confirmation dialog and the call would hang). When the user enables this, the
+	 * tool runs under `renameTimeoutMs` and reports TIMEOUT instead of hanging.
+	 * Only surfaced in settings when Obsidian's auto-update-links is OFF.
+	 */
+	renameWhenLinkUpdateOff: boolean;
+	/** Timeout (ms) for a single kado-rename call before it returns TIMEOUT. Default 60000. */
+	renameTimeoutMs: number;
 }
 
 // ============================================================
@@ -541,6 +553,8 @@ export function createDefaultConfig(): KadoConfig {
 			maxRetainedLogs: 3,
 		},
 		debugLogging: false,
+		renameWhenLinkUpdateOff: false,
+		renameTimeoutMs: 60_000,
 	};
 }
 
