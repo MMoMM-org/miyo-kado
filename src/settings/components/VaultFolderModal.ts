@@ -3,23 +3,40 @@
  *
  * Shows all vault folders in a filterable list. Selecting a folder
  * returns its vault-relative path via the onSelect callback.
+ *
+ * Optional `restrictToPrefix` scopes the list to one folder subtree (the base
+ * folder and its descendants) and hides the "Full vault" entry — used to narrow
+ * an API key's path to a subfolder of a globally-allowed path. An empty prefix
+ * (the global path was `**`) restricts nothing but still hides "Full vault".
  */
 
 import {App, Modal, TFolder} from 'obsidian';
 
 export class VaultFolderModal extends Modal {
 	private readonly onSelect: (path: string) => void;
+	private readonly restrictToPrefix: string | undefined;
 	private readonly folders: TFolder[];
 
-	constructor(app: App, onSelect: (path: string) => void) {
+	constructor(app: App, onSelect: (path: string) => void, restrictToPrefix?: string) {
 		super(app);
 		this.onSelect = onSelect;
+		this.restrictToPrefix = restrictToPrefix;
 		this.folders = this.getAllFolders();
 	}
 
+	/** True when the picker is scoped to a single folder subtree. */
+	private get restricted(): boolean {
+		return this.restrictToPrefix !== undefined;
+	}
+
 	private getAllFolders(): TFolder[] {
+		const base = this.restrictToPrefix;
 		return this.app.vault.getAllLoadedFiles()
 			.filter((f): f is TFolder => f instanceof TFolder && f.path !== '')
+			.filter((f) => {
+				if (base === undefined || base === '') return true;
+				return f.path === base || f.path.startsWith(base + '/');
+			})
 			.sort((a, b) => a.path.localeCompare(b.path));
 	}
 
@@ -42,7 +59,10 @@ export class VaultFolderModal extends Modal {
 		const renderList = (filter: string): void => {
 			listEl.empty();
 			const lowerFilter = filter.toLowerCase();
-			const showFullVault = FULL_VAULT_LABEL.toLowerCase().includes(lowerFilter);
+			// In subtree-restricted mode the key narrows to a folder under a
+			// globally-allowed path, so "Full vault" is never an option.
+			const showFullVault = !this.restricted
+				&& FULL_VAULT_LABEL.toLowerCase().includes(lowerFilter);
 			const filtered = this.folders.filter(f =>
 				f.path.toLowerCase().includes(lowerFilter),
 			);

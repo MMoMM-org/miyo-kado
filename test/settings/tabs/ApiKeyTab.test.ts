@@ -7,12 +7,43 @@
  * and toggle wiring (T3.2 spec 006).
  */
 
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {renderApiKeyTab} from '../../../src/settings/tabs/ApiKeyTab';
 import type KadoPlugin from '../../../src/main';
-import {renderSandbox, defaultConfig, makeApiKey} from '../helpers';
+import {renderSandbox, defaultConfig, makeApiKey, click} from '../helpers';
 import {App} from '../../__mocks__/obsidian';
-import type {ApiKeyConfig} from '../../../src/types/canonical';
+import {createDefaultPermissions} from '../../../src/types/canonical';
+import type {ApiKeyConfig, DataTypePermissions, PathPermission} from '../../../src/types/canonical';
+
+// Capture VaultFolderModal construction so the narrow flow can be driven without
+// a real Obsidian modal. vi.hoisted gives the factory a shared instance list.
+const {vfmInstances} = vi.hoisted(() => ({
+	vfmInstances: [] as Array<{
+		onSelect: (path: string) => void;
+		restrictToPrefix: string | undefined;
+		opened: boolean;
+	}>,
+}));
+
+vi.mock('../../../src/settings/components/VaultFolderModal', () => ({
+	VaultFolderModal: class {
+		onSelect: (path: string) => void;
+		restrictToPrefix: string | undefined;
+		opened = false;
+		constructor(_app: unknown, onSelect: (path: string) => void, restrictToPrefix?: string) {
+			this.onSelect = onSelect;
+			this.restrictToPrefix = restrictToPrefix;
+			vfmInstances.push(this);
+		}
+		open(): void {
+			this.opened = true;
+		}
+	},
+}));
+
+beforeEach(() => {
+	vfmInstances.length = 0;
+});
 
 function mockPlugin(keys: ApiKeyConfig[] = [makeApiKey()]) {
 	const config = {...defaultConfig(), apiKeys: keys};
@@ -27,6 +58,37 @@ function mockPlugin(keys: ApiKeyConfig[] = [makeApiKey()]) {
 	} as unknown as KadoPlugin;
 
 	return {plugin, config, saveSettings};
+}
+
+function readOnlyPermissions(): DataTypePermissions {
+	return {
+		note: {create: false, read: true, update: false, delete: false},
+		frontmatter: {create: false, read: true, update: false, delete: false},
+		file: {create: false, read: true, update: false, delete: false},
+		dataviewInlineField: {create: false, read: true, update: false, delete: false},
+	};
+}
+
+/** Builds a plugin whose global security has the given paths plus the given keys. */
+function mockPluginWithSecurity(securityPaths: PathPermission[], keys: ApiKeyConfig[]) {
+	const base = defaultConfig();
+	const config = {...base, apiKeys: keys, security: {...base.security, paths: securityPaths}};
+	const saveSettings = vi.fn(async () => undefined);
+	const plugin = {
+		app: new App(),
+		settings: config,
+		configManager: {getConfig: () => config},
+		saveSettings,
+	} as unknown as KadoPlugin;
+	return {plugin, config, saveSettings};
+}
+
+/** Finds the inline "+ add path" button (distinct from "+ add tag"). */
+function clickAddPath(container: HTMLElement): void {
+	const addBtn = Array.from(container.querySelectorAll('button.kado-add-btn'))
+		.find((b) => b.textContent === '+ add path');
+	if (!addBtn) throw new Error('add-path button not found');
+	click(addBtn);
 }
 
 describe('renderApiKeyTab — missing key', () => {
@@ -191,5 +253,98 @@ describe('renderApiKeyTab — OpenNotesSection toggle wiring', () => {
 		expect(key.allowActiveNote).toBe(false);
 		expect(saveSettings).toHaveBeenCalled();
 		expect(onRedisplay).toHaveBeenCalled();
+	});
+});
+
+describe('renderApiKeyTab — path narrowing to subfolders (#74)', () => {
+	it('renders a narrow button for each global path in the add-path picker', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_n', paths: []});
+		const {plugin} = mockPluginWithSecurity(
+			[
+				{path: 'Atlas', permissions: createDefaultPermissions()},
+				{path: 'Projects', permissions: createDefaultPermissions()},
+			],
+			[key],
+		);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+		clickAddPath(container);
+
+		expect(container.querySelectorAll('.kado-narrow-btn')).toHaveLength(2);
+	});
+
+	it('shows a Notice and no picker when no global paths are defined', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_empty', paths: []});
+		const {plugin} = mockPluginWithSecurity([], [key]);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+		clickAddPath(container);
+
+		expect(container.querySelector('.kado-picker-list')).toBeNull();
+	});
+
+	it('bounds a narrowed key path matrix by its ancestor global path permissions', () => {
+		const container = renderSandbox();
+		// Global allows Atlas read-only; key is narrowed to a subfolder under it.
+		const key = makeApiKey({
+			id: 'kado_c',
+			paths: [{path: 'Atlas/202 Notes', permissions: createDefaultPermissions()}],
+		});
+		const {plugin} = mockPluginWithSecurity(
+			[{path: 'Atlas', permissions: readOnlyPermissions()}],
+			[key],
+		);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+
+		// Read-only ceiling → create/update/delete dots disabled (12), read enabled (4).
+		const disabled = container.querySelectorAll('.kado-path-entry .kado-dot[aria-disabled="true"]');
+		expect(disabled).toHaveLength(12);
+	});
+
+	it('opens VaultFolderModal restricted to the global path subtree and adds the chosen subfolder', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_f', paths: []});
+		const {plugin, saveSettings} = mockPluginWithSecurity(
+			[{path: 'Atlas', permissions: createDefaultPermissions()}],
+			[key],
+		);
+		const onRedisplay = vi.fn();
+
+		renderApiKeyTab(container, plugin, key.id, onRedisplay, vi.fn());
+		clickAddPath(container);
+		click(container.querySelector('.kado-narrow-btn') as HTMLElement);
+
+		expect(vfmInstances).toHaveLength(1);
+		expect(vfmInstances[0]?.restrictToPrefix).toBe('Atlas');
+		expect(vfmInstances[0]?.opened).toBe(true);
+
+		// Simulate the user picking a subfolder in the modal.
+		vfmInstances[0]?.onSelect('Atlas/202 Notes');
+
+		expect(key.paths.map(p => p.path)).toContain('Atlas/202 Notes');
+		expect(saveSettings).toHaveBeenCalled();
+		expect(onRedisplay).toHaveBeenCalled();
+	});
+
+	it('refuses to add a duplicate narrowed path', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({
+			id: 'kado_d',
+			paths: [{path: 'Atlas/202 Notes', permissions: createDefaultPermissions()}],
+		});
+		const {plugin} = mockPluginWithSecurity(
+			[{path: 'Atlas', permissions: createDefaultPermissions()}],
+			[key],
+		);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+		clickAddPath(container);
+		click(container.querySelector('.kado-narrow-btn') as HTMLElement);
+		vfmInstances[0]?.onSelect('Atlas/202 Notes');
+
+		expect(key.paths.filter(p => p.path === 'Atlas/202 Notes')).toHaveLength(1);
 	});
 });

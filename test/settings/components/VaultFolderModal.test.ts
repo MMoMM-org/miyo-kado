@@ -105,3 +105,69 @@ describe('VaultFolderModal — interactivity', () => {
 		expect(items).toHaveLength(2);
 	});
 });
+
+describe('VaultFolderModal — subtree restriction', () => {
+	it('shows only the base folder and its descendants, hiding Full vault', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/202 Notes', 'Atlas/Journal', 'Other', 'Other/x']);
+		const modal = new VaultFolderModal(
+			app as never,
+			vi.fn(),
+			'Atlas',
+		);
+
+		modal.open();
+
+		const labels = Array.from(modal.contentEl.querySelectorAll('.kado-picker-item'))
+			.map((el) => el.textContent);
+		expect(labels).toEqual(['Atlas', 'Atlas/202 Notes', 'Atlas/Journal']);
+		expect(labels).not.toContain('** (Full vault)');
+	});
+
+	it('does not match sibling folders that share a name prefix', () => {
+		const app = makeAppWithFolders(['Atlas', 'AtlasArchive', 'Atlas/202 Notes']);
+		const modal = new VaultFolderModal(
+			app as never,
+			vi.fn(),
+			'Atlas',
+		);
+
+		modal.open();
+
+		const labels = Array.from(modal.contentEl.querySelectorAll('.kado-picker-item'))
+			.map((el) => el.textContent);
+		expect(labels).toEqual(['Atlas', 'Atlas/202 Notes']);
+	});
+
+	it('with an empty prefix (full-vault global) shows all folders but no Full vault entry', () => {
+		const app = makeAppWithFolders(['notes', 'archive']);
+		const modal = new VaultFolderModal(
+			app as never,
+			vi.fn(),
+			'',
+		);
+
+		modal.open();
+
+		const labels = Array.from(modal.contentEl.querySelectorAll('.kado-picker-item'))
+			.map((el) => el.textContent);
+		expect(labels).toEqual(['archive', 'notes']);
+		expect(labels).not.toContain('** (Full vault)');
+	});
+
+	it('selecting a restricted subfolder fires onSelect with its path', () => {
+		const app = makeAppWithFolders(['Atlas', 'Atlas/202 Notes']);
+		const onSelect = vi.fn();
+		const modal = new VaultFolderModal(
+			app as never,
+			onSelect,
+			'Atlas',
+		);
+
+		modal.open();
+
+		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
+		(items[1] as HTMLElement).click();
+
+		expect(onSelect).toHaveBeenCalledWith('Atlas/202 Notes');
+	});
+});

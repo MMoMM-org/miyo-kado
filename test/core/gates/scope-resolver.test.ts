@@ -11,6 +11,7 @@ import {
 	resolveScope,
 	intersectPermissions,
 	createAllPermissions,
+	findMostSpecificEntry,
 } from '../../../src/core/gates/scope-resolver';
 import type {DataTypePermissions, PathPermission} from '../../../src/types/canonical';
 
@@ -405,5 +406,33 @@ describe('resolveScope() — blacklist mode', () => {
 		const result = resolveScope(scope, 'notes/any.md');
 
 		expect(result).toEqual(createAllPermissions());
+	});
+});
+
+describe('findMostSpecificEntry()', () => {
+	it('returns the entry whose pattern contains the path (ancestor folder)', () => {
+		const atlas = makePathPermission('Atlas', makeReadOnlyPermissions());
+		const result = findMostSpecificEntry([atlas], 'Atlas/202 Notes');
+
+		expect(result).toBe(atlas);
+	});
+
+	it('picks the most specific entry when several match', () => {
+		const broad = makePathPermission('**', makeReadOnlyPermissions());
+		const narrow = makePathPermission('Atlas/202 Notes', makeAllFalsePermissions());
+		const result = findMostSpecificEntry([broad, narrow], 'Atlas/202 Notes/note.md');
+
+		expect(result).toBe(narrow);
+	});
+
+	it('returns undefined when no entry matches the path', () => {
+		const atlas = makePathPermission('Atlas', makeReadOnlyPermissions());
+		const result = findMostSpecificEntry([atlas], 'Other/file.md');
+
+		expect(result).toBeUndefined();
+	});
+
+	it('returns undefined for an empty paths array', () => {
+		expect(findMostSpecificEntry([], 'anything')).toBeUndefined();
 	});
 });

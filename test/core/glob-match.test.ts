@@ -5,7 +5,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {matchGlob, pathMatchesPatterns, dirCouldContainMatches, validateGlobPattern} from '../../src/core/glob-match';
+import {matchGlob, pathMatchesPatterns, dirCouldContainMatches, validateGlobPattern, folderPrefixOf} from '../../src/core/glob-match';
 
 // ============================================================
 // matchGlob — literal matching
@@ -256,5 +256,39 @@ describe('validateGlobPattern() — validates ** pattern', () => {
 		const result = validateGlobPattern('**/daily.md');
 		expect(result.ok).toBe(true);
 		if (result.ok) expect(result.warnings).toEqual([]);
+	});
+});
+
+// ============================================================
+// folderPrefixOf — literal folder prefix of a glob pattern
+// ============================================================
+
+describe('folderPrefixOf()', () => {
+	it('returns a bare folder name unchanged', () => {
+		expect(folderPrefixOf('Atlas')).toBe('Atlas');
+	});
+
+	it('returns nested literal segments unchanged', () => {
+		expect(folderPrefixOf('Atlas/202 Notes')).toBe('Atlas/202 Notes');
+	});
+
+	it('strips a trailing ** segment to its literal prefix', () => {
+		expect(folderPrefixOf('Atlas/**')).toBe('Atlas');
+	});
+
+	it('strips a trailing * segment to its literal prefix', () => {
+		expect(folderPrefixOf('Projects/*')).toBe('Projects');
+	});
+
+	it('stops at the first wildcard segment', () => {
+		expect(folderPrefixOf('Atlas/*/notes')).toBe('Atlas');
+	});
+
+	it('returns empty string for full-vault **', () => {
+		expect(folderPrefixOf('**')).toBe('');
+	});
+
+	it('returns empty string for an empty pattern', () => {
+		expect(folderPrefixOf('')).toBe('');
 	});
 });

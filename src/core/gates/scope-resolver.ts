@@ -62,11 +62,20 @@ function patternSpecificity(pattern: string): number {
  * Directory paths (ending with '/') also match patterns that would contain files
  * under that directory, e.g. 'allowed/' matches 'allowed/**'.
  */
-export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypePermissions | null {
+/**
+ * Returns the most specific path entry whose pattern matches `requestPath`, or
+ * undefined when none match. "Most specific" = longest run of literal characters
+ * (see {@link patternSpecificity}); declaration order breaks ties (first wins).
+ *
+ * Directory paths (ending with '/') also match patterns that would contain files
+ * under that directory. Shared by {@link resolveScope} (enforcement) and the
+ * settings UI (computing the permission ceiling of a narrowed key path).
+ */
+export function findMostSpecificEntry(paths: PathPermission[], requestPath: string): PathPermission | undefined {
 	const isDir = requestPath.endsWith('/');
 	let best: PathPermission | undefined;
 	let bestScore = -1;
-	for (const entry of scope.paths) {
+	for (const entry of paths) {
 		const matches = matchGlob(entry.path, requestPath)
 			|| (isDir && dirCouldContainMatches(entry.path, requestPath));
 		if (!matches) continue;
@@ -76,6 +85,11 @@ export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypeP
 			bestScore = score;
 		}
 	}
+	return best;
+}
+
+export function resolveScope(scope: ScopeConfig, requestPath: string): DataTypePermissions | null {
+	const best = findMostSpecificEntry(scope.paths, requestPath);
 
 	if (scope.listMode === 'whitelist') {
 		return best ? best.permissions : null;

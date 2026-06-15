@@ -57,9 +57,11 @@ Returns tags of a note as `{frontmatter: string[], inline: string[], all: string
 - Permission gate uses `delete: true/false` from CrudFlags — same mechanism as read/write/update.
 - Router discriminates via explicit `kind: 'delete'` marker on CoreDeleteRequest (other request types don't have a `kind` field).
 
-<!-- 2026-04-08 -->
+<!-- 2026-04-08, updated 2026-06-15 -->
 ## Access mode is per-key, not inherited from global
 Each API key has its own access mode (whitelist/blacklist) configured independently. There is no inheritance from a global default — the access mode toggle shown per key is authoritative, not read-only. When implementing permission enforcement, resolve the mode from the key's own config, never fall back to a global setting.
+
+**Key paths may narrow to subfolders of global paths (#74).** A key path is no longer restricted to the exact global path strings — it can be any subfolder under a globally-allowed path (e.g. global `Atlas` → key `Atlas/202 Notes`). Enforcement needs no special handling: the chain runs global-scope (Gate 1) AND key-scope (Gate 2), both via `resolveScope`, so a narrowed path passes both while a sibling is denied by key-scope. The settings UI offers the narrowing (`⊂ narrow` in the key's add-path picker → `VaultFolderModal` scoped to the global path's subtree via `folderPrefixOf`); the key path's permission ceiling is the most-specific *containing* global entry (`findMostSpecificEntry`, shared with `resolveScope`), not an exact-string match.
 
 <!-- 2026-04-12 -->
 ## Full vault access pattern is `**`

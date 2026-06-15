@@ -43,6 +43,25 @@ function isBareName(pattern: string): boolean {
 }
 
 /**
+ * Returns the literal folder prefix of a glob pattern: the leading path segments
+ * that contain no wildcards. Used to scope a folder browser to a pattern's
+ * subtree (e.g. narrowing an API-key path under a globally-allowed folder).
+ *
+ * Examples: `Atlas` -> `Atlas`, `Atlas/202 Notes` -> `Atlas/202 Notes`,
+ * `Atlas/` followed by `**` -> `Atlas`, `Projects/` followed by `*` -> `Projects`,
+ * a wildcard mid-path stops collection at that segment, and bare `**` -> ``
+ * (full vault — no folder restriction).
+ */
+export function folderPrefixOf(pattern: string): string {
+	const literalSegments: string[] = [];
+	for (const segment of pattern.split('/')) {
+		if (segment.includes('*') || segment.includes('?')) break;
+		literalSegments.push(segment);
+	}
+	return literalSegments.join('/');
+}
+
+/**
  * Returns true when `path` matches the given glob `pattern`.
  * Matching is case-sensitive and anchored at both ends.
  *

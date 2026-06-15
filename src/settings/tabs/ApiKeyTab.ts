@@ -9,9 +9,12 @@ import {Modal, Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
 import type {ApiKeyConfig, DataTypePermissions, KadoConfig, ListMode, PathPermission} from '../../types/canonical';
 import {createDefaultPermissions} from '../../types/canonical';
+import {folderPrefixOf} from '../../core/glob-match';
+import {findMostSpecificEntry} from '../../core/gates/scope-resolver';
 import {renderPermissionMatrix} from '../components/PermissionMatrix';
 import {renderTagEntry} from '../components/TagEntry';
 import {renderOpenNotesSection} from '../components/OpenNotesSection';
+import {VaultFolderModal} from '../components/VaultFolderModal';
 
 export function renderApiKeyTab(
 	containerEl: HTMLElement,
@@ -153,7 +156,10 @@ function renderKeyPermissions(
 	for (let i = 0; i < key.paths.length; i++) {
 		const keyPath = key.paths[i];
 		if (!keyPath) continue;
-		const globalPath = globalSecurity.paths.find(p => p.path === keyPath.path);
+		// Ceiling = the most specific GLOBAL path that contains this key path.
+		// A narrowed key path (e.g. 'Atlas/202 Notes' under global 'Atlas') has
+		// no exact global match, so resolve by ancestor instead of equality.
+		const globalPath = findMostSpecificEntry(globalSecurity.paths, keyPath.path);
 		renderKeyPathEntry(pathsContainer, keyPath, globalPath?.permissions, key.listMode, plugin, () => {
 			key.paths.splice(i, 1);
 			void plugin.saveSettings();
@@ -237,11 +243,8 @@ function renderGlobalPathPicker(
 	plugin: KadoPlugin,
 	onRedisplay: () => void,
 ): void {
-	const assignedPaths = new Set(key.paths.map(p => p.path));
-	const available = globalPaths.filter(p => !assignedPaths.has(p.path));
-
-	if (available.length === 0) {
-		new Notice('All global paths are already assigned to this key.');
+	if (globalPaths.length === 0) {
+		new Notice('No global paths defined in global security. Add paths there first.');
 		return;
 	}
 
@@ -254,12 +257,41 @@ function renderGlobalPathPicker(
 		picker.remove();
 	};
 
-	for (const globalPath of available) {
-		const item = picker.createEl('button', {cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
-		item.addEventListener('click', () => {
-			key.paths.push({path: globalPath.path, permissions: createDefaultPermissions()});
-			void plugin.saveSettings();
-			onRedisplay();
+	// Adds a path to the key, guarding exact duplicates. Used both for whole
+	// global paths and for narrowed subfolders.
+	const addPath = (path: string): void => {
+		if (key.paths.some(p => p.path === path)) {
+			new Notice(`Path '${path}' is already assigned to this key.`);
+			return;
+		}
+		key.paths.push({path, permissions: createDefaultPermissions()});
+		void plugin.saveSettings();
+		onRedisplay();
+	};
+
+	const assignedPaths = new Set(key.paths.map(p => p.path));
+
+	for (const globalPath of globalPaths) {
+		const row = picker.createDiv({cls: 'kado-picker-row'});
+
+		// Add the whole global path (disabled once it's already assigned).
+		const item = row.createEl('button', {cls: 'kado-picker-item', text: globalPath.path || '(empty)'});
+		if (assignedPaths.has(globalPath.path)) {
+			item.disabled = true;
+			item.addClass('is-assigned');
+		} else {
+			item.addEventListener('click', () => addPath(globalPath.path));
+		}
+
+		// Narrow to a subfolder under this global path.
+		const narrowBtn = row.createEl('button', {
+			cls: 'kado-narrow-btn',
+			text: '⊂ narrow',
+			attr: {'aria-label': `Narrow ${globalPath.path || 'path'} to a subfolder`},
+		});
+		narrowBtn.addEventListener('click', () => {
+			closePicker();
+			new VaultFolderModal(plugin.app, (sub) => addPath(sub), folderPrefixOf(globalPath.path)).open();
 		});
 	}
 
