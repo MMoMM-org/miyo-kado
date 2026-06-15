@@ -106,7 +106,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 		// Safe case: Obsidian updates links silently, so kado-rename is registered and reliable.
 		new Setting(containerEl)
 			.setName('Rename tool')
-			.setDesc('Obsidian updates internal links automatically, so renames update backlinks without prompting.');
+			.setDesc('Obsidian updates internal links automatically. Renaming is enabled.');
 	} else {
 		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
 		const riskDesc = containerEl.ownerDocument.createDocumentFragment();

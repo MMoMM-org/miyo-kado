@@ -15,6 +15,7 @@
  */
 
 import {App, Modal, Setting} from 'obsidian';
+import {openFilesAndLinksSettings} from '../../obsidian/vault-config';
 
 const DOCS_URL = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
 
@@ -64,6 +65,13 @@ export class RenameRiskModal extends Modal {
 		docsP.append('.');
 
 		new Setting(contentEl)
+			.addButton(btn => btn
+				.setButtonText('Open Obsidian settings')
+				.setCta()
+				.onClick(() => {
+					this.close();
+					openFilesAndLinksSettings(this.app);
+				}))
 			.addButton(btn => btn
 				.setButtonText(this.opts.dismissLabel ?? 'Cancel')
 				.onClick(() => {

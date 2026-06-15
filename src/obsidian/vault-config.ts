@@ -14,6 +14,25 @@ interface VaultConfigReader {
 	getConfig?(key: string): unknown;
 }
 
+/** Narrow view of the untyped `app.setting` API for opening core settings tabs. */
+interface SettingOpener {
+	setting?: {
+		open(): void;
+		openTabById(id: string): void;
+	};
+}
+
+/**
+ * Opens Obsidian's Settings to the "Files and links" tab (where the
+ * "Automatically update internal links" toggle lives). `app.setting` is not in
+ * the public typings; the call is a no-op if unavailable.
+ */
+export function openFilesAndLinksSettings(app: App): void {
+	const opener = app as unknown as SettingOpener;
+	opener.setting?.open();
+	opener.setting?.openTabById('file');
+}
+
 /**
  * Returns true when Obsidian's "Automatically update internal links" is ON.
  * Defaults to false when the accessor is unavailable (e.g. tests) — the safe
