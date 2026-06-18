@@ -1294,8 +1294,9 @@ describe('End-to-end tool call pipeline', () => {
 			view.file = file;
 			view.data = EDITOR_CONTENT;
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as WorkspaceLeaf] as unknown as never[]);
-			// Disk content differs from editor → dirty
+			// Disk content differs from editor → dirty. The guard reads via cachedRead.
 			vi.mocked(app.vault.read).mockResolvedValue(DISK_CONTENT);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue(DISK_CONTENT);
 
 			Notice._reset();
 

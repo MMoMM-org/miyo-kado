@@ -428,6 +428,66 @@ describe('NoteAdapter', () => {
 			expect(app.vault.cachedRead).not.toHaveBeenCalled();
 			expect(app.vault.process).toHaveBeenCalledOnce();
 		});
+
+		it('proceeds when the open editor only reserialized frontmatter (key order/quoting) with no real edits', async () => {
+			// Obsidian's Properties widget re-emits frontmatter in canonical form, so
+			// getViewData() never byte-matches the on-disk YAML even with zero edits.
+			// A byte comparison would flag this as dirty forever; the guard must treat
+			// semantically-equal frontmatter + identical body as clean. See CON-7.
+			const editorContent = '---\ntags: []\ntitle: "Plugin Idea"\npublish: false\n---\n\n# Body unchanged\n';
+			const diskContent = "---\ntitle: Plugin Idea\npublish: false\ntags: []\n---\n\n# Body unchanged\n";
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, editorContent);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue(diskContent);
+			vi.mocked(app.vault.process).mockImplementation(async (_f, transform) => {
+				transform(diskContent);
+				file.stat = {ctime: 1000, mtime: 3000, size: 3};
+			});
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
+
+			expect(app.vault.process).toHaveBeenCalledOnce();
+			expect(Notice._instances).toHaveLength(0);
+			expect(result.modified).toBe(3000);
+		});
+
+		it('returns CONFLICT when the editor changed a frontmatter value (not just its serialization)', async () => {
+			const editorContent = '---\ntitle: Edited In Editor\ntags: []\n---\n\n# Body\n';
+			const diskContent = '---\ntitle: Original\ntags: []\n---\n\n# Body\n';
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, editorContent);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue(diskContent);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000})),
+			).rejects.toMatchObject({code: 'CONFLICT', message: expect.stringContaining('open in the editor')});
+			expect(app.vault.process).not.toHaveBeenCalled();
+			expect(Notice._instances).toHaveLength(1);
+		});
+
+		it('returns CONFLICT when the editor body changed but frontmatter is identical', async () => {
+			const editorContent = '---\ntitle: Same\n---\n\n# Body the user is actively typing\n';
+			const diskContent = '---\ntitle: Same\n---\n\n# Body\n';
+			const file = makeTFile({path: 'notes/test.md', ctime: 1000, mtime: 2000});
+			const {view} = makeLeafWithView(file, editorContent);
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
+			vi.mocked(app.vault.cachedRead).mockResolvedValue(diskContent);
+
+			const adapter = createNoteAdapter(app);
+
+			await expect(
+				adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000})),
+			).rejects.toMatchObject({code: 'CONFLICT'});
+			expect(app.vault.process).not.toHaveBeenCalled();
+		});
 	});
 
 	// ---------------------------------------------------------------------------

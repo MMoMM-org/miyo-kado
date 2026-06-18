@@ -19,6 +19,13 @@
 **Decision**: defer. Revisit after Kado is officially published in the community plugin store and can be validated through the real update path. Close issue as "cannot reproduce via official update path" until then.
 **Workaround**: disable + enable the plugin in the Community Plugins page, or `touch data.json` to force an external-change refresh.
 
+<!-- 2026-06-18 -->
+## Dirty-editor guard false-positive on property notes — Status: resolved
+**Problem**: Every assistant write to a note that has YAML frontmatter (properties) was rejected with CONFLICT + the "Kado wanted to modify … pause typing" Notice, even with zero edits — and cmd+s, switching notes, or typing elsewhere never cleared it.
+**Root cause**: `isFileOpenAndDirty` (`src/obsidian/note-adapter.ts`) decided "dirty" via a raw byte compare `view.getViewData() !== await vault.cachedRead(file)`. Obsidian's Properties widget re-serializes frontmatter in canonical form (key order, quoting, empty-array style), so `getViewData()` never byte-matches the on-disk YAML for a property note. cmd+s can't fix it: Obsidian sees no user edit, so the save is a no-op and the normalized buffer is never flushed. The guard only inspects the target file's leaf (kept open in its tab), so what you type elsewhere is irrelevant.
+**Fix**: `contentsEquivalent` — compare body verbatim, frontmatter semantically (`parseYaml` both sides + key-sorted JSON canonicalize). Only flag dirty on a real body or frontmatter-value change. Defensive: non-string cachedRead → treat as dirty (no throw).
+**Invisible to tests**: the obsidian mock's `getLeavesOfType` returns `[]` by default, so the guard never fired — same class as the renameFile live-only bug. New tests stub a leaf + `cachedRead` explicitly.
+
 ## Live test state isolation — Status: known
 **Problem**: Config-change tests mutate `data.json` + plugin in-memory state. A test failure before `writeConfig(fixtureConfig)` leaks the broken config into subsequent tests. Adding `beforeEach` to restore fixture + trigger reload is fragile: the hot-reload timing varies (some tests need >5s reload-settle, causing 3s waits to miss), and restore-then-reload without waiting for the MCP probe can race with the next test's early calls.
 **Observed**: T9.3 (pre-existing bug) leaked into T10.1, which then skipped. Adding beforeEach with 3s wait broke T9.1 and T9.2 instead (cascading).
