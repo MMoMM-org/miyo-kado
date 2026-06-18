@@ -1,3 +1,10 @@
+## [0.15.1](https://github.com/MMoMM-org/miyo-kado/compare/0.15.0...0.15.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* stop dirty-editor guard false-positive on property notes ([#77](https://github.com/MMoMM-org/miyo-kado/issues/77)) ([4bd3b93](https://github.com/MMoMM-org/miyo-kado/commit/4bd3b939df3d72c9957deece6783e5ca11eb9759))
+
 # [0.15.0](https://github.com/MMoMM-org/miyo-kado/compare/0.14.0...0.15.0) (2026-06-15)
 
 
