@@ -6,7 +6,7 @@
  */
 
 import type {App, HeadingCache, TFile} from 'obsidian';
-import {MarkdownView, Notice} from 'obsidian';
+import {MarkdownView, Notice, parseYaml} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget, NoteWritePartial} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
@@ -329,7 +329,69 @@ async function isFileOpenAndDirty(app: App, file: TFile): Promise<boolean> {
 	if (!view) return false;
 	const editorContent = view.getViewData();
 	const cachedContent = await app.vault.cachedRead(file);
-	return editorContent !== cachedContent;
+	if (editorContent === cachedContent) return false; // fast path: byte-identical
+	return !contentsEquivalent(editorContent, cachedContent);
+}
+
+/**
+ * Returns the raw YAML text inside a frontmatter block (between the opening and
+ * closing `---` fences), or null if `prefix` is not a frontmatter block. Operates
+ * on the `prefix` returned by splitFrontmatter, which is `---\n<yaml>\n---\n`.
+ */
+function innerYaml(prefix: string): string | null {
+	if (!prefix.startsWith('---')) return null;
+	const open = prefix.indexOf('\n');
+	const close = prefix.indexOf('\n---', open);
+	if (open === -1 || close === -1) return null;
+	return prefix.slice(open + 1, close + 1);
+}
+
+/**
+ * Recursively sorts object keys so two structurally-equal objects serialize
+ * identically regardless of key order. Array order is preserved (it is
+ * semantically meaningful, e.g. an ordered tag list).
+ */
+function canonicalize(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonicalize);
+	if (value && typeof value === 'object') {
+		const out: Record<string, unknown> = {};
+		for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+			out[key] = canonicalize((value as Record<string, unknown>)[key]);
+		}
+		return out;
+	}
+	return value;
+}
+
+/** True when two YAML strings parse to the same structure (ignoring serialization). */
+function frontmatterEquivalent(a: string, b: string): boolean {
+	try {
+		return JSON.stringify(canonicalize(parseYaml(a))) === JSON.stringify(canonicalize(parseYaml(b)));
+	} catch {
+		return false; // unparseable on either side → treat as different (fail safe: dirty)
+	}
+}
+
+/**
+ * True when the editor buffer and the on-disk copy are equivalent despite not
+ * being byte-identical. Obsidian's Properties widget re-serializes frontmatter in
+ * canonical form (key order, quoting, empty-array style), so getViewData() never
+ * byte-matches the on-disk YAML even with zero user edits — a byte comparison
+ * would flag such notes as perpetually "dirty" and block every assistant write.
+ *
+ * The body is compared verbatim (any real typing differs there); only the
+ * frontmatter is compared semantically. See CON-7 — this keeps the dirty-editor
+ * guard a true edit detector rather than a serialization-diff detector.
+ */
+function contentsEquivalent(editor: string, cached: string): boolean {
+	if (typeof editor !== 'string' || typeof cached !== 'string') return false; // can't compare → treat as dirty
+	const e = splitFrontmatter(editor);
+	const c = splitFrontmatter(cached);
+	if (e.body !== c.body) return false;
+	const ey = innerYaml(e.prefix);
+	const cy = innerYaml(c.prefix);
+	if (ey === null || cy === null) return e.prefix === c.prefix; // no FM block → exact compare
+	return ey === cy || frontmatterEquivalent(ey, cy);
 }
 
 function conflictEditorError(path: string): NoteAdapterError {

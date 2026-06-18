@@ -479,6 +479,44 @@ export function normalizePath(path: string): string {
 
 export const getAllTags = vi.fn((_cache: CachedMetadata): string[] | null => null);
 
+/**
+ * Minimal YAML parser covering the flat `key: value` frontmatter subset used by
+ * the dirty-editor guard tests: scalars, quoted strings, and inline `[a, b]` /
+ * empty `[]` sequences. Order-insensitive object output mirrors how Obsidian's
+ * real parseYaml collapses serialization differences (key order, quoting) to the
+ * same structure. Not a general YAML implementation.
+ */
+export function parseYaml(input: string): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const raw of input.split('\n')) {
+		const line = raw.trimEnd();
+		if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+		const sep = line.indexOf(':');
+		if (sep === -1) continue;
+		const key = line.slice(0, sep).trim();
+		const value = line.slice(sep + 1).trim();
+		out[key] = parseScalarOrSeq(value);
+	}
+	return out;
+}
+
+function parseScalarOrSeq(value: string): unknown {
+	if (value === '') return null;
+	if (value.startsWith('[') && value.endsWith(']')) {
+		const inner = value.slice(1, -1).trim();
+		if (inner === '') return [];
+		return inner.split(',').map((item) => unquote(item.trim()));
+	}
+	return unquote(value);
+}
+
+function unquote(value: string): string {
+	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		return value.slice(1, -1);
+	}
+	return value;
+}
+
 // --- Factories ---
 
 export function createMockTFile(overrides?: Partial<{
