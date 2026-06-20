@@ -66,10 +66,10 @@ describe('KadoPlugin', () => {
 			expect(plugin.addRibbonIcon).not.toHaveBeenCalled();
 		});
 
-		it('does not register status bar items', async () => {
+		it('registers the Kado status bar indicator', async () => {
 			const plugin = getMockPlugin();
 			await plugin.onload();
-			expect(plugin.addStatusBarItem).not.toHaveBeenCalled();
+			expect(plugin.addStatusBarItem).toHaveBeenCalledTimes(1);
 		});
 
 		it('does not register commands', async () => {

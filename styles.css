@@ -461,3 +461,41 @@
 	border-radius: 4px;
 	background: var(--background-secondary);
 }
+
+/* ── Status bar indicator ───────────────────────────────────── */
+/* Kado gate glyph (門) whose colour conveys server/activity state.
+   State is also carried in the title/aria-label, so colour is never
+   the only signal. See src/ui/StatusBar.ts. */
+.kado-statusbar {
+	cursor: pointer;
+	font-weight: var(--font-semibold);
+	transition: color 120ms ease-in-out;
+}
+
+.kado-statusbar.mod-stopped {
+	color: var(--text-faint);
+}
+
+.kado-statusbar.mod-listening {
+	color: var(--text-muted);
+}
+
+.kado-statusbar.mod-read {
+	color: var(--text-accent);
+	animation: kado-statusbar-pulse 900ms ease-out;
+}
+
+.kado-statusbar.mod-write {
+	color: var(--color-orange, var(--text-accent));
+	animation: kado-statusbar-pulse 900ms ease-out;
+}
+
+.kado-statusbar.mod-denied,
+.kado-statusbar.mod-error {
+	color: var(--text-error);
+}
+
+@keyframes kado-statusbar-pulse {
+	0% { transform: scale(1.35); }
+	100% { transform: scale(1); }
+}
