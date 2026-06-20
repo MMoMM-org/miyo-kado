@@ -482,12 +482,12 @@
 
 .kado-statusbar.mod-read {
 	color: var(--text-accent);
-	animation: kado-statusbar-pulse 900ms ease-out;
+	animation: kado-statusbar-pulse 0.8s ease-in-out infinite;
 }
 
 .kado-statusbar.mod-write {
 	color: var(--color-orange, var(--text-accent));
-	animation: kado-statusbar-pulse 900ms ease-out;
+	animation: kado-statusbar-pulse 0.8s ease-in-out infinite;
 }
 
 .kado-statusbar.mod-denied,
@@ -495,7 +495,9 @@
 	color: var(--text-error);
 }
 
+/* Throbs continuously while a read/write state is active (≈2 s, longer during
+   a call burst). A single static shrink was too subtle to notice. */
 @keyframes kado-statusbar-pulse {
-	0% { transform: scale(1.35); }
-	100% { transform: scale(1); }
+	0%, 100% { transform: scale(1); opacity: 1; }
+	50% { transform: scale(1.45); opacity: 0.55; }
 }

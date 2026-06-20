@@ -156,3 +156,20 @@ Example lines:
 | `gate` | On denial only: which permission gate rejected the request |
 
 When the log reaches **Max log size** (configured in the General tab), the file is rotated (`kado-audit.log.1`, `.2`, ...) and older rotations beyond **Retained logs** are deleted.
+
+## Status Bar Indicator
+
+The audit log is the permanent record; the status bar is the live, glanceable companion. Kado renders the 門 gate glyph in Obsidian's status bar (desktop only) so external MCP access is never fully invisible.
+
+The glyph's colour conveys state, and the tooltip carries the same text (colour is never the only signal, and it names only the acting **key**, never the note path -- that detail lives in the audit log):
+
+| State | Colour | Meaning |
+|-------|--------|---------|
+| Listening | muted | Server up and idle. Tooltip: `Kado: listening :<port> · N keys` |
+| Off | faint | Server disabled / not running |
+| Bind error | red | Server could not bind its port |
+| Read | accent, throbbing | A read / search / open-notes call is running (`Kado: read — key '<name>'`) |
+| Write | amber, throbbing | A mutating call -- write / delete / rename -- is running (`Kado: write — key '<name>'`) |
+| Denied | red, steady | The last call was rejected; lingers a few seconds with the gate name, then self-clears |
+
+Read/write throbs are brief; a burst of calls keeps the glyph lit because each call extends the window. A denial lingers longer so you notice it, then clears on its own -- no click needed. Clicking the glyph opens Kado's settings (and nothing else). The indicator reflects permission decisions and successful access; a permitted call that then fails (e.g. `NOT_FOUND`) is recorded in the audit log but does not animate the bar.

@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {StatusBar, PULSE_MS} from '../../src/ui/StatusBar';
+import {StatusBar, PULSE_MS, DENIED_MS} from '../../src/ui/StatusBar';
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -169,18 +169,22 @@ describe('StatusBar — activity pulses', () => {
 // Denied — sticky semantic
 // ---------------------------------------------------------------------------
 
-describe('StatusBar — denied (sticky)', () => {
+describe('StatusBar — denied (long linger, self-clearing)', () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
-	it('recordDenied is sticky: it does not revert on the pulse timer', () => {
+	it('recordDenied lingers past a normal pulse, then auto-reverts after DENIED_MS', () => {
 		const {sb, fake} = makeHarness();
 		sb.setListening();
 		sb.recordDenied('tomo', 'permission');
 		expect(fake.modClasses()).toEqual(['mod-denied']);
 		expect(fake.title()).toBe("Kado: denied — key 'tomo' (permission)");
-		vi.advanceTimersByTime(PULSE_MS * 5);
+		// Still red well past a read/write pulse window.
+		vi.advanceTimersByTime(PULSE_MS);
 		expect(fake.modClasses()).toEqual(['mod-denied']);
+		// Self-clears once the longer linger elapses — no click needed.
+		vi.advanceTimersByTime(DENIED_MS - PULSE_MS);
+		expect(fake.modClasses()).toEqual(['mod-listening']);
 	});
 
 	it('omits the gate suffix when no gate is given', () => {
@@ -189,7 +193,7 @@ describe('StatusBar — denied (sticky)', () => {
 		expect(fake.title()).toBe("Kado: denied — key 'tomo'");
 	});
 
-	it('a subsequent allowed call clears the sticky denial', () => {
+	it('a subsequent allowed call supersedes a lingering denial immediately', () => {
 		const {sb, fake} = makeHarness();
 		sb.setListening();
 		sb.recordDenied('tomo', 'permission');
@@ -211,13 +215,19 @@ describe('StatusBar — click', () => {
 		expect(openSettings).toHaveBeenCalledTimes(1);
 	});
 
-	it('clears a sticky denial on click and reverts to the resting state', () => {
-		const {sb, fake, openSettings, click} = makeHarness();
-		sb.setListening();
-		sb.recordDenied('tomo', 'permission');
-		click();
-		expect(openSettings).toHaveBeenCalledTimes(1);
-		expect(fake.modClasses()).toEqual(['mod-listening']);
+	it('opens settings on click without dismissing a denial (denial self-clears)', () => {
+		vi.useFakeTimers();
+		try {
+			const {sb, fake, openSettings, click} = makeHarness();
+			sb.setListening();
+			sb.recordDenied('tomo', 'permission');
+			click();
+			expect(openSettings).toHaveBeenCalledTimes(1);
+			// Click must NOT clear the denial — it only opens settings.
+			expect(fake.modClasses()).toEqual(['mod-denied']);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('leaves a non-denied state unchanged on click', () => {

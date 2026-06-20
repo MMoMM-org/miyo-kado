@@ -17,21 +17,33 @@
  *   listening — server up, resting/idle
  *   read      — a read/search/open-notes call just ran (transient pulse → resting)
  *   write     — a mutating call (write/delete/rename) just ran (transient pulse)
- *   denied    — last call was rejected (red, sticky until next allowed call or click)
+ *   denied    — last call was rejected (steady red, lingers DENIED_MS → resting)
  *
- * Sticky semantics mirror Hakobi's StatusBar: a denial/error persists so the
- * user actually notices it. A denial is cleared by the next ALLOWED call (the
- * vault was successfully touched again) or by clicking (explicit acknowledge,
- * which also opens settings). Read/write pulses are transient and revert to the
- * resting state after PULSE_MS. The tooltip never carries note paths — that
- * detail belongs in the audit log; the status bar only names the acting key.
+ * Read/write pulses are brief (PULSE_MS); a denial lingers longer (DENIED_MS)
+ * so the user actually notices it, then self-clears — clicking is reserved for
+ * opening settings, never doubles as "dismiss the warning". A new ALLOWED call
+ * supersedes a lingering denial immediately. The error state (failed server
+ * bind) persists until the server state changes, since it is a resting state.
+ * The tooltip never carries note paths — that detail belongs in the audit log;
+ * the status bar only names the acting key.
  */
 
 /** The Kado gate glyph rendered in the status bar. */
 const GLYPH = '門';
 
-/** How long an activity pulse stays before reverting to the resting state (ms). */
-export const PULSE_MS = 900;
+/**
+ * How long an activity pulse stays lit before reverting to the resting state
+ * (ms). Long enough to be unmistakable for a single call; a burst of calls
+ * keeps it lit because each call resets the timer.
+ */
+export const PULSE_MS = 2000;
+
+/**
+ * How long a denied call stays red before auto-reverting (ms). Longer than a
+ * pulse so the user can notice it, but self-clearing — clicking is reserved for
+ * opening settings, not for dismissing the warning.
+ */
+export const DENIED_MS = 6000;
 
 /** The full set of status-bar states (also the `mod-<state>` CSS class suffix). */
 export type StatusBarState =
@@ -72,7 +84,6 @@ export interface StatusBarDeps {
 
 export class StatusBar {
 	private readonly el: HTMLElement;
-	private state: StatusBarState = 'stopped';
 	/** Resting state a transient pulse reverts to. */
 	private resting: RestingState = 'stopped';
 	/** Tooltip for the resting state, reused when a pulse reverts. */
@@ -86,8 +97,8 @@ export class StatusBar {
 		this.el.setText(GLYPH);
 
 		deps.plugin.registerDomEvent(this.el, 'click', () => {
-			// Clicking a sticky denial acknowledges and clears it; always open settings.
-			if (this.state === 'denied') this.applyResting();
+			// Click only opens settings — a denial self-clears, so click never
+			// doubles as "dismiss".
 			this.deps.openSettings();
 		});
 
@@ -138,11 +149,19 @@ export class StatusBar {
 		}, PULSE_MS);
 	}
 
-	/** A tool call was rejected. Sticky until the next allowed call or a click. */
+	/**
+	 * A tool call was rejected. Lingers as steady red for DENIED_MS so the user
+	 * notices, then auto-reverts to the resting state. A new allowed call
+	 * supersedes it immediately.
+	 */
 	recordDenied(keyLabel: string, gate?: string): void {
 		this.clearPulseTimer();
 		const suffix = gate ? ` (${gate})` : '';
 		this.applyState('denied', `Kado: denied — key '${keyLabel}'${suffix}`);
+		this.pulseTimer = window.setTimeout(() => {
+			this.pulseTimer = null;
+			this.applyResting();
+		}, DENIED_MS);
 	}
 
 	/** Cancels any pending pulse timer. Called by the plugin on unload. */
@@ -173,7 +192,6 @@ export class StatusBar {
 	}
 
 	private applyState(state: StatusBarState, tooltip: string): void {
-		this.state = state;
 		this.el.classList.remove(...ALL_STATE_CLASSES);
 		this.el.classList.add(`mod-${state}`);
 		this.el.setAttribute('title', tooltip);
