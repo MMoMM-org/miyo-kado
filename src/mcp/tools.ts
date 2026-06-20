@@ -48,6 +48,31 @@ import type {RouteResult} from '../core/operation-router';
 // Public types
 // ============================================================
 
+/**
+ * A single tool-call activity signal, emitted for every allowed or denied call.
+ * Consumed by the status-bar indicator (Layer 5). Carries the full `keyId` so
+ * the consumer can resolve it to a human label; deliberately omits the path —
+ * that detail belongs in the audit log, not an at-a-glance indicator.
+ */
+export interface ToolActivityEvent {
+	/** The tool that ran, e.g. 'kado-write'. */
+	tool: string;
+	/** Full API key id (the consumer resolves it to a human label). */
+	keyId: string;
+	/** Whether the call was allowed or denied. */
+	decision: 'allowed' | 'denied';
+	/** True for mutating tools (write/delete/rename). */
+	mutating: boolean;
+	/** Denial gate name, when decision is 'denied'. */
+	gate?: string;
+}
+
+/** Observer for tool-call activity. Must never throw into the call path. */
+export type ToolActivityCallback = (event: ToolActivityEvent) => void;
+
+/** Tools that mutate the vault — drive the more salient write indicator. */
+const MUTATING_TOOLS = new Set(['kado-write', 'kado-delete', 'kado-rename']);
+
 /** Dependencies injected into the MCP tool handlers. */
 export interface ToolDependencies {
 	configManager: ConfigManager;
@@ -55,6 +80,11 @@ export interface ToolDependencies {
 	router: (request: CoreRequest) => Promise<RouteResult>;
 	getFileMtime: (path: string) => number | undefined;
 	auditLogger?: AuditLogger;
+	/**
+	 * Optional observer notified on every allowed/denied tool call, independent
+	 * of whether audit logging is enabled. Drives the status-bar indicator.
+	 */
+	onActivity?: ToolActivityCallback;
 	/** Obsidian App instance — required by the kado-open-notes tool handler. */
 	app: App;
 	/**
@@ -331,14 +361,26 @@ function debugFields(keyId: string, request: CoreRequest): Record<string, unknow
 	return fields;
 }
 
+/** Notifies the activity observer, swallowing any error so UI never breaks a tool call. */
+function emitActivity(deps: ToolDependencies, tool: string, keyId: string, decision: 'allowed' | 'denied', gate?: string): void {
+	if (!deps.onActivity) return;
+	try {
+		deps.onActivity({tool, keyId, decision, mutating: MUTATING_TOOLS.has(tool), gate});
+	} catch {
+		// Activity observer must never crash a tool call.
+	}
+}
+
 async function logAllowed(
 	tool: string,
-	auditLogger: AuditLogger | undefined,
+	deps: ToolDependencies,
 	keyId: string,
 	request: CoreRequest | CoreOpenNotesRequest,
 	startHrMs: number,
 	extra?: {permittedCount?: number},
 ): Promise<void> {
+	emitActivity(deps, tool, keyId, 'allowed');
+	const auditLogger = deps.auditLogger;
 	const durationMs = Math.max(1, Math.round(performance.now() - startHrMs));
 	if (isCoreOpenNotesRequest(request as {kind?: unknown})) {
 		kadoLog(`${tool} allowed`, {key: truncateKeyId(keyId), scope: (request as CoreOpenNotesRequest).scope, durationMs});
@@ -385,11 +427,13 @@ async function logAllowed(
 
 async function logDenied(
 	tool: string,
-	auditLogger: AuditLogger | undefined,
+	deps: ToolDependencies,
 	keyId: string,
 	request: CoreRequest | CoreOpenNotesRequest,
 	gate: string | undefined,
 ): Promise<void> {
+	emitActivity(deps, tool, keyId, 'denied', gate);
+	const auditLogger = deps.auditLogger;
 	if (isCoreOpenNotesRequest(request as {kind?: unknown})) {
 		kadoLog(`${tool} denied`, {key: truncateKeyId(keyId), scope: (request as CoreOpenNotesRequest).scope, gate});
 		if (!auditLogger) return;
@@ -459,7 +503,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		}
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied('kado-read', deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-read', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
@@ -470,7 +514,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 				kadoLog('kado-read error', {...debugFields(keyId, request), code: result.code});
 				return mapError(result);
 			}
-			await logAllowed('kado-read', deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-read', deps, keyId, request, startMs);
 			return mapFileResult(result as CoreFileResult);
 		} catch (err: unknown) {
 			// Adapters throw *AdapterError with a `code` field (NOT_FOUND,
@@ -500,7 +544,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 		}
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied('kado-write', deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-write', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
@@ -517,7 +561,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 				kadoLog('kado-write error', {...debugFields(keyId, request), code: result.code});
 				return mapError(result);
 			}
-			await logAllowed('kado-write', deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-write', deps, keyId, request, startMs);
 			return mapWriteResult(result as CoreWriteResult);
 		} catch (err: unknown) {
 			// Adapters throw NoteAdapterError / FrontmatterAdapterError with a
@@ -549,7 +593,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied('kado-delete', deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-delete', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
@@ -566,7 +610,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 				kadoLog('kado-delete error', {...debugFields(keyId, request), code: result.code});
 				return mapError(result);
 			}
-			await logAllowed('kado-delete', deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-delete', deps, keyId, request, startMs);
 			return mapDeleteResult(result as CoreDeleteResult);
 		} catch (err: unknown) {
 			// Adapters throw DeleteAdapterError with a `code` field — propagate it as the canonical error
@@ -595,7 +639,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 
 		const {result: perm} = evaluateRenamePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
-			await logDenied('kado-rename', deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
@@ -624,11 +668,11 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 				const sourceGone = deps.getFileMtime(request.source) === undefined;
 				if (targetMtime !== undefined && sourceGone) {
 					kadoLog('kado-rename allowed', {key: truncateKeyId(keyId), linkUpdatePending: true});
-					await logAllowed('kado-rename', deps.auditLogger, keyId, request, startMs);
+					await logAllowed('kado-rename', deps, keyId, request, startMs);
 					return mapRenameResult({source: request.source, target: request.target, modified: targetMtime, linkUpdatePending: true});
 				}
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
-				await logDenied('kado-rename', deps.auditLogger, keyId, request, 'timeout');
+				await logDenied('kado-rename', deps, keyId, request, 'timeout');
 				return mapError({
 					code: 'TIMEOUT',
 					message: `Rename did not complete within ${timeoutMs} ms and the file was not moved. Obsidian's "Automatically update internal links" setting is likely off, leaving a confirmation dialog blocking the rename. Enable it in Obsidian (Settings → Files and links) for reliable renames.`,
@@ -639,7 +683,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: result.code});
 				return mapError(result);
 			}
-			await logAllowed('kado-rename', deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-rename', deps, keyId, request, startMs);
 			return mapRenameResult(result as CoreRenameResult);
 		} catch (err: unknown) {
 			// RenameAdapterError carries NOT_FOUND (missing source), CONFLICT (target exists) — surface those.
@@ -668,7 +712,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
-			await logDenied('kado-search', deps.auditLogger, keyId, request, perm.error.gate);
+			await logDenied('kado-search', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error);
 		}
 
@@ -690,7 +734,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 				searchResult = {...searchResult, items: filtered, total: filtered.length};
 			}
 
-			await logAllowed('kado-search', deps.auditLogger, keyId, request, startMs);
+			await logAllowed('kado-search', deps, keyId, request, startMs);
 			return mapSearchResult(searchResult);
 		} catch (err: unknown) {
 			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
@@ -722,7 +766,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		const req = mapOpenNotesRequest(args as Record<string, unknown>, keyId);
 		const gate = gateOpenNoteScope(req.scope, config.security, key);
 		if (gate.kind === 'deny') {
-			await logDenied('kado-open-notes', deps.auditLogger, keyId, req, 'feature-gate');
+			await logDenied('kado-open-notes', deps, keyId, req, 'feature-gate');
 			return mapError(gate.error);
 		}
 
@@ -731,7 +775,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 			const all = enumerateOpenNotes(deps.app);
 			const byScope = pruneToScopeKind(all, gate.kind);
 			const permitted = filterDescriptorsByAcl(byScope, key, config);
-			await logAllowed('kado-open-notes', deps.auditLogger, keyId, req, startMs, {permittedCount: permitted.length});
+			await logAllowed('kado-open-notes', deps, keyId, req, startMs, {permittedCount: permitted.length});
 			return mapOpenNotesResult({notes: permitted});
 		} catch (err: unknown) {
 			// M7: static message to avoid leaking internal details; raw error logged below

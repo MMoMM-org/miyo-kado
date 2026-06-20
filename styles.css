@@ -461,3 +461,43 @@
 	border-radius: 4px;
 	background: var(--background-secondary);
 }
+
+/* ── Status bar indicator ───────────────────────────────────── */
+/* Kado gate glyph (門) whose colour conveys server/activity state.
+   State is also carried in the title/aria-label, so colour is never
+   the only signal. See src/ui/StatusBar.ts. */
+.kado-statusbar {
+	cursor: pointer;
+	font-weight: var(--font-semibold);
+	transition: color 120ms ease-in-out;
+}
+
+.kado-statusbar.mod-stopped {
+	color: var(--text-faint);
+}
+
+.kado-statusbar.mod-listening {
+	color: var(--text-muted);
+}
+
+.kado-statusbar.mod-read {
+	color: var(--text-accent);
+	animation: kado-statusbar-pulse 0.8s ease-in-out infinite;
+}
+
+.kado-statusbar.mod-write {
+	color: var(--color-orange, var(--text-accent));
+	animation: kado-statusbar-pulse 0.8s ease-in-out infinite;
+}
+
+.kado-statusbar.mod-denied,
+.kado-statusbar.mod-error {
+	color: var(--text-error);
+}
+
+/* Throbs continuously while a read/write state is active (≈2 s, longer during
+   a call burst). A single static shrink was too subtle to notice. */
+@keyframes kado-statusbar-pulse {
+	0%, 100% { transform: scale(1); opacity: 1; }
+	50% { transform: scale(1.45); opacity: 0.55; }
+}

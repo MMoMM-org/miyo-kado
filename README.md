@@ -35,6 +35,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
+- **Status bar indicator** -- the 門 gate glyph shows server state at a glance (listening / off / bind error) and throbs on each tool call, colour-coded for reads vs. writes, with the acting key's name in the tooltip; a rejected call lingers red for a few seconds then self-clears. Click it to open Kado's settings
 
 ## Architecture & the MiYo ecosystem
 

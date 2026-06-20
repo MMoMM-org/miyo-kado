@@ -99,9 +99,12 @@ export class Plugin extends Component {
 	loadData = vi.fn(async () => ({}));
 	saveData = vi.fn(async () => {});
 	addRibbonIcon = vi.fn(() => document.createElement('div'));
-	addStatusBarItem = vi.fn(() => ({setText: vi.fn()}));
+	addStatusBarItem = vi.fn(() => makeObsidianEl());
 	addCommand = vi.fn();
 	addSettingTab = vi.fn();
+	registerDomEvent = vi.fn((el: HTMLElement, type: string, cb: (ev: Event) => void) => {
+		el.addEventListener(type, cb);
+	});
 	register = vi.fn((fn: () => unknown) => {
 		this._cleanupFns.push(fn);
 	});
@@ -268,6 +271,10 @@ export function augmentEl(el: HTMLElement): HTMLElement {
 
 	any['toggleClass'] = (cls: string, force?: boolean): void => {
 		el.classList.toggle(cls, force);
+	};
+
+	any['setText'] = (text: string): void => {
+		el.textContent = text;
 	};
 
 	return el;

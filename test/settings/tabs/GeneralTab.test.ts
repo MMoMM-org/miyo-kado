@@ -30,6 +30,7 @@ function mockPlugin(overrides?: Partial<ReturnType<typeof defaultConfig>>) {
 		},
 		saveSettings,
 		mcpServer,
+		syncServerStatusBar: vi.fn(),
 		resolvedAuditLogPath: 'logs/kado-audit.log',
 	} as unknown as KadoPlugin;
 

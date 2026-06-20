@@ -27,6 +27,7 @@ import {createRenameAdapter} from './obsidian/rename-adapter';
 import {getAlwaysUpdateLinks} from './obsidian/vault-config';
 import {RenameRiskModal} from './settings/components/RenameRiskModal';
 import {AuditLogger} from './core/audit-logger';
+import {StatusBar} from './ui/StatusBar';
 
 /** Reject paths with traversal or absolute path components to prevent log injection. */
 function sanitizePath(raw: string): string {
@@ -42,6 +43,7 @@ export default class KadoPlugin extends Plugin {
 	mcpServer!: KadoMcpServer;
 	private auditLogger!: AuditLogger;
 	private settingsTab!: KadoSettingsTab;
+	private statusBar?: StatusBar;
 
 	/** Resolve the audit log path relative to the vault root. */
 	private get resolvedAuditLogPath(): string {
@@ -59,6 +61,16 @@ export default class KadoPlugin extends Plugin {
 		await this.configManager.load();
 		this.settings = this.configManager.getConfig();
 		setDebugLogging(this.settings.debugLogging);
+
+		// Status-bar indicator: ambient visibility into external MCP access.
+		// Created before the server starts so tool-call activity is never missed.
+		this.statusBar = new StatusBar({
+			plugin: {
+				addStatusBarItem: () => this.addStatusBarItem(),
+				registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+			},
+			openSettings: () => this.openKadoSettings(),
+		});
 
 		const registry = {
 			note: createNoteAdapter(this.app),
@@ -147,7 +159,7 @@ export default class KadoPlugin extends Plugin {
 				// Re-evaluated each time the server (re)starts.
 				const cfg = this.configManager.getConfig();
 				const renameToolEnabled = getAlwaysUpdateLinks(this.app) || cfg.renameWhenLinkUpdateOff;
-				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, app: this.app, renameToolEnabled});
+				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, onActivity: (evt) => this.handleToolActivity(evt), app: this.app, renameToolEnabled});
 			},
 			this.manifest.version,
 		);
@@ -156,6 +168,7 @@ export default class KadoPlugin extends Plugin {
 		if (this.configManager.getConfig().server.enabled) {
 			await this.mcpServer.start(this.configManager.getConfig().server);
 		}
+		this.syncServerStatusBar();
 		this.settingsTab = new KadoSettingsTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
 
@@ -166,6 +179,43 @@ export default class KadoPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => this.maybeWarnRenameDisabled());
 
 		kadoLog('Plugin loaded', {version: this.manifest.version});
+	}
+
+	/**
+	 * Reflects an allowed/denied tool call on the status bar, resolving the
+	 * key id to its human label (audit log keeps the path-level detail).
+	 */
+	private handleToolActivity(evt: {keyId: string; decision: 'allowed' | 'denied'; mutating: boolean; gate?: string}): void {
+		if (!this.statusBar) return;
+		const label = this.configManager.getKeyById(evt.keyId)?.label || 'unknown key';
+		if (evt.decision === 'denied') {
+			this.statusBar.recordDenied(label, evt.gate);
+		} else {
+			this.statusBar.recordAllowed(evt.mutating, label);
+		}
+	}
+
+	/**
+	 * Syncs the status bar's resting state to the live server state. Public so
+	 * the settings server toggle can refresh it after start/stop.
+	 */
+	syncServerStatusBar(): void {
+		if (!this.statusBar) return;
+		const cfg = this.configManager.getConfig();
+		if (!cfg.server.enabled) {
+			this.statusBar.setStopped();
+		} else if (this.mcpServer?.isRunning()) {
+			this.statusBar.setListening({port: cfg.server.port, keyCount: cfg.apiKeys.length});
+		} else {
+			this.statusBar.setError(`port ${cfg.server.port} unavailable`);
+		}
+	}
+
+	/** Opens Kado's own tab in the Obsidian settings modal (status-bar click target). */
+	private openKadoSettings(): void {
+		const setting = (this.app as unknown as {setting?: {open: () => void; openTabById: (id: string) => void}}).setting;
+		setting?.open();
+		setting?.openTabById(this.manifest.id);
 	}
 
 	/** Shows the rename-disabled warning modal when auto-update-links is off and not yet acknowledged. */
@@ -199,6 +249,9 @@ export default class KadoPlugin extends Plugin {
 		// The registered cleanup callback also calls stop(), but during a hot-reload
 		// the timing may allow the new onload() to race against it.
 		void this.mcpServer?.stop();
+		// Cancel any pending status-bar pulse timer (the element itself is removed
+		// automatically by Obsidian on unload).
+		this.statusBar?.dispose();
 		kadoLog('Plugin unloaded');
 	}
 

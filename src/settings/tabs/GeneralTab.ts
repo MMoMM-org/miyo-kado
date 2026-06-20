@@ -32,6 +32,7 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 				} else {
 					await plugin.mcpServer.stop();
 				}
+				plugin.syncServerStatusBar();
 				onRedisplay();
 			}));
 
