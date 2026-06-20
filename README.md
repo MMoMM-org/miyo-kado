@@ -66,12 +66,15 @@ types (`src/types/`). See [How It Works](docs/how-it-works.md) for the enforceme
 
 ## Roadmap
 
-- **Tag permissions beyond read-only.** Deny permission so tags can *exclude* matching items from otherwise-allowed paths.
-- **Granular whitelist / blacklist toggle.** Per-section toggle for mixed strategies.
-- **Sub-path key scopes.** Narrower sub-paths inside an allowed parent (e.g. global allows `Atlas`, key only sees `Atlas/People`).
-- **Real-time permission testing.** Dry-run in the settings UI.
-- **Settings import / export.** Backup/restore for the whole config.
-- **Opt-in content truncation on `kado-read`.** First ~1000 words with a hint that more exists.
+Tracked as GitHub issues:
+
+- **Tag permissions beyond read-only** ([#81](https://github.com/MMoMM-org/miyo-kado/issues/81)) -- deny permission so tags can *exclude* matching items from otherwise-allowed paths.
+- **Granular whitelist / blacklist toggle** ([#82](https://github.com/MMoMM-org/miyo-kado/issues/82)) -- per-section toggle for mixed strategies.
+- **Real-time permission testing** ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)) -- dry-run in the settings UI.
+- **Settings import / export** ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)) -- backup/restore for the whole config.
+- **Opt-in content truncation on `kado-read`** ([#85](https://github.com/MMoMM-org/miyo-kado/issues/85)) -- first ~1000 words with a hint that more exists.
+
+Shipped: sub-path key scopes (narrower sub-paths inside an allowed parent) landed in v0.15.0.
 
 ## Known edge cases
 
