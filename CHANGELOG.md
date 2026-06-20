@@ -1,3 +1,10 @@
+# [0.16.0](https://github.com/MMoMM-org/miyo-kado/compare/0.15.1...0.16.0) (2026-06-20)
+
+
+### Features
+
+* status bar activity indicator (門 gate glyph) ([#79](https://github.com/MMoMM-org/miyo-kado/issues/79)) ([98a25c2](https://github.com/MMoMM-org/miyo-kado/commit/98a25c28c4a60c7d85c131a9f40266081d42080a))
+
 ## [0.15.1](https://github.com/MMoMM-org/miyo-kado/compare/0.15.0...0.15.1) (2026-06-18)
 
 
