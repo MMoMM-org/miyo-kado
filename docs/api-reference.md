@@ -1082,6 +1082,40 @@ For `listDir`, both files and folders are scope-filtered. Folders appear if they
 
 For `listTags` and `byTag`, results also respect the key's allowed tags (the intersection of global and key-level tag lists).
 
+### Index Freshness
+
+`kado-search` reflects **Obsidian's in-memory index**, not a fresh scan of the
+disk. Every operation enumerates files through Obsidian's vault registry
+(`byName`/`listDir` over the file list, `byTag`/`byFrontmatter`/`byContent`/
+`listTags`/`listNotes` over the metadata cache). Kado deliberately reuses this
+index so tag, frontmatter, link and heading queries cost no extra disk reads.
+
+The trade-off is that results are only as current as Obsidian's index, which is
+populated asynchronously by Obsidian's file watcher and startup re-scan. Two
+windows can make results disagree with the actual disk state:
+
+- **Right after launching/reloading Obsidian** — the vault is still being
+  re-indexed, so a search may return *fewer* results than exist on disk until
+  indexing settles.
+- **After bulk file changes made outside Obsidian's API** (e.g. `git pull`,
+  `rsync`, another tool, or edits while Obsidian was closed) — the watcher needs
+  a moment to catch up. During that window a search can return a path that was
+  already deleted on disk (a stale "phantom" hit), or miss a file that was just
+  created. If the OS file watcher drops events during a large batch, the index
+  can stay stale until the next manual reload / re-index of the vault.
+
+This is intended Obsidian behaviour, not a Kado defect, and it does **not** risk
+data corruption: note reads/writes go through `vault.read`/`vault.process`
+(direct, uncached disk I/O), and heading-targeted writes fail safe with
+`CONFLICT` if the cached heading position no longer matches the file. Only
+*enumeration* (search/list) reflects the lag.
+
+**If results look wrong after a restart or external bulk change:** give Obsidian
+a moment to finish indexing, or trigger a reload/re-index of the vault, then
+retry. A stale phantom hit also surfaces as a `NOT_FOUND` on the follow-up
+`kado-read`/`kado-write` for that path — re-running the search after re-index
+clears it.
+
 ### Examples
 
 **Search by name (glob):**
