@@ -2033,3 +2033,50 @@ describe('kado-rename permission policy', () => {
 		expect(getFirstText(result)).toContain('FORBIDDEN');
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Response hints (end-to-end through the real handlers)
+// ---------------------------------------------------------------------------
+
+describe('response hints (_hints)', () => {
+	function getHandler(name: string, deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === name)!.handler;
+	}
+
+	function parseHints(result: {content: {type: string; text?: string}[]}): Array<{do?: string; with?: Record<string, unknown>; why: string}> | undefined {
+		return (JSON.parse(getFirstText(result)) as {_hints?: Array<{do?: string; with?: Record<string, unknown>; why: string}>})._hints;
+	}
+
+	it('write CONFLICT carries a re-read hint', async () => {
+		const router = vi.fn(async () => ({code: 'CONFLICT', message: 'changed'} as CoreError));
+		const handler = getHandler('kado-write', makeDeps({router}));
+
+		const result = await handler({operation: 'note', path: 'notes/a.md', content: 'x'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		const hints = parseHints(result);
+		expect(hints?.[0]?.do).toBe('kado-read');
+		expect(hints?.[0]?.with).toMatchObject({operation: 'note', path: 'notes/a.md'});
+	});
+
+	it('paginated search carries a next-page hint', async () => {
+		const router = vi.fn(async () => makeSearchResult({cursor: 'NTA=', total: 100}));
+		const handler = getHandler('kado-search', makeDeps({router}));
+
+		const result = await handler({operation: 'byContent', query: 'alpha'}, makeExtra());
+
+		const hints = parseHints(result);
+		expect(hints?.some((h) => h.do === 'kado-search' && h.with?.cursor === 'NTA=')).toBe(true);
+	});
+
+	it('a complete read carries no hints', async () => {
+		const router = vi.fn(async () => makeFileResult({path: 'notes/a.md', content: 'full'}));
+		const handler = getHandler('kado-read', makeDeps({router}));
+
+		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
+
+		expect(parseHints(result)).toBeUndefined();
+	});
+});

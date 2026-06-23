@@ -22,6 +22,7 @@ import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapError, mapOpenNotesResult} from './response-mapper';
+import {deriveHints} from './hints';
 import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest} from './request-mapper';
 import type {
 	CoreFileResult,
@@ -504,7 +505,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-read', deps, keyId, request, perm.error.gate);
-			return mapError(perm.error);
+			return mapError(perm.error, deriveHints({tool: 'kado-read', request, error: perm.error}));
 		}
 
 		const startMs = performance.now();
@@ -512,10 +513,11 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			const result = await deps.router(request);
 			if (isCoreError(result)) {
 				kadoLog('kado-read error', {...debugFields(keyId, request), code: result.code});
-				return mapError(result);
+				return mapError(result, deriveHints({tool: 'kado-read', request, error: result}));
 			}
 			await logAllowed('kado-read', deps, keyId, request, startMs);
-			return mapFileResult(result as CoreFileResult);
+			const fileResult = result as CoreFileResult;
+			return mapFileResult(fileResult, deriveHints({tool: 'kado-read', request, fileResult}));
 		} catch (err: unknown) {
 			// Adapters throw *AdapterError with a `code` field (NOT_FOUND,
 			// CONFLICT, VALIDATION_ERROR). Surface those codes so MCP clients
@@ -524,7 +526,8 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-read error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				return mapError({code, message: asError.message ?? String(err)});
+				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				return mapError(error, deriveHints({tool: 'kado-read', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
@@ -545,13 +548,13 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-write', deps, keyId, request, perm.error.gate);
-			return mapError(perm.error);
+			return mapError(perm.error, deriveHints({tool: 'kado-write', request, error: perm.error}));
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
 		if (!concurrency.allowed) {
 			kadoLog('kado-write error', {...debugFields(keyId, request), code: concurrency.error.code});
-			return mapError(concurrency.error);
+			return mapError(concurrency.error, deriveHints({tool: 'kado-write', request, error: concurrency.error}));
 		}
 
 		const startMs = performance.now();
@@ -559,7 +562,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			const result = await deps.router(request);
 			if (isCoreError(result)) {
 				kadoLog('kado-write error', {...debugFields(keyId, request), code: result.code});
-				return mapError(result);
+				return mapError(result, deriveHints({tool: 'kado-write', request, error: result}));
 			}
 			await logAllowed('kado-write', deps, keyId, request, startMs);
 			return mapWriteResult(result as CoreWriteResult);
@@ -572,7 +575,8 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-write error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				return mapError({code, message: asError.message ?? String(err)});
+				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				return mapError(error, deriveHints({tool: 'kado-write', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
@@ -594,13 +598,13 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-delete', deps, keyId, request, perm.error.gate);
-			return mapError(perm.error);
+			return mapError(perm.error, deriveHints({tool: 'kado-delete', request, error: perm.error}));
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
 		if (!concurrency.allowed) {
 			kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
-			return mapError(concurrency.error);
+			return mapError(concurrency.error, deriveHints({tool: 'kado-delete', request, error: concurrency.error}));
 		}
 
 		const startMs = performance.now();
@@ -608,7 +612,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			const result = await deps.router(request);
 			if (isCoreError(result)) {
 				kadoLog('kado-delete error', {...debugFields(keyId, request), code: result.code});
-				return mapError(result);
+				return mapError(result, deriveHints({tool: 'kado-delete', request, error: result}));
 			}
 			await logAllowed('kado-delete', deps, keyId, request, startMs);
 			return mapDeleteResult(result as CoreDeleteResult);
@@ -618,7 +622,8 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-delete error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				return mapError({code, message: asError.message ?? String(err)});
+				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				return mapError(error, deriveHints({tool: 'kado-delete', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
@@ -640,13 +645,13 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 		const {result: perm} = evaluateRenamePermissions(request, deps.configManager.getConfig(), deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
-			return mapError(perm.error);
+			return mapError(perm.error, deriveHints({tool: 'kado-rename', request, error: perm.error}));
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
 		if (!concurrency.allowed) {
 			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
-			return mapError(concurrency.error);
+			return mapError(concurrency.error, deriveHints({tool: 'kado-rename', request, error: concurrency.error}));
 		}
 
 		const startMs = performance.now();
@@ -681,7 +686,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			const result = raced;
 			if (isCoreError(result)) {
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: result.code});
-				return mapError(result);
+				return mapError(result, deriveHints({tool: 'kado-rename', request, error: result}));
 			}
 			await logAllowed('kado-rename', deps, keyId, request, startMs);
 			return mapRenameResult(result as CoreRenameResult);
@@ -691,7 +696,8 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				return mapError({code, message: asError.message ?? String(err)});
+				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				return mapError(error, deriveHints({tool: 'kado-rename', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
@@ -713,7 +719,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-search', deps, keyId, request, perm.error.gate);
-			return mapError(perm.error);
+			return mapError(perm.error, deriveHints({tool: 'kado-search', request, error: perm.error}));
 		}
 
 		const startMs = performance.now();
@@ -735,7 +741,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 			}
 
 			await logAllowed('kado-search', deps, keyId, request, startMs);
-			return mapSearchResult(searchResult);
+			return mapSearchResult(searchResult, deriveHints({tool: 'kado-search', request, searchResult}));
 		} catch (err: unknown) {
 			kadoLog('kado-search error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});

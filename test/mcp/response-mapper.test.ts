@@ -446,3 +446,37 @@ describe('mapOpenNotesResult()', () => {
 		expect(typeof note['active']).toBe('boolean');
 	});
 });
+
+// ---------------------------------------------------------------------------
+// _hints attachment (optional, additive)
+// ---------------------------------------------------------------------------
+
+describe('_hints attachment', () => {
+	it('attaches _hints to a search result when hints are present', () => {
+		const result = mapSearchResult(makeSearchResult(), [{do: 'kado-search', with: {cursor: 'x'}, why: 'next page'}]);
+		const body = JSON.parse(readText(result)) as {_hints?: unknown[]};
+
+		expect(body._hints).toHaveLength(1);
+	});
+
+	it('omits _hints entirely when the hint list is empty', () => {
+		const result = mapSearchResult(makeSearchResult(), []);
+		const body = JSON.parse(readText(result)) as Record<string, unknown>;
+
+		expect('_hints' in body).toBe(false);
+	});
+
+	it('omits _hints when no hints argument is given', () => {
+		const body = JSON.parse(readText(mapFileResult(makeFileResult()))) as Record<string, unknown>;
+
+		expect('_hints' in body).toBe(false);
+	});
+
+	it('attaches _hints to an error result', () => {
+		const result = mapError(makeCoreError({code: 'CONFLICT'}), [{do: 'kado-read', why: 're-read'}]);
+		const body = JSON.parse(readText(result)) as {_hints?: unknown[]; code?: string};
+
+		expect(body.code).toBe('CONFLICT');
+		expect(body._hints).toHaveLength(1);
+	});
+});

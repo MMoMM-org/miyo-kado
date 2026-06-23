@@ -16,13 +16,24 @@ import type {
 	CoreError,
 	CoreOpenNotesResult,
 } from '../types/canonical';
+import type {Hint} from './hints';
 
 function textResult(data: unknown): CallToolResult {
 	return {content: [{type: 'text', text: JSON.stringify(data)}]};
 }
 
+/**
+ * Attaches optional next-step hints to a payload under the additive `_hints`
+ * key. No-op when there are no hints, so existing response shapes are unchanged
+ * and clients may ignore the field entirely.
+ */
+function withHints(payload: Record<string, unknown>, hints?: Hint[]): Record<string, unknown> {
+	if (hints && hints.length > 0) payload['_hints'] = hints;
+	return payload;
+}
+
 /** Serializes a CoreFileResult (read response) into a JSON CallToolResult. */
-export function mapFileResult(result: CoreFileResult): CallToolResult {
+export function mapFileResult(result: CoreFileResult, hints?: Hint[]): CallToolResult {
 	const payload: Record<string, unknown> = {
 		path: result.path,
 		content: result.content,
@@ -33,7 +44,7 @@ export function mapFileResult(result: CoreFileResult): CallToolResult {
 	// ADR-6: partial reads must never appear complete when content was cut off.
 	// Include the flag only when the adapter explicitly set it to true.
 	if (result.truncated !== undefined) payload['truncated'] = result.truncated;
-	return textResult(payload);
+	return textResult(withHints(payload, hints));
 }
 
 /** Serializes a CoreWriteResult (write response) into a JSON CallToolResult. */
@@ -73,18 +84,18 @@ export function mapRenameResult(result: CoreRenameResult): CallToolResult {
 }
 
 /** Serializes a CoreSearchResult (paginated search response) into a JSON CallToolResult. */
-export function mapSearchResult(result: CoreSearchResult): CallToolResult {
-	return textResult({
+export function mapSearchResult(result: CoreSearchResult, hints?: Hint[]): CallToolResult {
+	return textResult(withHints({
 		items: result.items,
 		cursor: result.cursor,
 		total: result.total,
-	});
+	}, hints));
 }
 
 /** Serializes a CoreError into a JSON CallToolResult with isError set to true. */
-export function mapError(error: CoreError): CallToolResult {
+export function mapError(error: CoreError, hints?: Hint[]): CallToolResult {
 	return {
-		content: [{type: 'text', text: JSON.stringify({code: error.code, message: error.message})}],
+		content: [{type: 'text', text: JSON.stringify(withHints({code: error.code, message: error.message}, hints))}],
 		isError: true,
 	};
 }
