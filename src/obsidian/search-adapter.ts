@@ -12,6 +12,7 @@ import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError, SearchFilter, CoreLinkRef, CoreHeadingRef} from '../types/canonical';
 import {matchGlob, dirCouldContainMatches, pathMatchesPatterns} from '../core/glob-match';
 import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
+import {scoreContent} from '../core/content-score';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
@@ -413,8 +414,17 @@ function byName(app: App, request: CoreSearchRequest): CoreSearchItem[] {
 	return app.vault.getFiles().filter((f) => f.name.toLowerCase().includes(query)).map(mapFileToItem);
 }
 
+/**
+ * Full-text search over note bodies, ranked by relevance.
+ *
+ * Each candidate is scored with scoreContent() (query-term coverage + proximity);
+ * a note matches when score > 0 — i.e. it contains at least one query term, no
+ * longer requiring the whole query as a literal substring. Results carry a
+ * `score` and `snippets`, sorted by score descending so the caller sees the most
+ * relevant notes first.
+ */
 async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSearchItem[]> {
-	const query = (request.query ?? '').toLowerCase();
+	const query = request.query ?? '';
 	const prefix = request.filter?.path ?? '';
 	const allFiles = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
 	const files = request.scopePatterns !== undefined
@@ -425,11 +435,13 @@ async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSear
 		const batch = files.slice(i, i + BATCH_SIZE);
 		const contents = await Promise.all(batch.map(f => app.vault.read(f)));
 		for (let j = 0; j < batch.length; j++) {
-			if ((contents[j] ?? '').toLowerCase().includes(query)) {
-				results.push(mapFileToItem(batch[j]!));
+			const {score, snippets} = scoreContent(contents[j] ?? '', query);
+			if (score > 0) {
+				results.push({...mapFileToItem(batch[j]!), score, snippets});
 			}
 		}
 	}
+	results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 	return results;
 }
 

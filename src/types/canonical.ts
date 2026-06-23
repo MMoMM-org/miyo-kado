@@ -317,6 +317,14 @@ export interface CoreHeadingRef {
 	level: number;
 }
 
+/** A relevance snippet extracted from a note body by content search. */
+export interface ContentSnippet {
+	/** Excerpt of the source text around the match, original case preserved. */
+	text: string;
+	/** 1-based line number where the matched cluster begins. */
+	line?: number;
+}
+
 /** A single item in a search result set. */
 export interface CoreSearchItem {
 	path: string;
@@ -336,6 +344,10 @@ export interface CoreSearchItem {
 	links?: CoreLinkRef[];
 	/** Heading outline. Populated by listNotes when 'headings' is in `fields`. */
 	headings?: CoreHeadingRef[];
+	/** Relevance score (higher = better). Populated by byContent search. */
+	score?: number;
+	/** Match snippets with line numbers. Populated by byContent search. */
+	snippets?: ContentSnippet[];
 }
 
 /** Paginated search result with optional cursor for the next page. */

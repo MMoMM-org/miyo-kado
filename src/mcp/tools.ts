@@ -172,7 +172,7 @@ export const KADO_SEARCH_TOOL_DESCRIPTION =
 	'Search the Obsidian vault. Operations: ' +
 	'byName (substring or glob e.g. "2026-03-*"), ' +
 	'byTag (exact or glob e.g. "#project/*"), ' +
-	'byContent (substring in note body), ' +
+	'byContent (full-text body search — matches notes containing any query term, ranked by relevance; each result carries a "score" and "snippets" {text, line} of the matching passages, sorted best-first), ' +
 	'byFrontmatter (key=value or key-only; dot-notation traverses nested keys e.g. "tomo.state=pending-approval"), ' +
 	'listDir (folder contents with type: "file" | "folder" discriminator; folder items carry childCount; results sort folders-first then alphabetically; use depth=1 for a shallow scan of direct children only, omit depth for unlimited recursion; "/" is the canonical vault-root marker; missing paths return NOT_FOUND, file targets return VALIDATION_ERROR), ' +
 	'listTags (all permitted tags with counts), ' +
