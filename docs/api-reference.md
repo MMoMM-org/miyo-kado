@@ -1,6 +1,8 @@
 # Kado API Reference
 
-Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Six tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
+Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Seven tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, and `kado-graph`.
+
+> **Optional `_hints`.** Any tool response (success or error) may include an additive `_hints` array — next-step suggestions for the calling agent, e.g. `{ "do": "kado-read", "with": { "operation": "note", "path": "…" }, "why": "…" }`. Hints are derived purely from the current request and result (no server-side state), are advisory, and can be safely ignored. They never change the rest of the response shape.
 
 ---
 
@@ -950,7 +952,7 @@ Search the Obsidian vault. Results are scoped to the calling key's permissions a
 |---|---|---|---|
 | `byName` | Find files by name substring or glob pattern | Yes | No |
 | `byTag` | Find files with a specific tag (exact or glob) | Yes | No |
-| `byContent` | Find files containing a substring in the note body | Yes | No |
+| `byContent` | Full-text body search. Matches notes containing **any** query term (no longer whole-query substring), ranked by term coverage + proximity. Each result carries a `score` and `snippets` (`{text, line}`), sorted best-first. | Yes | No |
 | `byFrontmatter` | Find files by frontmatter key=value or key-only. Supports dot-notation for nested keys (`tomo.state=pending-approval`). | Yes | No |
 | `listDir` | List contents of a folder | No | Yes |
 | `listTags` | List all permitted tags with counts | No | No |
@@ -1070,6 +1072,8 @@ Each item in `items`:
 | `size` | `number` | File size in bytes |
 | `tags` | `string[] \| undefined` | Tags on the file (when relevant) |
 | `frontmatter` | `object \| undefined` | Frontmatter metadata (when relevant) |
+| `score` | `number \| undefined` | (`byContent` only) relevance score — higher is better. Items are returned sorted by `score` descending. |
+| `snippets` | `{text, line}[] \| undefined` | (`byContent` only) matching passages with 1-based line numbers, best cluster first |
 
 ### Scope Filtering
 
@@ -1691,6 +1695,81 @@ The `message` names the off layer(s) so the user can fix the right setting. `gat
 ### Audit
 
 Audit log entries for `kado-open-notes` carry the scope and a `permittedCount` integer only. **Individual note paths never appear in the audit trail** for this tool — emitting them would defeat the privacy invariant that silent ACL filtering exists to preserve.
+
+---
+
+## Tool: kado-graph
+
+Navigate the vault's link graph from a source note (`.md`). Read-only. Built from Obsidian's in-memory resolved/unresolved link maps, so results can briefly lag the disk after external bulk changes (same characteristic as `kado-search`).
+
+### Operations
+
+| Operation | Description |
+|---|---|
+| `backlinks` | Notes that link **to** the source |
+| `outgoing` | Resolved targets the source links to |
+| `neighbors` | 1-hop union of `backlinks` + `outgoing` |
+| `related` | 2-hop notes reached via a 1-hop neighbour; each carries `via` (the neighbour[s] it was reached through) |
+| `dangling` | The source's unresolved (broken) link targets, with a reference `count` |
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `operation` | `"backlinks" \| "outgoing" \| "neighbors" \| "related" \| "dangling"` | Yes | Graph navigation type |
+| `path` | `string` | Yes | Source note path. Must be `.md`. |
+| `limit` | `integer` | No | Max nodes to return (positive integer). Omit for all. |
+
+### Response Format
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | `string` | The requested source path |
+| `operation` | `string` | The requested operation |
+| `nodes` | `GraphNode[]` | Result nodes (may be empty) |
+
+**`GraphNode` shape:**
+
+| Field | Type | Description |
+|---|---|---|
+| `path` | `string` | Resolved vault path, or — for `dangling` — the raw unresolved link target |
+| `relation` | `"backlink" \| "outgoing" \| "neighbor" \| "related" \| "dangling"` | How the node relates to the source |
+| `via` | `string[]` | (`related` only) the 1-hop neighbour(s) the node was reached through |
+| `count` | `number` | (`dangling` only) number of unresolved references in the source |
+
+### Permissions & Disclosure Guard
+
+`kado-graph` requires **note read** permission on the source path (enforced by synthesizing a `note` read through the standard gate chain). Because the traversal resolves links to concrete vault paths, **resolved result nodes outside the calling key's scope are silently omitted** — a traversal can never disclose a path the key cannot read. `dangling` targets are the source note's own content (raw unresolved strings, not paths) and are therefore not path-filtered. Audited as a note read on the source.
+
+### Examples
+
+```json
+// Backlinks to a note
+{ "operation": "backlinks", "path": "Projects/roadmap.md" }
+
+// Response content
+{
+  "source": "Projects/roadmap.md",
+  "operation": "backlinks",
+  "nodes": [
+    { "path": "Projects/q3-plan.md", "relation": "backlink" }
+  ]
+}
+```
+
+```json
+// 2-hop related notes
+{ "operation": "related", "path": "Projects/roadmap.md", "limit": 20 }
+
+// Response content
+{
+  "source": "Projects/roadmap.md",
+  "operation": "related",
+  "nodes": [
+    { "path": "Notes/strategy.md", "relation": "related", "via": ["Projects/q3-plan.md"] }
+  ]
+}
+```
 
 ---
 
