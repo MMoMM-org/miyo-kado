@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through six tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, and `kado-open-notes`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through seven tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, and `kado-graph`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
@@ -31,7 +31,9 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
 - **Partial note read/write** -- read a slice (`firstXChars`, `section` by heading, `range` by line/char) and write in place (`append`/`prepend`, `insertUnderHeading`, `replaceSection`/`replaceRange`) without round-tripping the whole body; omitting the mode is byte-for-byte backward compatible
 - **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target). Works best with Obsidian's "Automatically update internal links" on (silent, links updated); with it off the tool is hidden unless you opt in, and then each rename prompts Obsidian's link-update dialog (the file still moves, but inbound links update only when you answer)
-- **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes
+- **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes. `byContent` is full-text ranked: it matches notes containing any query term, scores them by term coverage and proximity, and returns relevance `snippets` (with line numbers), best-first
+- **Link-graph navigation** -- `kado-graph` traverses the vault's link structure: `backlinks`, `outgoing`, `neighbors` (1-hop), `related` (2-hop, with the `via` neighbour), and `dangling` (unresolved link targets). Resolved nodes outside the key's scope are silently omitted, so a traversal can never disclose a path the key cannot read
+- **Self-guiding responses** -- tool responses may carry an optional, additive `_hints` array suggesting the sensible next step (re-read after a `CONFLICT`, fetch the next page when a cursor is present, continue a truncated read). Purely advisory and safe to ignore
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- 200 requests/minute per IP
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)

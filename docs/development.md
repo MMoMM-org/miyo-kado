@@ -30,10 +30,14 @@ src/
     config-manager.ts
     audit-logger.ts
     operation-router.ts
+    content-score.ts   # Pure proximity scorer + snippet extraction (byContent ranking)
+    graph-traverse.ts  # Pure neighbours/related traversal over an adjacency interface
+    graph-policy.ts    # kado-graph permission: synthetic note.read on the source
   mcp/               # MCP SDK layer — Express server, auth, tool registration
     server.ts        # HTTP server lifecycle, rate limiting, concurrency cap
     auth.ts          # Bearer token middleware (constant-time comparison)
-    tools.ts         # kado-read, kado-write, kado-search handlers + scope injection
+    tools.ts         # All 7 tool handlers (read/write/search/delete/rename/open-notes/graph) + scope injection
+    hints.ts         # Pure deriveHints() — optional, additive _hints next-step guidance
     request-mapper.ts
     response-mapper.ts
   obsidian/          # Obsidian API adapters — vault I/O
@@ -42,6 +46,8 @@ src/
     file-adapter.ts
     inline-field-adapter.ts
     search-adapter.ts
+    link-graph-index.ts # Bidirectional link index (resolvedLinks/unresolvedLinks), rebuilt on 'resolved'
+    graph-adapter.ts    # Maps a CoreGraphRequest to a result via the index + traversal
   settings/          # Obsidian settings UI
     SettingsTab.ts
     tabs/            # General, GlobalSecurity, ApiKey tab renderers

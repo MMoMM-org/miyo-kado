@@ -113,6 +113,12 @@ function makeRenameAdapter() {
 	};
 }
 
+function makeGraphAdapter() {
+	return {
+		graph: vi.fn(),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Test setup
 // ---------------------------------------------------------------------------
@@ -126,6 +132,7 @@ let noteDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let fileDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let frontmatterDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let renameAdapter: ReturnType<typeof makeRenameAdapter>;
+let graphAdapter: ReturnType<typeof makeGraphAdapter>;
 
 beforeEach(() => {
 	noteAdapter = makeReadWriteAdapter();
@@ -137,6 +144,7 @@ beforeEach(() => {
 	fileDeleteAdapter = makeDeleteAdapter();
 	frontmatterDeleteAdapter = makeDeleteAdapter();
 	renameAdapter = makeRenameAdapter();
+	graphAdapter = makeGraphAdapter();
 });
 
 function makeRouter() {
@@ -152,6 +160,7 @@ function makeRouter() {
 			frontmatter: frontmatterDeleteAdapter,
 		},
 		rename: renameAdapter,
+		graph: graphAdapter,
 	});
 }
 
@@ -442,6 +451,34 @@ describe('createOperationRouter() — rename routing', () => {
 
 		expect(noteDeleteAdapter.delete).not.toHaveBeenCalled();
 		expect(noteAdapter.write).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Graph routing
+// ---------------------------------------------------------------------------
+
+describe('createOperationRouter() — graph routing', () => {
+	it('routes a graph request to the graph adapter and returns its result', async () => {
+		const expected = {source: 'a.md', operation: 'backlinks' as const, nodes: []};
+		graphAdapter.graph.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route({kind: 'graph', apiKeyId: 'kado_test-key', operation: 'backlinks', path: 'a.md'});
+
+		expect(graphAdapter.graph).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('does not call other adapters when routing a graph request', async () => {
+		graphAdapter.graph.mockResolvedValue({source: 'a.md', operation: 'neighbors', nodes: []});
+
+		const route = makeRouter();
+		await route({kind: 'graph', apiKeyId: 'kado_test-key', operation: 'neighbors', path: 'a.md'});
+
+		expect(noteAdapter.read).not.toHaveBeenCalled();
+		expect(searchAdapter.search).not.toHaveBeenCalled();
+		expect(renameAdapter.rename).not.toHaveBeenCalled();
 	});
 });
 

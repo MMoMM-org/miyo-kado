@@ -86,13 +86,15 @@ These fire on plugin load/unload, server start/stop, and settings saves:
 
 ### Per-call events (allowed / denied / error)
 
-Every `kado-read`, `kado-write`, `kado-search`, and `kado-delete` emits a
-debug line with its outcome. The `key` field shows the first 12 characters
-of the API key id so you can tell which client made the call:
+Every tool call (`kado-read`, `kado-write`, `kado-search`, `kado-delete`,
+`kado-rename`, `kado-open-notes`, `kado-graph`) emits a debug line with its
+outcome. The `key` field shows the first 12 characters of the API key id so
+you can tell which client made the call:
 
 ```
 [Kado] kado-read allowed {"key":"kado_9e1d88c0","operation":"note","path":"allowed/Project Alpha.md","durationMs":3}
 [Kado] kado-search allowed {"key":"kado_9e1d88c0","operation":"listDir","path":"allowed","durationMs":2}
+[Kado] kado-graph allowed {"key":"kado_9e1d88c0","operation":"backlinks","path":"allowed/Project Alpha.md","durationMs":1}
 [Kado] kado-read denied {"key":"kado_9e1d88c0","operation":"note","path":"nope/Credentials.md","gate":"global-scope"}
 [Kado] kado-write error {"key":"kado_9e1d88c0","operation":"note","path":"allowed/Project Alpha.md","code":"CONFLICT"}
 ```

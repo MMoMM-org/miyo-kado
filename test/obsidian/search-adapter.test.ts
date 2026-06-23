@@ -1309,6 +1309,42 @@ describe('SearchAdapter — byContent', () => {
 		// byContent finds all matches; pagination limits the page
 		expect(result.total).toBe(10);
 	});
+
+	it('attaches a relevance score and snippets to each match', async () => {
+		const file = makeTFile({path: 'notes/a.md'});
+		const app = makeApp({
+			markdownFiles: [file],
+			readFile: new Map([[file, 'Intro line.\nThe alpha beta match is right here.\nOutro line.']]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'alpha beta'})));
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].score).toBeGreaterThan(0);
+		expect(result.items[0].snippets?.[0]?.text).toContain('alpha beta');
+		expect(result.items[0].snippets?.[0]?.line).toBe(2);
+	});
+
+	it('ranks more relevant notes first (higher score before lower)', async () => {
+		const strong = makeTFile({path: 'notes/strong.md', name: 'strong.md'});
+		const weak = makeTFile({path: 'notes/weak.md', name: 'weak.md'});
+		const app = makeApp({
+			markdownFiles: [weak, strong],
+			readFile: new Map([
+				// weak: only one query term present
+				[weak, 'this note only mentions alpha somewhere'],
+				// strong: both query terms, adjacent
+				[strong, 'this note has alpha beta together'],
+			]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'alpha beta'})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['notes/strong.md', 'notes/weak.md']);
+		expect(result.items[0].score!).toBeGreaterThan(result.items[1].score!);
+	});
 });
 
 // ---------------------------------------------------------------------------

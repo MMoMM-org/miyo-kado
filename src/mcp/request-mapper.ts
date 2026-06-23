@@ -16,6 +16,8 @@ import type {
 	CoreDeleteRequest,
 	CoreOpenNotesRequest,
 	CoreRenameRequest,
+	CoreGraphRequest,
+	GraphOperation,
 	OpenNotesScope,
 	DeleteDataType,
 	RenameDataType,
@@ -372,4 +374,40 @@ export function mapOpenNotesRequest(args: Args, keyId: string): CoreOpenNotesReq
 			: 'all';
 
 	return {kind: 'openNotes', keyId, scope};
+}
+
+/** Allowed operation values for kado-graph. */
+const GRAPH_OPERATIONS = new Set<string>(['backlinks', 'outgoing', 'neighbors', 'related', 'dangling']);
+
+/**
+ * Maps raw MCP tool arguments into a CoreGraphRequest.
+ *
+ * The source `path` must be a markdown note (`.md`) — graph navigation is over
+ * note links. `limit`, when supplied, must be a positive finite integer.
+ * @param args - Raw key-value arguments from the MCP tool call.
+ * @param keyId - The authenticated API key ID.
+ * @throws Error if operation/path are missing or invalid, or limit is malformed.
+ */
+export function mapGraphRequest(args: Args, keyId: string): CoreGraphRequest {
+	const operation = requireString(args, 'operation', 'mapGraphRequest');
+	if (!GRAPH_OPERATIONS.has(operation)) {
+		throw new Error(`mapGraphRequest: operation must be one of backlinks|outgoing|neighbors|related|dangling (got '${operation}')`);
+	}
+	const path = normalizePath(requireString(args, 'path', 'mapGraphRequest'));
+	validatePath(path);
+	if (!isMarkdownPath(path)) {
+		throw new Error(`mapGraphRequest: path must be a .md note (got "${path}")`);
+	}
+
+	const result: CoreGraphRequest = {kind: 'graph', apiKeyId: keyId, operation: operation as GraphOperation, path};
+
+	const rawLimit = args['limit'];
+	if (rawLimit !== undefined) {
+		if (typeof rawLimit !== 'number' || !Number.isInteger(rawLimit) || rawLimit <= 0) {
+			throw new Error('mapGraphRequest: limit must be a positive integer');
+		}
+		result.limit = rawLimit;
+	}
+
+	return result;
 }
