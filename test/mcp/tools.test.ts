@@ -212,10 +212,16 @@ function getFirstText(result: {content: {type: string; text?: string}[]}): strin
 // ---------------------------------------------------------------------------
 
 describe('registerTools()', () => {
-	it('registers exactly 6 tools on the server', () => {
+	it('registers exactly 7 tools on the server', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
-		expect(server.tools).toHaveLength(6);
+		expect(server.tools).toHaveLength(7);
+	});
+
+	it('registers a tool named kado-graph', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
+		expect(server.tools.map((t) => t.name)).toContain('kado-graph');
 	});
 
 	it('registers a tool named kado-delete', () => {
@@ -230,11 +236,11 @@ describe('registerTools()', () => {
 		expect(server.tools.map((t) => t.name)).toContain('kado-rename');
 	});
 
-	it('does NOT register kado-rename when renameToolEnabled is false (5 tools)', () => {
+	it('does NOT register kado-rename when renameToolEnabled is false (6 tools)', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps({renameToolEnabled: false}));
 		expect(server.tools.map((t) => t.name)).not.toContain('kado-rename');
-		expect(server.tools).toHaveLength(5);
+		expect(server.tools).toHaveLength(6);
 	});
 
 	it('registers a tool named kado-read', () => {
@@ -2078,5 +2084,85 @@ describe('response hints (_hints)', () => {
 		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
 
 		expect(parseHints(result)).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-graph handler
+// ---------------------------------------------------------------------------
+
+describe('kado-graph handler', () => {
+	function getGraphHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === 'kado-graph')!.handler;
+	}
+
+	function scopedConfig(): Partial<KadoConfig> {
+		const paths = [{path: 'allowed/**', permissions: makeReadPermissions()}];
+		return {
+			security: makeSecurityConfig({listMode: 'whitelist', paths}),
+			apiKeys: [makeApiKey('kado_test-key', {paths})],
+		};
+	}
+
+	function parseGraph(result: {content: {type: string; text?: string}[]}) {
+		return JSON.parse(getFirstText(result)) as {source: string; operation: string; nodes: Array<{path: string; relation: string}>};
+	}
+
+	it('returns mapped graph nodes for an allowed source', async () => {
+		const router = vi.fn(async () => ({source: 'allowed/a.md', operation: 'backlinks' as const, nodes: [{path: 'allowed/b.md', relation: 'backlink' as const}]}));
+		const handler = getGraphHandler(makeDeps({router, configManager: makeConfigManager(scopedConfig())}));
+
+		const result = await handler({operation: 'backlinks', path: 'allowed/a.md'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(parseGraph(result).nodes.map((n) => n.path)).toEqual(['allowed/b.md']);
+	});
+
+	it('omits resolved nodes outside the key scope (disclosure guard)', async () => {
+		const router = vi.fn(async () => ({
+			source: 'allowed/a.md',
+			operation: 'backlinks' as const,
+			nodes: [
+				{path: 'allowed/b.md', relation: 'backlink' as const},
+				{path: 'secret/x.md', relation: 'backlink' as const},
+			],
+		}));
+		const handler = getGraphHandler(makeDeps({router, configManager: makeConfigManager(scopedConfig())}));
+
+		const result = await handler({operation: 'backlinks', path: 'allowed/a.md'}, makeExtra());
+
+		const paths = parseGraph(result).nodes.map((n) => n.path);
+		expect(paths).toContain('allowed/b.md');
+		expect(paths).not.toContain('secret/x.md');
+	});
+
+	it('does not path-filter dangling targets (source-note content)', async () => {
+		const router = vi.fn(async () => ({source: 'allowed/a.md', operation: 'dangling' as const, nodes: [{path: 'Some Missing Note', relation: 'dangling' as const, count: 1}]}));
+		const handler = getGraphHandler(makeDeps({router, configManager: makeConfigManager(scopedConfig())}));
+
+		const result = await handler({operation: 'dangling', path: 'allowed/a.md'}, makeExtra());
+
+		expect(parseGraph(result).nodes.map((n) => n.path)).toEqual(['Some Missing Note']);
+	});
+
+	it('returns FORBIDDEN when the source path is denied', async () => {
+		const deps = makeDeps({gates: [makeDenyGate(makeCoreError({code: 'FORBIDDEN'}))]});
+		const handler = getGraphHandler(deps);
+
+		const result = await handler({operation: 'backlinks', path: 'notes/a.md'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+	});
+
+	it('returns VALIDATION_ERROR for a non-.md source path', async () => {
+		const handler = getGraphHandler(makeDeps());
+
+		const result = await handler({operation: 'backlinks', path: 'notes/a.png'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
 	});
 });

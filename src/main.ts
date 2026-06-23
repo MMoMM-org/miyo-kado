@@ -24,6 +24,8 @@ import {
 	createFrontmatterDeleteAdapter,
 } from './obsidian/delete-adapter';
 import {createRenameAdapter} from './obsidian/rename-adapter';
+import {LinkGraphIndex} from './obsidian/link-graph-index';
+import {createGraphAdapter} from './obsidian/graph-adapter';
 import {getAlwaysUpdateLinks} from './obsidian/vault-config';
 import {RenameRiskModal} from './settings/components/RenameRiskModal';
 import {AuditLogger} from './core/audit-logger';
@@ -72,6 +74,13 @@ export default class KadoPlugin extends Plugin {
 			openSettings: () => this.openKadoSettings(),
 		});
 
+		// Link graph index: built from Obsidian's resolved/unresolved link maps.
+		// Rebuilt on the metadataCache 'resolved' event (fires after link resolution
+		// settles) and once layout is ready. registerEvent auto-cleans on unload.
+		const linkGraphIndex = new LinkGraphIndex(this.app.metadataCache);
+		this.app.workspace.onLayoutReady(() => linkGraphIndex.buildFull());
+		this.registerEvent(this.app.metadataCache.on('resolved', () => linkGraphIndex.buildFull()));
+
 		const registry = {
 			note: createNoteAdapter(this.app),
 			frontmatter: createFrontmatterAdapter(this.app),
@@ -84,6 +93,7 @@ export default class KadoPlugin extends Plugin {
 				frontmatter: createFrontmatterDeleteAdapter(this.app),
 			},
 			rename: createRenameAdapter(this.app),
+			graph: createGraphAdapter(linkGraphIndex),
 		};
 
 		const router = createOperationRouter(registry);

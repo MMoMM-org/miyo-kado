@@ -14,11 +14,13 @@ import type {
 	CoreSearchRequest,
 	CoreDeleteRequest,
 	CoreRenameRequest,
+	CoreGraphRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
 	CoreRenameResult,
+	CoreGraphResult,
 	CoreError,
 	DataType,
 	DeleteDataType,
@@ -30,6 +32,7 @@ import {
 	isCoreSearchRequest,
 	isCoreDeleteRequest,
 	isCoreRenameRequest,
+	isCoreGraphRequest,
 } from '../types/canonical';
 
 // ============================================================
@@ -57,6 +60,11 @@ export interface RenameAdapter {
 	rename(request: CoreRenameRequest): Promise<CoreRenameResult>;
 }
 
+/** Adapter that navigates the link graph (backlinks, outgoing, neighbors, related, dangling). */
+export interface GraphAdapter {
+	graph(request: CoreGraphRequest): Promise<CoreGraphResult | CoreError>;
+}
+
 /** Registry of all adapters keyed by data type, plus search, delete, and rename adapters. */
 export interface AdapterRegistry {
 	note: ReadWriteAdapter;
@@ -68,6 +76,8 @@ export interface AdapterRegistry {
 	deleteAdapters: Record<DeleteDataType, DeleteAdapter>;
 	/** Rename/move adapter — operates on whole files (note or binary). */
 	rename: RenameAdapter;
+	/** Graph navigation adapter — read-only traversal of the link structure. */
+	graph: GraphAdapter;
 }
 
 // ============================================================
@@ -75,7 +85,7 @@ export interface AdapterRegistry {
 // ============================================================
 
 /** Union of every value an adapter route can return — shared with the MCP tool layer. */
-export type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
+export type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreGraphResult | CoreError;
 
 function validationError(message: string): CoreError {
 	return {code: 'VALIDATION_ERROR', message};
@@ -128,6 +138,11 @@ export function createOperationRouter(
 		// Rename — also discriminated by an explicit `kind` marker
 		if (isCoreRenameRequest(request)) {
 			return adapters.rename.rename(request);
+		}
+
+		// Graph navigation — discriminated by `kind: 'graph'`
+		if (isCoreGraphRequest(request)) {
+			return adapters.graph.graph(request);
 		}
 
 		if (isCoreWriteRequest(request)) {

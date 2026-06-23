@@ -13,6 +13,7 @@ import type {
 	CoreSearchResult,
 	CoreDeleteResult,
 	CoreRenameResult,
+	CoreGraphResult,
 	CoreError,
 	CoreOpenNotesResult,
 } from '../types/canonical';
@@ -89,6 +90,15 @@ export function mapSearchResult(result: CoreSearchResult, hints?: Hint[]): CallT
 		items: result.items,
 		cursor: result.cursor,
 		total: result.total,
+	}, hints));
+}
+
+/** Serializes a CoreGraphResult (graph navigation response) into a JSON CallToolResult. */
+export function mapGraphResult(result: CoreGraphResult, hints?: Hint[]): CallToolResult {
+	return textResult(withHints({
+		source: result.source,
+		operation: result.operation,
+		nodes: result.nodes,
 	}, hints));
 }
 

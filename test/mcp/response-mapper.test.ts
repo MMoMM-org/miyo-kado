@@ -13,6 +13,7 @@ import {
 	mapSearchResult,
 	mapDeleteResult,
 	mapRenameResult,
+	mapGraphResult,
 	mapError,
 	mapOpenNotesResult,
 } from '../../src/mcp/response-mapper';
@@ -444,6 +445,31 @@ describe('mapOpenNotesResult()', () => {
 		const note = body.notes[0] as Record<string, unknown>;
 
 		expect(typeof note['active']).toBe('boolean');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapGraphResult
+// ---------------------------------------------------------------------------
+
+describe('mapGraphResult()', () => {
+	it('serializes source, operation, and nodes', () => {
+		const result = mapGraphResult({
+			source: 'a.md',
+			operation: 'related',
+			nodes: [{path: 'c.md', relation: 'related', via: ['b.md']}],
+		});
+		const body = JSON.parse(readText(result)) as {source: string; operation: string; nodes: Array<Record<string, unknown>>};
+
+		expect(body.source).toBe('a.md');
+		expect(body.operation).toBe('related');
+		expect(body.nodes[0]).toMatchObject({path: 'c.md', relation: 'related', via: ['b.md']});
+	});
+
+	it('attaches _hints when provided', () => {
+		const result = mapGraphResult({source: 'a.md', operation: 'backlinks', nodes: []}, [{do: 'kado-read', why: 'x'}]);
+		const body = JSON.parse(readText(result)) as {_hints?: unknown[]};
+		expect(body._hints).toHaveLength(1);
 	});
 });
 

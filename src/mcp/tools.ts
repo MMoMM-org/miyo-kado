@@ -17,19 +17,21 @@ import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protoco
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
 import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
-import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest} from '../types/canonical';
+import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapError, mapOpenNotesResult} from './response-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {deriveHints} from './hints';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest} from './request-mapper';
+import {evaluateGraphPermissions} from '../core/graph-policy';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest, mapGraphRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
 	CoreRenameResult,
+	CoreGraphResult,
 	CoreSearchItem,
 	KadoConfig,
 	ApiKeyConfig,
@@ -150,6 +152,23 @@ export const kadoOpenNotesShape = {
 	),
 };
 
+export const kadoGraphShape = {
+	operation: z.enum(['backlinks', 'outgoing', 'neighbors', 'related', 'dangling']).describe('Graph navigation type'),
+	path: z.string().describe('Source note path (.md). Backlinks/outgoing/neighbors/related resolve links to paths; dangling lists this note\'s unresolved link targets.'),
+	limit: z.number().int().positive().optional().describe('Max nodes to return. Omit for all.'),
+};
+
+export const KADO_GRAPH_TOOL_DESCRIPTION =
+	'Navigate the Obsidian link graph from a source note (.md). Operations: ' +
+	'backlinks (notes that link TO the source), ' +
+	'outgoing (resolved targets the source links to), ' +
+	'neighbors (1-hop union of backlinks + outgoing), ' +
+	'related (2-hop notes reached via a neighbour; each result carries "via" — the neighbour(s) it was reached through), ' +
+	'dangling (the source\'s unresolved/broken link targets, with reference "count"). ' +
+	'Returns { source, operation, nodes: [{ path, relation, via?, count? }] }. ' +
+	'Requires note read permission on the source; resolved result nodes outside this key\'s scope are silently omitted. ' +
+	'Reads Obsidian\'s in-memory link index, which can briefly lag the disk after external bulk changes.';
+
 export const kadoSearchShape = {
 	operation: z.enum(['byTag', 'byName', 'listDir', 'listTags', 'byContent', 'byFrontmatter', 'listNotes']).describe('Search operation type'),
 	query: z.string().optional().describe('Search query. Required for all operations except listDir, listTags, and listNotes. Supports * and ? glob wildcards for byName and byTag.'),
@@ -225,7 +244,7 @@ function missingAuthError(): CallToolResult {
  * duplicating glob-matching logic — any future change to whitelist/blacklist semantics
  * applies to both.
  */
-function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
+export function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
 	const inGlobal = isPathInScope(path, config.security.listMode, config.security.paths.map((p) => p.path));
 	const inKey = isPathInScope(path, key.listMode, key.paths.map((p) => p.path));
 	return inGlobal && inKey;
@@ -343,6 +362,8 @@ function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, 
 
 function extractDataType(request: CoreRequest): DataType {
 	if (isCoreSearchRequest(request)) return 'note';
+	// Graph navigation reads the link structure of notes — audited as a note read.
+	if (isCoreGraphRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
 	if (request.operation === 'tags') return 'note';
 	return request.operation;
@@ -485,6 +506,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 		registerRenameTool(server, deps);
 	}
 	registerOpenNotesTool(server, deps);
+	registerGraphTool(server, deps);
 }
 
 // ============================================================
@@ -786,6 +808,51 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		} catch (err: unknown) {
 			// M7: static message to avoid leaking internal details; raw error logged below
 			kadoLog('kado-open-notes error', {key: truncateKeyId(keyId), code: 'INTERNAL_ERROR', err: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
+		}
+	});
+}
+
+function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
+	server.registerTool('kado-graph', {description: KADO_GRAPH_TOOL_DESCRIPTION, inputSchema: kadoGraphShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+		const keyId = extractKeyId(extra);
+		if (!keyId) return missingAuthError();
+
+		let request;
+		try {
+			request = mapGraphRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
+
+		const config = deps.configManager.getConfig();
+		// Authorize a note read on the source; resolved nodes are scope-filtered below.
+		const perm = evaluateGraphPermissions(request, config, deps.gates);
+		if (!perm.allowed) {
+			await logDenied('kado-graph', deps, keyId, request, perm.error.gate);
+			return mapError(perm.error, deriveHints({tool: 'kado-graph', request, error: perm.error}));
+		}
+
+		const startMs = performance.now();
+		try {
+			const result = await deps.router(request);
+			if (isCoreError(result)) {
+				kadoLog('kado-graph error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result, deriveHints({tool: 'kado-graph', request, error: result}));
+			}
+			// Disclosure guard: graph resolves links to vault paths, so a resolved
+			// neighbour may sit outside this key's scope. Drop out-of-scope resolved
+			// nodes. Dangling targets are the source note's own (readable) content —
+			// raw unresolved strings, not paths — so they are not path-filtered.
+			const graphResult = result as CoreGraphResult;
+			const key = config.apiKeys.find((k) => k.id === keyId);
+			const nodes = key
+				? graphResult.nodes.filter((n) => n.relation === 'dangling' || isPathPermittedForKey(n.path, key, config))
+				: [];
+			await logAllowed('kado-graph', deps, keyId, request, startMs);
+			return mapGraphResult({...graphResult, nodes});
+		} catch (err: unknown) {
+			kadoLog('kado-graph error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});

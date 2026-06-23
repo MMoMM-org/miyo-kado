@@ -241,8 +241,61 @@ export interface CoreRenameResult {
 	linkUpdatePending?: boolean;
 }
 
+// ============================================================
+// Graph Requests and Results
+// ============================================================
+
+/**
+ * Graph navigation operation over the vault's link structure.
+ * - backlinks: notes linking TO the source
+ * - outgoing:  resolved targets the source links to
+ * - neighbors: union of backlinks + outgoing (1-hop)
+ * - related:   2-hop notes reached via a 1-hop neighbour
+ * - dangling:  the source's unresolved (broken) link targets
+ */
+export type GraphOperation = 'backlinks' | 'outgoing' | 'neighbors' | 'related' | 'dangling';
+
+/**
+ * Request to navigate the link graph from a source note.
+ *
+ * `kind: 'graph'` discriminates it from the other request types (like delete /
+ * rename). Permission is enforced in the tool layer by synthesizing a note read
+ * on `path` (see graph-policy), and resolved result nodes are scope-filtered
+ * there — so a graph traversal can never disclose a path outside the key's scope.
+ */
+export interface CoreGraphRequest {
+	kind: 'graph';
+	apiKeyId: string;
+	operation: GraphOperation;
+	/** Source note path (must be `.md`). */
+	path: string;
+	/** Max nodes to return (the tool layer paginates/caps). */
+	limit?: number;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
+}
+
+/** A single node in a graph result. */
+export interface CoreGraphNode {
+	/** Resolved vault path, or — for `dangling` — the raw unresolved link target. */
+	path: string;
+	/** How this node relates to the source. */
+	relation: 'backlink' | 'outgoing' | 'neighbor' | 'related' | 'dangling';
+	/** For `related`: the 1-hop neighbour(s) this node was reached through. */
+	via?: string[];
+	/** For `dangling`: number of unresolved references to this target in the source. */
+	count?: number;
+}
+
+/** Result of a graph navigation. */
+export interface CoreGraphResult {
+	source: string;
+	operation: GraphOperation;
+	nodes: CoreGraphNode[];
+}
+
 /** Union of all core request types flowing through the permission chain. */
-export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest;
+export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest | CoreGraphRequest;
 
 // ============================================================
 // Open Notes Requests and Results
@@ -627,6 +680,14 @@ export function isCoreDeleteRequest(req: CoreRequest): req is CoreDeleteRequest 
  */
 export function isCoreRenameRequest(req: CoreRequest): req is CoreRenameRequest {
 	return 'kind' in req && req.kind === 'rename';
+}
+
+/**
+ * Returns true when `req` is a CoreGraphRequest.
+ * Discriminated by the explicit `kind: 'graph'` marker.
+ */
+export function isCoreGraphRequest(req: CoreRequest): req is CoreGraphRequest {
+	return 'kind' in req && req.kind === 'graph';
 }
 
 /**

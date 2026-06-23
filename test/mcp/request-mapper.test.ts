@@ -16,6 +16,7 @@ import {
 	mapDeleteRequest,
 	mapRenameRequest,
 	mapOpenNotesRequest,
+	mapGraphRequest,
 	parseHeadingTarget,
 } from '../../src/mcp/request-mapper';
 import {kadoOpenNotesShape} from '../../src/mcp/tools';
@@ -1515,5 +1516,40 @@ describe('mapWriteRequest — note mode: replaceRange', () => {
 		) as CoreWriteRequest;
 		expect(result.content).toEqual({a: 1});
 		expect(Object.prototype.hasOwnProperty.call(result.content, 'prototype')).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapGraphRequest
+// ---------------------------------------------------------------------------
+
+describe('mapGraphRequest()', () => {
+	const KEY = 'kado_test-key';
+
+	it('maps a valid graph request', () => {
+		const req = mapGraphRequest({operation: 'backlinks', path: 'notes/a.md'}, KEY);
+		expect(req).toMatchObject({kind: 'graph', apiKeyId: KEY, operation: 'backlinks', path: 'notes/a.md'});
+	});
+
+	it('accepts an optional positive integer limit', () => {
+		const req = mapGraphRequest({operation: 'related', path: 'notes/a.md', limit: 10}, KEY);
+		expect(req.limit).toBe(10);
+	});
+
+	it('rejects an unknown operation', () => {
+		expect(() => mapGraphRequest({operation: 'siblings', path: 'notes/a.md'}, KEY)).toThrow();
+	});
+
+	it('rejects a non-.md source path', () => {
+		expect(() => mapGraphRequest({operation: 'backlinks', path: 'notes/a.png'}, KEY)).toThrow();
+	});
+
+	it('rejects a missing path', () => {
+		expect(() => mapGraphRequest({operation: 'backlinks'}, KEY)).toThrow();
+	});
+
+	it('rejects a non-positive or non-integer limit', () => {
+		expect(() => mapGraphRequest({operation: 'backlinks', path: 'a.md', limit: 0}, KEY)).toThrow();
+		expect(() => mapGraphRequest({operation: 'backlinks', path: 'a.md', limit: 1.5}, KEY)).toThrow();
 	});
 });
