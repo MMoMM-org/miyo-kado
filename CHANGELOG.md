@@ -1,3 +1,10 @@
+# [0.17.0](https://github.com/MMoMM-org/miyo-kado/compare/0.16.0...0.17.0) (2026-06-23)
+
+
+### Features
+
+* tool-layer enrichment — ranked byContent, response hints, kado-graph ([#87](https://github.com/MMoMM-org/miyo-kado/issues/87)) ([d069dca](https://github.com/MMoMM-org/miyo-kado/commit/d069dca316aae347d23f6654a61a2e6814b7cbc8))
+
 # [0.16.0](https://github.com/MMoMM-org/miyo-kado/compare/0.15.1...0.16.0) (2026-06-20)
 
 
