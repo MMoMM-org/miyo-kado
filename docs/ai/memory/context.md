@@ -1,13 +1,24 @@
 # Context — Kado
-<!-- Current sprint focus, active work, known blockers. Updated: 2026-06-15 -->
+<!-- Current sprint focus, active work, known blockers. Updated: 2026-06-23 -->
 <!-- This file is short-lived — prune entries older than 2 weeks via /memory-cleanup -->
 
 ## Active focus
 
-None — no active sprint. v1 plus specs 006 (open-notes), 007 (partial read/write),
-and 008 (kado-rename) have shipped to master. Cross-repo contract handoffs for the
-rename tool (Kokoro contract + refinements, Tomo availability) are out; Kokoro
-confirmed done.
+Tool-layer enrichment on branch `feat/tool-layer-enrichment` (one PR, not yet
+pushed/merged) — three features, all unit-tested (1509 green) AND live-verified
+against the running vault:
+1. `kado-search byContent` is now full-text *ranked* with `score` + `snippets`
+   (pure `src/core/content-score.ts`).
+2. Optional additive `_hints` on tool responses (pure `src/mcp/hints.ts`) — see
+   ADR-003.
+3. New **`kado-graph`** tool (backlinks/outgoing/neighbors/related/dangling) with
+   a link-disclosure guard — see ADR-002. Index lifecycle in `main.ts` rebuilds on
+   the metadataCache `resolved` event.
+Live-test fixtures added under `test/MiYo-Kado/allowed/Graph Demo *`. Decisions in
+`decisions.md` (3× 2026-06-23); ADR-002/003 in `docs/XDD/adr/`. Next: open the PR.
+
+v1 plus specs 006 (open-notes), 007 (partial read/write), and 008 (kado-rename)
+shipped to master earlier; rename cross-repo handoffs (Kokoro/Tomo) confirmed done.
 
 ## Open tech debt
 
