@@ -1,3 +1,10 @@
+# [0.18.0](https://github.com/MMoMM-org/miyo-kado/compare/0.17.0...0.18.0) (2026-06-24)
+
+
+### Features
+
+* firstXWords partial-read mode + code-point-correct truncated hint ([#85](https://github.com/MMoMM-org/miyo-kado/issues/85)) ([#88](https://github.com/MMoMM-org/miyo-kado/issues/88)) ([eba114e](https://github.com/MMoMM-org/miyo-kado/commit/eba114e59fba5a79875e302f2db223955c7c5549))
+
 # [0.17.0](https://github.com/MMoMM-org/miyo-kado/compare/0.16.0...0.17.0) (2026-06-23)
 
 
