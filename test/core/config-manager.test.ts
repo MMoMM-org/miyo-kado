@@ -56,6 +56,12 @@ describe('ConfigManager default config', () => {
 		expect(manager.getConfig().server.enabled).toBe(false);
 	});
 
+	it('defaults the rate limit to 20 requests per 5 s window', () => {
+		const {manager} = makeConfigManager();
+		expect(manager.getConfig().server.rateLimitMaxRequests).toBe(20);
+		expect(manager.getConfig().server.rateLimitWindowSeconds).toBe(5);
+	});
+
 	it('has audit enabled by default', () => {
 		const {manager} = makeConfigManager();
 		expect(manager.getConfig().audit.enabled).toBe(true);
@@ -123,6 +129,14 @@ describe('ConfigManager.load()', () => {
 		const config = manager.getConfig();
 		expect(config.server.port).toBe(9999);
 		expect(config.server.host).toBe('127.0.0.1');
+	});
+
+	it('fills rate-limit defaults when stored server config omits them', async () => {
+		const {manager} = makeConfigManager({server: {port: 9999}});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.server.rateLimitMaxRequests).toBe(20);
+		expect(config.server.rateLimitWindowSeconds).toBe(5);
 	});
 
 	it('preserves default audit sub-object fields when stored audit is partial', async () => {

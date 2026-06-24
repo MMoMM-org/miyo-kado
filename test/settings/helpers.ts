@@ -31,7 +31,7 @@ export function renderSandbox(): HTMLElement {
 /** Default KadoConfig used when a test doesn't override it. */
 export function defaultConfig(): KadoConfig {
 	return {
-		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local', rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5},
 		security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
 		apiKeys: [],
 		audit: {

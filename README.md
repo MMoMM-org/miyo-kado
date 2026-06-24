@@ -35,7 +35,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Link-graph navigation** -- `kado-graph` traverses the vault's link structure: `backlinks`, `outgoing`, `neighbors` (1-hop), `related` (2-hop, with the `via` neighbour), and `dangling` (unresolved link targets). Resolved nodes outside the key's scope are silently omitted, so a traversal can never disclose a path the key cannot read
 - **Self-guiding responses** -- tool responses may carry an optional, additive `_hints` array suggesting the sensible next step (re-read after a `CONFLICT`, fetch the next page when a cursor is present, continue a truncated read). Purely advisory and safe to ignore
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
-- **Rate limiting** -- 200 requests/minute per IP
+- **Rate limiting** -- configurable per-IP throttle (default 20 requests per 5 s; tunable live, `0` disables)
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
 - **Status bar indicator** -- the 門 gate glyph shows server state at a glance (listening / off / bind error) and throbs on each tool call, colour-coded for reads vs. writes, with the acting key's name in the tooltip; a rejected call lingers red for a few seconds then self-clears. Click it to open Kado's settings
 

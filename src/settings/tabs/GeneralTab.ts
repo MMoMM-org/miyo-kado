@@ -85,6 +85,34 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 			}));
 	}
 
+	// Rate limit — applied live (no restart needed); editable while running.
+	new Setting(containerEl)
+		.setName('Rate limit (requests per window)')
+		.setDesc(server.rateLimitMaxRequests === 0
+			? 'Disabled — no throttling'
+			: 'Max requests per IP within each window. 0 = disabled.')
+		.addText(text => text
+			.setValue(String(server.rateLimitMaxRequests))
+			.onChange(async (value) => {
+				const max = Number(value);
+				if (!Number.isInteger(max) || max < 0) return;
+				server.rateLimitMaxRequests = max;
+				await plugin.saveSettings();
+				onRedisplay();
+			}));
+
+	new Setting(containerEl)
+		.setName('Rate limit window (seconds)')
+		.setDesc('Length of each rate-limit window before the counter resets')
+		.addText(text => text
+			.setValue(String(server.rateLimitWindowSeconds))
+			.onChange(async (value) => {
+				const secs = Number(value);
+				if (!Number.isInteger(secs) || secs < 1) return;
+				server.rateLimitWindowSeconds = secs;
+				await plugin.saveSettings();
+			}));
+
 	// ── API Keys Section ──
 	new Setting(containerEl).setName('API keys').setHeading();
 

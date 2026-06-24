@@ -26,9 +26,16 @@ type McpRequest = express.Request & {auth?: AuthInfo};
 // Rate limiting (L5) — in-memory, per-IP, no external dependency
 // -----------------------------------------------------------------------
 
-/** Maximum number of requests per IP per rate-limit window (1 minute). */
-export const RATE_LIMIT = 200; // requests per window
-const WINDOW_MS = 60_000; // 1 minute
+/**
+ * Per-request rate-limit parameters, read live from config so changes apply
+ * without a server restart. `max <= 0` disables throttling entirely.
+ */
+export interface RateLimitParams {
+	/** Max requests per window per IP. `0` (or less) disables throttling. */
+	max: number;
+	/** Window length in milliseconds. Guarded to ≥ 1000 ms by the middleware. */
+	windowMs: number;
+}
 
 /** Interval at which the server proactively evicts expired rate-limit entries. */
 export const EVICTION_INTERVAL_MS = 60_000;
@@ -61,31 +68,48 @@ function evictExpiredEntries(now: number): void {
 	}
 }
 
-function rateLimitMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
-	const ip = req.ip ?? 'unknown';
-	const now = Date.now();
-	evictStaleEntries(now);
-	const entry = requestCounts.get(ip) ?? {count: 0, resetAt: now + WINDOW_MS};
-	if (now > entry.resetAt) {
-		entry.count = 0;
-		entry.resetAt = now + WINDOW_MS;
-	}
-	entry.count++;
-	requestCounts.set(ip, entry);
+/**
+ * Builds the per-IP rate-limit middleware. `getParams` is called on every request
+ * so the limit and window track live config changes (no restart). When `max <= 0`
+ * the throttle is disabled: no counting and no RateLimit-* headers — the absence
+ * of the headers is the conventional "no limit" signal.
+ */
+function createRateLimitMiddleware(
+	getParams: () => RateLimitParams,
+): (req: express.Request, res: express.Response, next: express.NextFunction) => void {
+	return function rateLimitMiddleware(req, res, next): void {
+		const {max, windowMs: rawWindowMs} = getParams();
+		if (max <= 0) {
+			next();
+			return;
+		}
+		const windowMs = Math.max(1000, rawWindowMs);
 
-	// Always set rate-limit headers so clients can throttle proactively
-	const remaining = Math.max(0, RATE_LIMIT - entry.count);
-	const resetSeconds = Math.ceil((entry.resetAt - now) / 1000);
-	res.setHeader('RateLimit-Limit', RATE_LIMIT);
-	res.setHeader('RateLimit-Remaining', remaining);
-	res.setHeader('RateLimit-Reset', resetSeconds);
+		const ip = req.ip ?? 'unknown';
+		const now = Date.now();
+		evictStaleEntries(now);
+		const entry = requestCounts.get(ip) ?? {count: 0, resetAt: now + windowMs};
+		if (now > entry.resetAt) {
+			entry.count = 0;
+			entry.resetAt = now + windowMs;
+		}
+		entry.count++;
+		requestCounts.set(ip, entry);
 
-	if (entry.count > RATE_LIMIT) {
-		res.setHeader('Retry-After', resetSeconds);
-		res.status(429).json({error: 'Too many requests'});
-		return;
-	}
-	next();
+		// Always set rate-limit headers so clients can throttle proactively
+		const remaining = Math.max(0, max - entry.count);
+		const resetSeconds = Math.ceil((entry.resetAt - now) / 1000);
+		res.setHeader('RateLimit-Limit', max);
+		res.setHeader('RateLimit-Remaining', remaining);
+		res.setHeader('RateLimit-Reset', resetSeconds);
+
+		if (entry.count > max) {
+			res.setHeader('Retry-After', resetSeconds);
+			res.status(429).json({error: 'Too many requests'});
+			return;
+		}
+		next();
+	};
 }
 
 // -----------------------------------------------------------------------
@@ -252,7 +276,10 @@ export class KadoMcpServer {
 			methods: ['GET', 'POST', 'DELETE'],
 		}));
 		app.use(express.json({limit: '1mb'}));
-		app.use(rateLimitMiddleware);
+		app.use(createRateLimitMiddleware(() => {
+			const s = this.configManager.getConfig().server;
+			return {max: s.rateLimitMaxRequests, windowMs: s.rateLimitWindowSeconds * 1000};
+		}));
 		app.use(createAuthMiddleware(this.configManager));
 		this.mountMcpRoutes(app);
 		return app;
