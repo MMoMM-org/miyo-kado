@@ -20,7 +20,7 @@ import type {
 type Args = Record<string, unknown>;
 
 /** Valid mode values for partial note reads. */
-const NOTE_READ_MODES = new Set<string>(['firstXChars', 'section', 'range']);
+const NOTE_READ_MODES = new Set<string>(['firstXChars', 'firstXWords', 'section', 'range']);
 
 /** Max heading-path nesting depth accepted at the boundary (well beyond any real outline). */
 const MAX_HEADING_DEPTH = 50;
@@ -149,21 +149,22 @@ export function parseNoteReadPartial(args: Args, operation: string, context: str
 	if (typeof mode !== 'string' || !NOTE_READ_MODES.has(mode)) {
 		const shown = typeof mode === 'string' ? mode : typeof mode;
 		throw new Error(
-			`${context}: mode must be one of firstXChars|section|range (got '${shown}')`,
+			`${context}: mode must be one of firstXChars|firstXWords|section|range (got '${shown}')`,
 		);
 	}
 
-	if (mode === 'firstXChars') {
+	// firstXChars (code points) and firstXWords (Unicode words) share limit validation.
+	if (mode === 'firstXChars' || mode === 'firstXWords') {
 		const limit = args['limit'];
 		if (typeof limit !== 'number' || !Number.isInteger(limit) || limit <= 0) {
 			throw new Error(
-				`${context}: limit must be a positive integer for mode="firstXChars"`,
+				`${context}: limit must be a positive integer for mode="${mode}"`,
 			);
 		}
 		if (limit > MAX_PARTIAL_INDEX) {
 			throw new Error(`${context}: limit must not exceed ${MAX_PARTIAL_INDEX} (got ${limit})`);
 		}
-		return {mode: 'firstXChars', limit};
+		return {mode, limit};
 	}
 
 	if (mode === 'section') {

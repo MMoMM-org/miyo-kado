@@ -8,6 +8,7 @@
 import {describe, it, expect} from 'vitest';
 import {
 	firstXChars,
+	firstXWords,
 	sliceByLineRange,
 	sliceByCharRange,
 	applyAppend,
@@ -78,6 +79,81 @@ describe('firstXChars()', () => {
 
 	it('throws when limit is negative', () => {
 		expect(() => firstXChars('hello', -1)).toThrow();
+	});
+});
+
+// ============================================================
+// firstXWords
+// ============================================================
+
+describe('firstXWords()', () => {
+	it('returns truncated slice when limit is fewer words than the body has', () => {
+		const {slice, truncated} = firstXWords('one two three four', 2);
+		expect(slice).toBe('one two');
+		expect(truncated).toBe(true);
+	});
+
+	it('returns full body when limit equals the word count', () => {
+		const {slice, truncated} = firstXWords('one two three', 3);
+		expect(slice).toBe('one two three');
+		expect(truncated).toBe(false);
+	});
+
+	it('returns full body when limit exceeds the word count', () => {
+		const {slice, truncated} = firstXWords('one two three', 100);
+		expect(slice).toBe('one two three');
+		expect(truncated).toBe(false);
+	});
+
+	it('returns empty string for empty body', () => {
+		const {slice, truncated} = firstXWords('', 5);
+		expect(slice).toBe('');
+		expect(truncated).toBe(false);
+	});
+
+	it('cuts at the end of the last word, dropping trailing whitespace/punctuation', () => {
+		// The remainder ' three!' should be re-readable as a suffix → slice is a prefix.
+		const body = 'one two   three!';
+		const {slice, truncated} = firstXWords(body, 2);
+		expect(slice).toBe('one two');
+		expect(truncated).toBe(true);
+		expect(body.startsWith(slice)).toBe(true);
+	});
+
+	it('counts hyphen-separated tokens as distinct words', () => {
+		// ICU word segmentation treats 'hello-world' as 'hello', '-', 'world'.
+		const {slice, truncated} = firstXWords('hello-world rest', 2);
+		expect(slice).toBe('hello-world');
+		expect(truncated).toBe(true);
+	});
+
+	it('segments CJK runs into multiple words (Unicode-aware)', () => {
+		// '日本語のテスト' has no spaces; ICU still yields multiple word-like segments,
+		// so a small limit must truncate rather than return the whole run.
+		const body = '日本語のテスト';
+		const {slice, truncated} = firstXWords(body, 1);
+		expect(truncated).toBe(true);
+		expect(slice.length).toBeGreaterThan(0);
+		expect(body.startsWith(slice)).toBe(true);
+	});
+
+	it('does not split astral-plane characters', () => {
+		// Rare CJK Ext-B kanji (surrogate pair) as a word, then a space + word.
+		const body = '𠀀 rest';
+		const {slice, truncated} = firstXWords(body, 1);
+		expect(slice).toBe('𠀀');
+		expect(Array.from(slice).length).toBe(1);
+		expect(truncated).toBe(true);
+	});
+
+	it('returns empty slice + truncated for a non-empty body with limit 0', () => {
+		const {slice, truncated} = firstXWords('one two', 0);
+		expect(slice).toBe('');
+		expect(truncated).toBe(true);
+	});
+
+	it('throws when limit is negative', () => {
+		expect(() => firstXWords('hello', -1)).toThrow();
 	});
 });
 

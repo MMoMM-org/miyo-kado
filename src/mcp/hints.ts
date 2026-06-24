@@ -104,8 +104,12 @@ function truncatedHint(ctx: HintContext): Hint | null {
 	const path = pathOf(ctx.request);
 	const operation = operationOf(ctx.request) ?? 'note';
 	if (!path) return null;
-	const start = typeof result.content === 'string' ? result.content.length : undefined;
-	if (start === undefined) return null;
+	if (typeof result.content !== 'string') return null;
+	// The slice is a prefix; the continuation is a char range, which the adapter
+	// reads as code POINTS — so count code points, not UTF-16 units. They diverge
+	// for astral-plane chars (emoji, CJK Ext-B+); using `.length` would overshoot
+	// and skip content. `Array.from` iterates by code point.
+	const start = Array.from(result.content).length;
 	return {
 		do: 'kado-read',
 		with: {operation, path, mode: 'range', rangeBasis: 'char', start},

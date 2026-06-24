@@ -1012,6 +1012,39 @@ describe('mapReadRequest — partial read: mode=firstXChars', () => {
 	});
 });
 
+describe('mapReadRequest — partial read: mode=firstXWords', () => {
+	it('valid limit → partial {mode:"firstXWords", limit}', () => {
+		const result = mapReadRequest(makeReadArgs({mode: 'firstXWords', limit: 1000}), KEY_ID);
+
+		expect(result.partial).toEqual({mode: 'firstXWords', limit: 1000});
+	});
+
+	it('limit missing → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXWords'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit=0 → throws (must be positive)', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXWords', limit: 0}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit negative → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXWords', limit: -1}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit non-integer (1.5) → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXWords', limit: 1.5}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+
+	it('limit as string → throws', () => {
+		expect(() => mapReadRequest(makeReadArgs({mode: 'firstXWords', limit: '1000'}), KEY_ID))
+			.toThrow(/mapReadRequest:.*limit/i);
+	});
+});
+
 describe('mapReadRequest — partial read: mode=section', () => {
 	it('valid heading → partial {mode:"section", heading}', () => {
 		const result = mapReadRequest(makeReadArgs({mode: 'section', heading: 'Introduction'}), KEY_ID);

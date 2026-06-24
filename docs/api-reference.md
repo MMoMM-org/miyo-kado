@@ -90,8 +90,8 @@ Read content from the Obsidian vault. Returns content along with file metadata. 
 |---|---|---|---|
 | `operation` | `"note" \| "frontmatter" \| "file" \| "dataview-inline-field"` | Yes | What to read |
 | `path` | `string` | Yes | Vault-relative path, e.g. `"Calendar/2026-03-31.md"` |
-| `mode` | `"firstXChars" \| "section" \| "range"` | No | Partial-read mode. Only valid for `operation="note"`. Omit for a full read (unchanged behaviour). See [Partial reads](#partial-reads). |
-| `limit` | `integer` | Conditional | Number of Unicode code points to return. Required (positive integer) for `mode="firstXChars"`; ignored otherwise. |
+| `mode` | `"firstXChars" \| "firstXWords" \| "section" \| "range"` | No | Partial-read mode. Only valid for `operation="note"`. Omit for a full read (unchanged behaviour). See [Partial reads](#partial-reads). |
+| `limit` | `integer` | Conditional | Cap for the partial read. Required (positive integer) for `mode="firstXChars"` (Unicode code points) and `mode="firstXWords"` (words); ignored otherwise. |
 | `heading` | `string` | Conditional | Heading text to target (first match). Used with `mode="section"`. Mutually exclusive with `headingPath`. |
 | `headingPath` | `string[]` | Conditional | Hierarchical heading path (`["H1", "H2"]`) for disambiguating duplicate headings. Used with `mode="section"`. Mutually exclusive with `heading`. |
 | `rangeBasis` | `"line" \| "char"` | Conditional | Unit for `start`/`end`. Required for `mode="range"`. `line`: 1-based, inclusive end. `char`: 0-based code points, exclusive end. |
@@ -210,6 +210,7 @@ Partial reads let a client fetch only part of a note's body instead of the whole
 | Mode | Required params | Returns |
 |---|---|---|
 | `firstXChars` | `limit` (positive integer) | The first `limit` Unicode code points of the body. If `limit ≥ body length`, the full body is returned with `truncated: false`. |
+| `firstXWords` | `limit` (positive integer) | The first `limit` words of the body, cut at the end of the last word (trailing whitespace/punctuation dropped). "Word" follows ICU word segmentation (`Intl.Segmenter`), so it is Unicode-aware and splits space-less scripts such as CJK. If `limit ≥` the body's word count, the full body is returned with `truncated: false`. The slice is a prefix, so a truncated read can be continued with a `char` `range` read at the offset from the response hint. |
 | `section` | `heading` **or** `headingPath` (exactly one) | The content from the matched heading down to the next equal-or-higher heading (or EOF). `heading` matches the first heading with that text; `headingPath` disambiguates by H1 > H2 > … path. |
 | `range` | `rangeBasis`, `start`, `end` | A slice addressed by line or character offsets (see basis rules below). |
 

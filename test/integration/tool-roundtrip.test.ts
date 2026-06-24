@@ -1155,6 +1155,60 @@ describe('End-to-end tool call pipeline', () => {
 		});
 	});
 
+	describe('kado-read partial note — firstXWords mode (#85)', () => {
+		it('returns the first N words and truncated:true when more words remain', async () => {
+			const CONTENT = 'Hello world, this is a long note.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/long.md',
+				name: 'long.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/long.md', mode: 'firstXWords', limit: 2},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe('Hello world');
+			expect(body.truncated).toBe(true);
+		});
+
+		it('returns full content and truncated:false when limit exceeds the word count', async () => {
+			const CONTENT = 'Short note.';
+			const config = makeTestConfig();
+			const app = makeApp();
+			const file = createMockTFile({
+				path: 'projects/short.md',
+				name: 'short.md',
+				stat: {ctime: 1000, mtime: 2000, size: CONTENT.length},
+			});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
+
+			const result = await runPipeline(
+				config,
+				app,
+				{operation: 'note', path: 'projects/short.md', mode: 'firstXWords', limit: 1000},
+				'test-key',
+				'kado-read',
+			);
+
+			expect(result.isError).toBeUndefined();
+			const body = parseResult(result);
+			expect(body.content).toBe(CONTENT);
+			expect(body.truncated).toBe(false);
+		});
+	});
+
 	describe('kado-read partial note — range mode (T5.4)', () => {
 		// Content:
 		//   Line 1: "alpha"
