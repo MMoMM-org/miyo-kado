@@ -522,6 +522,18 @@ export interface ServerConfig {
 	port: number;
 	/** Whether server binds locally or to a public interface. Default: 'local'. */
 	connectionType: ConnectionType;
+	/**
+	 * Per-IP request cap within each rate-limit window. `0` disables throttling
+	 * entirely (no counting, no RateLimit-* headers). Read live per request, so
+	 * changes apply without a server restart. Default: 20.
+	 */
+	rateLimitMaxRequests: number;
+	/**
+	 * Length of the rate-limit window in seconds (must be ≥ 1). Read live per
+	 * request. Default: 5 — most reads are cached and an edit requires a prior
+	 * read, so ~10 edits per 5 s is the realistic ceiling.
+	 */
+	rateLimitWindowSeconds: number;
 }
 
 /** Configuration for the NDJSON audit log (rotation, size limits, file location). */
@@ -620,6 +632,8 @@ export function createDefaultConfig(): KadoConfig {
 			host: '127.0.0.1',
 			port: 23026,
 			connectionType: 'local',
+			rateLimitMaxRequests: 20,
+			rateLimitWindowSeconds: 5,
 		},
 		security: createDefaultSecurityConfig(),
 		apiKeys: [],

@@ -40,16 +40,16 @@ The token must match an enabled API key in the plugin configuration. Validation 
 
 ## Rate Limiting
 
-Per-IP, sliding-window rate limiting. Every response includes rate-limit headers.
+Per-IP, fixed-window rate limiting. Every response includes rate-limit headers (unless throttling is disabled — see below).
 
 | Header | Description |
 |---|---|
-| `RateLimit-Limit` | Max requests per window (200) |
+| `RateLimit-Limit` | Max requests per window (the configured value) |
 | `RateLimit-Remaining` | Requests remaining in current window |
 | `RateLimit-Reset` | Seconds until the window resets |
 | `Retry-After` | Seconds to wait (only on 429) |
 
-**Limits:** 200 requests per 60-second window per IP address.
+**Limits:** configurable in the General settings tab — **default 20 requests per 5-second window per IP**. Both the request cap and the window length can be tuned, and changes apply live (no server restart). Set the request cap to **`0` to disable throttling entirely**; when disabled the server skips counting and omits all `RateLimit-*` headers. The `RateLimit-Reset` / `Retry-After` values scale with the configured window.
 
 **Exceeded response** (HTTP 429):
 

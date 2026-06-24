@@ -16,6 +16,8 @@ For installation, see [Installation](installation.md). For connecting your AI cl
 | Host | `127.0.0.1` | Bind address |
 | Port | `23026` | TCP port |
 | Connection type | `local` | `local` (127.0.0.1) or `public` (0.0.0.0) |
+| Rate limit (requests per window) | `20` | Max requests per IP per window. `0` disables throttling. Applies live. |
+| Rate limit window (seconds) | `5` | Length of the rate-limit window. Applies live. |
 | Audit logging | On | Enable NDJSON audit log ([format details](how-it-works.md#audit-log)) |
 | Log directory | `logs` | Vault-relative path for log files |
 | Max log size | 10 MB | Triggers rotation |

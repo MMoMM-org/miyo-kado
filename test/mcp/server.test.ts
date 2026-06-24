@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {KadoMcpServer, RATE_LIMIT, MAX_CONCURRENT, requestCounts} from '../../src/mcp/server';
+import {KadoMcpServer, MAX_CONCURRENT, requestCounts} from '../../src/mcp/server';
 import {ConfigManager} from '../../src/core/config-manager';
 import type {ServerConfig} from '../../src/types/canonical';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -21,8 +21,8 @@ function makeConfigManager(): ConfigManager {
 	return new ConfigManager(async () => null, async () => {});
 }
 
-function makeServerConfig(port: number): ServerConfig {
-	return {enabled: true, host: '127.0.0.1', port, connectionType: 'local'};
+function makeServerConfig(port: number, overrides: Partial<ServerConfig> = {}): ServerConfig {
+	return {enabled: true, host: '127.0.0.1', port, connectionType: 'local', rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5, ...overrides};
 }
 
 function noopRegisterTools(_server: McpServer): void {
@@ -490,35 +490,93 @@ describe('KadoMcpServer — auth middleware applied', () => {
 // ---------------------------------------------------------------------------
 
 describe('KadoMcpServer — rate limiting', () => {
-	it('returns 429 when the per-IP request count exceeds RATE_LIMIT', async () => {
+	/** POST a dummy MCP request and resolve with the status code + response headers. */
+	function postMcp(port: number): Promise<{statusCode: number; headers: http.IncomingHttpHeaders}> {
+		return new Promise((resolve, reject) => {
+			const req = http.request(
+				{host: '127.0.0.1', port, method: 'POST', path: '/mcp', headers: {'Content-Type': 'application/json'}},
+				(res) => {
+					res.resume();
+					resolve({statusCode: res.statusCode ?? 0, headers: res.headers});
+				},
+			);
+			req.on('error', reject);
+			req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+			req.end();
+		});
+	}
+
+	it('returns 429 when the per-IP request count exceeds the configured max', async () => {
 		const port = await getFreePort();
-		const server = makeKadoMcpServer();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 20;
+		const server = makeKadoMcpServer(cm);
 		await server.start(makeServerConfig(port));
 
-		// Pre-fill the rate limit counter for 127.0.0.1 to the threshold
-		requestCounts.set('127.0.0.1', {count: RATE_LIMIT, resetAt: Date.now() + 60_000});
+		// Pre-fill the counter to the limit; the incoming request tips it over.
+		requestCounts.set('127.0.0.1', {count: 20, resetAt: Date.now() + 60_000});
 
 		try {
-			const statusCode = await new Promise<number>((resolve, reject) => {
-				const req = http.request(
-					{
-						host: '127.0.0.1',
-						port,
-						method: 'POST',
-						path: '/mcp',
-						headers: {'Content-Type': 'application/json'},
-					},
-					(res) => {
-						res.resume();
-						resolve(res.statusCode ?? 0);
-					},
-				);
-				req.on('error', reject);
-				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
-				req.end();
-			});
-
+			const {statusCode} = await postMcp(port);
 			expect(statusCode).toBe(429);
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('honors a lower max read live from config', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 5;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		requestCounts.set('127.0.0.1', {count: 5, resetAt: Date.now() + 60_000});
+
+		try {
+			const {statusCode} = await postMcp(port);
+			expect(statusCode).toBe(429);
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('advertises the configured max in the RateLimit-Limit header', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 42;
+		cm.getConfig().server.rateLimitWindowSeconds = 5;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		try {
+			const {headers} = await postMcp(port);
+			expect(headers['ratelimit-limit']).toBe('42');
+			// Reset must not exceed the configured window.
+			expect(Number(headers['ratelimit-reset'])).toBeLessThanOrEqual(5);
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('disables throttling and omits RateLimit headers when max is 0', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 0;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		// Even with the counter way over any sane limit, a disabled throttle lets it through.
+		requestCounts.set('127.0.0.1', {count: 10_000, resetAt: Date.now() + 60_000});
+
+		try {
+			const {statusCode, headers} = await postMcp(port);
+			expect(statusCode).not.toBe(429); // falls through to auth → 401
+			expect(headers['ratelimit-limit']).toBeUndefined();
+			expect(headers['ratelimit-remaining']).toBeUndefined();
 		} finally {
 			requestCounts.delete('127.0.0.1');
 			await server.stop();
@@ -531,28 +589,10 @@ describe('KadoMcpServer — rate limiting', () => {
 		await server.start(makeServerConfig(port));
 
 		// Pre-fill with an expired window
-		requestCounts.set('127.0.0.1', {count: RATE_LIMIT + 50, resetAt: Date.now() - 1});
+		requestCounts.set('127.0.0.1', {count: 70, resetAt: Date.now() - 1});
 
 		try {
-			const statusCode = await new Promise<number>((resolve, reject) => {
-				const req = http.request(
-					{
-						host: '127.0.0.1',
-						port,
-						method: 'POST',
-						path: '/mcp',
-						headers: {'Content-Type': 'application/json'},
-					},
-					(res) => {
-						res.resume();
-						resolve(res.statusCode ?? 0);
-					},
-				);
-				req.on('error', reject);
-				req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
-				req.end();
-			});
-
+			const {statusCode} = await postMcp(port);
 			// Window has reset — request goes through to auth middleware, not rate limiter
 			expect(statusCode).toBe(401);
 		} finally {

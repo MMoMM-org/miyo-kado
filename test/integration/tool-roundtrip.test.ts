@@ -41,7 +41,7 @@ import type {KadoConfig, CoreError, CoreFileResult, CoreWriteResult, CoreSearchR
  */
 function makeTestConfig(): KadoConfig {
 	return {
-		server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+		server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local', rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5},
 		security: {
 			listMode: 'whitelist',
 			paths: [
@@ -821,7 +821,7 @@ describe('End-to-end tool call pipeline', () => {
 				dataviewInlineField: {create: true, read: true, update: true, delete: true},
 			};
 			return {
-				server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local'},
+				server: {enabled: true, host: '127.0.0.1', port: 23026, connectionType: 'local', rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5},
 				security: {
 					listMode: 'whitelist',
 					paths: [{path: '100 Inbox', permissions: perms}],
