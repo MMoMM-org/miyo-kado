@@ -86,11 +86,11 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 	}
 
 	// Rate limit — applied live (no restart needed); editable while running.
+	// NOTE: no onRedisplay() here — re-rendering the tab on each keystroke would
+	// recreate the input and steal focus mid-typing (can't type a second digit).
 	new Setting(containerEl)
 		.setName('Rate limit (requests per window)')
-		.setDesc(server.rateLimitMaxRequests === 0
-			? 'Disabled — no throttling'
-			: 'Max requests per IP within each window. 0 = disabled.')
+		.setDesc('Max requests per IP within each window. 0 = disabled.')
 		.addText(text => text
 			.setValue(String(server.rateLimitMaxRequests))
 			.onChange(async (value) => {
@@ -98,7 +98,6 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 				if (!Number.isInteger(max) || max < 0) return;
 				server.rateLimitMaxRequests = max;
 				await plugin.saveSettings();
-				onRedisplay();
 			}));
 
 	new Setting(containerEl)

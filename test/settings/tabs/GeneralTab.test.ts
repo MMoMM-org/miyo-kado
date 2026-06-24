@@ -148,6 +148,20 @@ describe('renderGeneralTab — interactivity', () => {
 		expect(saveSettings).toHaveBeenCalled();
 	});
 
+	it('does not re-render the tab while typing into the rate-limit field (focus regression)', async () => {
+		// Re-rendering on each keystroke recreates the input and steals focus,
+		// so a second digit can never be typed. The handler must not call onRedisplay.
+		const container = renderSandbox();
+		const {plugin} = mockPlugin();
+		const onRedisplay = vi.fn();
+		renderGeneralTab(container, plugin, onRedisplay);
+
+		await typeInto(container, 'Rate limit (requests per window)', '1');
+		await typeInto(container, 'Rate limit window (seconds)', '2');
+
+		expect(onRedisplay).not.toHaveBeenCalled();
+	});
+
 	it('accepts 0 (disabled) for rateLimitMaxRequests', async () => {
 		const container = renderSandbox();
 		const {plugin, config} = mockPlugin();
