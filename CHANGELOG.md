@@ -1,3 +1,10 @@
+# [0.19.0](https://github.com/MMoMM-org/miyo-kado/compare/0.18.0...0.19.0) (2026-06-24)
+
+
+### Features
+
+* configurable MCP rate limit (max requests + window) ([#89](https://github.com/MMoMM-org/miyo-kado/issues/89)) ([22d67f6](https://github.com/MMoMM-org/miyo-kado/commit/22d67f690d35a76542862518365e5865c2f03d95))
+
 # [0.18.0](https://github.com/MMoMM-org/miyo-kado/compare/0.17.0...0.18.0) (2026-06-24)
 
 
