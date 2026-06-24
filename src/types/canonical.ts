@@ -13,7 +13,7 @@
 // ============================================================
 
 /** Addressing mode for a partial note read. */
-export type NoteReadMode = 'firstXChars' | 'section' | 'range';
+export type NoteReadMode = 'firstXChars' | 'firstXWords' | 'section' | 'range';
 
 /** Addressing mode for a partial note write. */
 export type NoteWriteMode =
@@ -42,6 +42,7 @@ export interface RangeTarget {
 /** Normalized partial-READ descriptor (built by request-mapper from flat args). */
 export type NoteReadPartial =
 	| { mode: 'firstXChars'; limit: number }
+	| { mode: 'firstXWords'; limit: number }
 	| ({ mode: 'section' } & HeadingTarget)
 	| ({ mode: 'range' } & RangeTarget);
 

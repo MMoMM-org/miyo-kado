@@ -60,9 +60,9 @@ const makeWriteRequest = (overrides?: Partial<CoreWriteRequest>): CoreWriteReque
 // ============================================================
 
 describe('NoteReadMode', () => {
-	it('accepts all three valid mode values', () => {
-		const modes: NoteReadMode[] = ['firstXChars', 'section', 'range'];
-		expect(modes).toHaveLength(3);
+	it('accepts all four valid mode values', () => {
+		const modes: NoteReadMode[] = ['firstXChars', 'firstXWords', 'section', 'range'];
+		expect(modes).toHaveLength(4);
 	});
 });
 
@@ -127,6 +127,14 @@ describe('NoteReadPartial', () => {
 		expect(p.mode).toBe('firstXChars');
 		if (p.mode === 'firstXChars') {
 			expect(p.limit).toBe(500);
+		}
+	});
+
+	it('accepts firstXWords arm', () => {
+		const p: NoteReadPartial = {mode: 'firstXWords', limit: 1000};
+		expect(p.mode).toBe('firstXWords');
+		if (p.mode === 'firstXWords') {
+			expect(p.limit).toBe(1000);
 		}
 	});
 

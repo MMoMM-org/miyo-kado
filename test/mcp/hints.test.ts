@@ -83,6 +83,31 @@ describe('deriveHints()', () => {
 		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 5});
 	});
 
+	it('suggests a follow-up range read when a firstXWords read was truncated', () => {
+		const hints = deriveHints({
+			tool: 'kado-read',
+			request: {operation: 'note', path: 'big.md', notePartial: {mode: 'firstXWords', limit: 2}} as unknown as CoreRequest,
+			fileResult: {path: 'big.md', content: 'one two', created: 0, modified: 0, size: 999, truncated: true},
+		});
+		const next = hints.find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
+		expect(next).toBeDefined();
+		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 7});
+	});
+
+	it('counts the continuation offset in code points, not UTF-16 units (astral chars)', () => {
+		// '👍👍👍' is 3 code points but 6 UTF-16 units. A char-basis range read
+		// interprets `start` as code points, so the offset must be 3, not 6 —
+		// otherwise the continuation overshoots and skips content.
+		const hints = deriveHints({
+			tool: 'kado-read',
+			request: {operation: 'note', path: 'big.md', notePartial: {mode: 'firstXChars', limit: 3}} as unknown as CoreRequest,
+			fileResult: {path: 'big.md', content: '👍👍👍', created: 0, modified: 0, size: 999, truncated: true},
+		});
+		const next = hints.find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
+		expect(next).toBeDefined();
+		expect(next!.with).toMatchObject({rangeBasis: 'char', start: 3});
+	});
+
 	it('emits no hint for a complete (non-truncated) read', () => {
 		const hints = deriveHints({
 			tool: 'kado-read',

@@ -552,6 +552,33 @@ describe('NoteAdapter', () => {
 		});
 	});
 
+	describe('read() — partial: firstXWords', () => {
+		it('returns word-bounded slice + truncated:true when content exceeds limit', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 100});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hello world, this is more text.');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makePartialReadRequest({mode: 'firstXWords', limit: 2}));
+
+			expect(result.content).toBe('Hello world');
+			expect(result.truncated).toBe(true);
+			expect(result.modified).toBe(2000);
+		});
+
+		it('returns full content + truncated:false when limit >= word count', async () => {
+			const file = makeTFile({ctime: 1000, mtime: 2000, size: 10});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
+			vi.mocked(app.vault.read).mockResolvedValue('Hi there');
+
+			const adapter = createNoteAdapter(app);
+			const result = await adapter.read(makePartialReadRequest({mode: 'firstXWords', limit: 100}));
+
+			expect(result.content).toBe('Hi there');
+			expect(result.truncated).toBe(false);
+		});
+	});
+
 	describe('read() — partial: section by heading TEXT', () => {
 		const CONTENT = '# Title\nIntro line.\n## Tasks\nDo stuff.\n## Notes\nSome notes.';
 		// Line 0: "# Title"

@@ -10,7 +10,7 @@ import {MarkdownView, Notice, parseYaml} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget, NoteWritePartial} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
-import {firstXChars, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
+import {firstXChars, firstXWords, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
 
 /** Error thrown by vault adapters, wrapping a CoreError with its error code. */
 export class NoteAdapterError extends Error {
@@ -175,6 +175,8 @@ async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileRes
 
 	if (partial.mode === 'firstXChars') {
 		({slice, truncated} = firstXChars(content, partial.limit));
+	} else if (partial.mode === 'firstXWords') {
+		({slice, truncated} = firstXWords(content, partial.limit));
 	} else if (partial.mode === 'range') {
 		if (partial.basis === 'line') {
 			({slice, truncated} = sliceByLineRange(content, partial.start, partial.end));

@@ -55,6 +55,47 @@ export function firstXChars(
 }
 
 /**
+ * First N words (Unicode-aware), returning the slice and whether content was dropped.
+ *
+ * "Word" follows ICU word segmentation via `Intl.Segmenter` (granularity 'word'),
+ * counting only word-like segments — so it splits space-less scripts (CJK) and
+ * treats hyphen/punctuation runs as boundaries, unlike a naive whitespace split.
+ *
+ * `limit === 0` returns an empty slice (truncated when the body is non-empty); the
+ * MCP boundary (Zod `.positive()`) rejects 0 before reaching here, so the two
+ * layers are intentionally asymmetric — this is the lenient core contract,
+ * matching {@link firstXChars}.
+ *
+ * The slice is always a prefix of `body` cut at the end of the limit-th word
+ * (trailing whitespace/punctuation after that word is dropped), so a truncated
+ * read can be continued with a char `range` read starting at the slice's
+ * code-point length. The segmenter is iterated lazily and stops at the limit-th
+ * word, so cost is O(returned slice), not O(body length).
+ */
+export function firstXWords(
+	body: string,
+	limit: number,
+): {slice: string; truncated: boolean} {
+	if (limit < 0) throw new Error(`VALIDATION_ERROR: limit must be ≥ 0, got ${limit}`);
+	if (limit === 0) return {slice: '', truncated: body.length > 0};
+
+	const segmenter = new Intl.Segmenter(undefined, {granularity: 'word'});
+	let words = 0;
+	let end = 0;
+	for (const segment of segmenter.segment(body)) {
+		if (!segment.isWordLike) continue;
+		words++;
+		end = segment.index + segment.segment.length;
+		if (words === limit) break;
+	}
+	// Fewer word-like segments than requested → whole body, nothing dropped.
+	if (words < limit) return {slice: body, truncated: false};
+
+	const truncated = end < body.length;
+	return {slice: truncated ? body.slice(0, end) : body, truncated};
+}
+
+/**
  * Inclusive 1-based line range. Clamps to bounds; reports whether content exists outside.
  * A `start` beyond EOF is clamped to the last line (not an error) — reads are
  * lenient so a stale line number degrades to "last line" rather than failing.

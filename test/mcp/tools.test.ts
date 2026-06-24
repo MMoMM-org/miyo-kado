@@ -1367,6 +1367,11 @@ describe('kadoReadShape — partial note read params', () => {
 		expect(result.success).toBe(true);
 	});
 
+	it('accepts mode=firstXWords', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXWords'});
+		expect(result.success).toBe(true);
+	});
+
 	it('accepts mode=section', () => {
 		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'section'});
 		expect(result.success).toBe(true);
@@ -1531,6 +1536,11 @@ describe('kadoReadShape — partial note read params', () => {
 
 	it('accepts full firstXChars combination', () => {
 		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXChars', limit: 2000});
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts full firstXWords combination', () => {
+		const result = schema.safeParse({operation: 'note', path: 'a.md', mode: 'firstXWords', limit: 1000});
 		expect(result.success).toBe(true);
 	});
 

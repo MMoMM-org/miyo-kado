@@ -220,6 +220,20 @@ describe('Kado MCP Live — partial read/write', () => {
 		expect(body.truncated).toBe(true);
 	});
 
+	it('firstXWords returns a word-bounded truncated slice', async (ctx) => {
+		await requireReady(ctx);
+		await setNote(SCRATCH, BASE);
+		const res = await callTool(key1!, 'kado-read', {operation: 'note', path: SCRATCH, mode: 'firstXWords', limit: 2});
+		expect(res.isError).toBeFalsy();
+		const body = parseResult<{content: string; truncated: boolean}>(res);
+		// First two words are "Title" and "Alpha"; the slice is a prefix that stops
+		// before the later headings/body.
+		expect(body.content.startsWith('# Title')).toBe(true);
+		expect(body.content).toContain('Alpha');
+		expect(body.content).not.toContain('beta body');
+		expect(body.truncated).toBe(true);
+	});
+
 	it('section returns the heading body and reports truncated', async (ctx) => {
 		await requireReady(ctx);
 		await setNote(SCRATCH, BASE);
