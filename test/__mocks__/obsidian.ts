@@ -120,10 +120,16 @@ export class Plugin extends Component {
 export class Modal {
 	app: App;
 	contentEl: HTMLElement;
+	titleEl: HTMLElement;
 	constructor(app: App) {
 		this.app = app;
 		this.contentEl = augmentEl(document.createElement('div'));
+		this.titleEl = augmentEl(document.createElement('div'));
 	}
+	setTitle = vi.fn((text: string) => {
+		this.titleEl.textContent = text;
+		return this;
+	});
 	open = vi.fn(() => {
 		this.onOpen();
 	});
