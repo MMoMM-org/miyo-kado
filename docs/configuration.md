@@ -138,6 +138,22 @@ Click **Regenerate** to replace the secret. The old key is immediately invalidat
 
 Click **Delete API key** in the danger zone. This cannot be undone.
 
+## Permission Test Tab
+
+Configuring whitelists, blacklists, and per-datatype CRUD flags across a global scope and each key's scope is easy to get subtly wrong. The **Permission Test** tab lets you check the outcome before an assistant ever connects — it runs the *same* permission chain the live tools use, purely in memory. Nothing is read from or written to the vault.
+
+Pick:
+
+- **API key** -- which key to simulate. Switching keys keeps the fields below, so you can compare two keys against the same path.
+- **Operation** -- `read`, `create`, `update`, `delete`, `rename / move`, or `search`. (Write is split into create/update because they are gated independently.)
+- **Data type** -- note, frontmatter, file, Dataview inline field, or tags (the choices narrow to what each operation supports; hidden for search).
+- **Path** -- start typing to fuzzy-search files and folders. For a rename you also enter a **Target path**; same folder is treated as a rename (needs `update`), a different folder as a move (needs `delete` on the source **and** `create` on the target).
+- **Tag** *(optional)* -- start typing to fuzzy-search vault tags.
+
+The result shows **ALLOWED** or **DENIED**; on a denial it names the **deciding gate** (authenticate, global-scope, key-scope, datatype-permission, or path-access) and the reason. This is exactly what the assistant would have seen.
+
+The tag field is an independent, informational readout: it reports whether the tag is within the key's effective tag scope (global ∩ key). Tags currently scope `kado-search byTag` rather than gating path access, so the tag never changes the ALLOWED/DENIED verdict for a path operation.
+
 ## What's next
 
 - [Example Configurations](example-configs.md) -- common setups with permission matrices
