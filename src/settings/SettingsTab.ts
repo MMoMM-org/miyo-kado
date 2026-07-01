@@ -98,7 +98,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 		};
 
 		if (this.activeTab === 'general') {
-			renderGeneralTab(contentEl, this.plugin, onRedisplay);
+			renderGeneralTab(contentEl, this.plugin, onRedisplay, onSwitchTab);
 		} else if (this.activeTab === 'security') {
 			renderGlobalSecurityTab(contentEl, this.plugin, onRedisplay);
 		} else if (this.activeTab.startsWith('key-')) {
