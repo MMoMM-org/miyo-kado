@@ -1,3 +1,17 @@
+## [0.19.1](https://github.com/MMoMM-org/miyo-kado/compare/0.19.0...0.19.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* **settings:** give feedback after creating an API key ([#91](https://github.com/MMoMM-org/miyo-kado/issues/91)) ([3bf684c](https://github.com/MMoMM-org/miyo-kado/commit/3bf684c5b979fe845c0babd79abbe54f410a9f6d))
+
+# [0.19.0](https://github.com/MMoMM-org/miyo-kado/compare/0.18.0...0.19.0) (2026-06-24)
+
+
+### Features
+
+* configurable MCP rate limit (max requests + window) ([#89](https://github.com/MMoMM-org/miyo-kado/issues/89)) ([22d67f6](https://github.com/MMoMM-org/miyo-kado/commit/22d67f690d35a76542862518365e5865c2f03d95))
+
 # [0.18.0](https://github.com/MMoMM-org/miyo-kado/compare/0.17.0...0.18.0) (2026-06-24)
 
 

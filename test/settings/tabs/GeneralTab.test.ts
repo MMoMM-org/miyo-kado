@@ -8,8 +8,8 @@
 import {describe, it, expect, vi} from 'vitest';
 import {renderGeneralTab} from '../../../src/settings/tabs/GeneralTab';
 import type KadoPlugin from '../../../src/main';
-import {renderSandbox, defaultConfig} from '../helpers';
-import {App} from '../../__mocks__/obsidian';
+import {renderSandbox, defaultConfig, makeApiKey} from '../helpers';
+import {App, Notice} from '../../__mocks__/obsidian';
 
 function mockPlugin(overrides?: Partial<ReturnType<typeof defaultConfig>>) {
 	const config = {...defaultConfig(), ...overrides};
@@ -27,6 +27,11 @@ function mockPlugin(overrides?: Partial<ReturnType<typeof defaultConfig>>) {
 		settings: config,
 		configManager: {
 			getConfig: () => config,
+			generateApiKey: vi.fn((label: string) => {
+				const key = makeApiKey({id: `kado_test-${config.apiKeys.length}`, label});
+				config.apiKeys.push(key);
+				return key;
+			}),
 		},
 		saveSettings,
 		mcpServer,
@@ -42,7 +47,7 @@ describe('renderGeneralTab — rendering', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin();
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		const headings = Array.from(container.querySelectorAll('[data-setting-name]'))
 			.map((el) => el.getAttribute('data-setting-name'));
@@ -55,7 +60,7 @@ describe('renderGeneralTab — rendering', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin();
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		const names = Array.from(container.querySelectorAll('[data-setting-name]'))
 			.map((el) => el.getAttribute('data-setting-name'));
@@ -67,7 +72,7 @@ describe('renderGeneralTab — rendering', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin();
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		expect(container.textContent).toContain('Stopped');
 	});
@@ -78,7 +83,7 @@ describe('renderGeneralTab — interactivity', () => {
 		const container = renderSandbox();
 		const {plugin, config, saveSettings, mcpServer} = mockPlugin();
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		// Server enable is the second toggle (the first is unrelated); find by proximity to name
 		const enableSetting = container.querySelector('[data-setting-name="Enable"]') as HTMLElement;
@@ -93,12 +98,32 @@ describe('renderGeneralTab — interactivity', () => {
 		expect(mcpServer.start).toHaveBeenCalled();
 	});
 
+	it('creates a key, notifies, and switches to the new key tab (creation feedback)', async () => {
+		const container = renderSandbox();
+		const {plugin, config, saveSettings} = mockPlugin();
+		const onSwitchTab = vi.fn();
+		Notice._reset();
+
+		renderGeneralTab(container, plugin, vi.fn(), onSwitchTab);
+
+		const setting = container.querySelector('[data-setting-name="Create API key"]') as HTMLElement;
+		const btn = setting.querySelector('button') as HTMLButtonElement;
+		btn.click();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(config.apiKeys).toHaveLength(1);
+		expect(saveSettings).toHaveBeenCalled();
+		const newId = config.apiKeys[0]!.id;
+		expect(onSwitchTab).toHaveBeenCalledWith(`key-${newId}`);
+		expect(Notice._instances.some((n) => n.message.includes('created'))).toBe(true);
+	});
+
 	it('does not mutate config when port input is invalid', async () => {
 		const container = renderSandbox();
 		const {plugin, config} = mockPlugin();
 		const originalPort = config.server.port;
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		const portSetting = container.querySelector('[data-setting-name="Port"]') as HTMLElement;
 		const input = portSetting.querySelector('input[type="text"]') as HTMLInputElement;
@@ -114,7 +139,7 @@ describe('renderGeneralTab — interactivity', () => {
 		const container = renderSandbox();
 		const {plugin, config, saveSettings} = mockPlugin();
 
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		const portSetting = container.querySelector('[data-setting-name="Port"]') as HTMLElement;
 		const input = portSetting.querySelector('input[type="text"]') as HTMLInputElement;
@@ -140,7 +165,7 @@ describe('renderGeneralTab — interactivity', () => {
 	it('mutates rateLimitMaxRequests when a valid number is typed', async () => {
 		const container = renderSandbox();
 		const {plugin, config, saveSettings} = mockPlugin();
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		await typeInto(container, 'Rate limit (requests per window)', '50');
 
@@ -154,7 +179,7 @@ describe('renderGeneralTab — interactivity', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin();
 		const onRedisplay = vi.fn();
-		renderGeneralTab(container, plugin, onRedisplay);
+		renderGeneralTab(container, plugin, onRedisplay, vi.fn());
 
 		await typeInto(container, 'Rate limit (requests per window)', '1');
 		await typeInto(container, 'Rate limit window (seconds)', '2');
@@ -165,7 +190,7 @@ describe('renderGeneralTab — interactivity', () => {
 	it('accepts 0 (disabled) for rateLimitMaxRequests', async () => {
 		const container = renderSandbox();
 		const {plugin, config} = mockPlugin();
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		await typeInto(container, 'Rate limit (requests per window)', '0');
 
@@ -176,7 +201,7 @@ describe('renderGeneralTab — interactivity', () => {
 		const container = renderSandbox();
 		const {plugin, config} = mockPlugin();
 		const original = config.server.rateLimitMaxRequests;
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		await typeInto(container, 'Rate limit (requests per window)', '-5');
 
@@ -186,7 +211,7 @@ describe('renderGeneralTab — interactivity', () => {
 	it('mutates rateLimitWindowSeconds when a valid number is typed', async () => {
 		const container = renderSandbox();
 		const {plugin, config, saveSettings} = mockPlugin();
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		await typeInto(container, 'Rate limit window (seconds)', '10');
 
@@ -198,7 +223,7 @@ describe('renderGeneralTab — interactivity', () => {
 		const container = renderSandbox();
 		const {plugin, config} = mockPlugin();
 		const original = config.server.rateLimitWindowSeconds;
-		renderGeneralTab(container, plugin, vi.fn());
+		renderGeneralTab(container, plugin, vi.fn(), vi.fn());
 
 		await typeInto(container, 'Rate limit window (seconds)', '0');
 

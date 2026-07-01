@@ -10,7 +10,12 @@ import {ImportConfigModal} from '../components/ImportConfigModal';
 import {getAlwaysUpdateLinks} from '../../obsidian/vault-config';
 import {exportConfig, parseImport, applyImport, type ImportChanges} from '../../core/config-portability';
 
-export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, onRedisplay: () => void): void {
+export function renderGeneralTab(
+	containerEl: HTMLElement,
+	plugin: KadoPlugin,
+	onRedisplay: () => void,
+	onSwitchTab: (tab: string) => void,
+): void {
 	const config = plugin.configManager.getConfig();
 	const server = config.server;
 	const running = plugin.mcpServer?.isRunning() ?? false;
@@ -122,10 +127,14 @@ export function renderGeneralTab(containerEl: HTMLElement, plugin: KadoPlugin, o
 		.addButton(btn => btn
 			.setButtonText('Create API key')
 			.setCta()
-			.onClick(() => {
-				plugin.configManager.generateApiKey('New key');
-				void plugin.saveSettings();
-				onRedisplay();
+			.onClick(async () => {
+				const key = plugin.configManager.generateApiKey('New key');
+				await plugin.saveSettings();
+				new Notice(`API key "${key.label}" created`);
+				// Jump to the new key's tab — this is the creation feedback and
+				// lands the user where they configure it (avoids creating dupes
+				// because nothing appeared to happen).
+				onSwitchTab(`key-${key.id}`);
 			}));
 
 	// ── Rename Tool Section ──
