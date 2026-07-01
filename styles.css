@@ -501,3 +501,67 @@
 	0%, 100% { transform: scale(1); opacity: 1; }
 	50% { transform: scale(1.45); opacity: 0.55; }
 }
+
+/* ── Permission Test (dry-run) panel ───────────────────────────────── */
+.kado-dryrun-result {
+	margin-top: 1em;
+	padding: 0.75em 1em;
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.kado-dryrun-verdict {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	margin-bottom: 0.4em;
+}
+
+.kado-dryrun-badge {
+	font-weight: var(--font-bold);
+	font-size: var(--font-ui-small);
+	letter-spacing: 0.05em;
+	padding: 0.1em 0.6em;
+	border-radius: var(--radius-s);
+	color: var(--text-on-accent);
+}
+
+.kado-dryrun-verdict.is-allowed .kado-dryrun-badge {
+	background: var(--color-green, var(--interactive-success));
+}
+
+.kado-dryrun-verdict.is-denied .kado-dryrun-badge {
+	background: var(--text-error);
+}
+
+.kado-dryrun-mode {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 0.05em 0.5em;
+}
+
+.kado-dryrun-gate {
+	margin: 0.2em 0;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.kado-dryrun-reason {
+	margin: 0.2em 0;
+	font-size: var(--font-ui-small);
+}
+
+.kado-dryrun-tagscope {
+	margin: 0.5em 0 0;
+	font-size: var(--font-ui-small);
+}
+
+.kado-dryrun-tagscope.is-in {
+	color: var(--color-green, var(--interactive-success));
+}
+
+.kado-dryrun-tagscope.is-out {
+	color: var(--text-warning, var(--text-muted));
+}

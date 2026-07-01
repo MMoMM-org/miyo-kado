@@ -10,12 +10,15 @@ import type KadoPlugin from '../main';
 import {renderGeneralTab} from './tabs/GeneralTab';
 import {renderGlobalSecurityTab} from './tabs/GlobalSecurityTab';
 import {renderApiKeyTab} from './tabs/ApiKeyTab';
+import {renderDryRunTab, createDryRunState, type DryRunState} from './tabs/DryRunTab';
 import {HeaderSection} from './HeaderSection';
 
 export class KadoSettingsTab extends PluginSettingTab {
 	plugin: KadoPlugin;
 	private activeTab = 'general';
 	private readonly headerSection: HeaderSection;
+	/** Persisted across re-renders so switching keys/tabs keeps the dry-run form. */
+	private readonly dryRunState: DryRunState = createDryRunState();
 
 	constructor(app: App, plugin: KadoPlugin) {
 		super(app, plugin);
@@ -61,6 +64,7 @@ export class KadoSettingsTab extends PluginSettingTab {
 		// Add tabs
 		this.addTab(tabStrip, 'general', 'General');
 		this.addTab(tabStrip, 'security', 'Global Security');
+		this.addTab(tabStrip, 'dry-run', 'Permission Test');
 		for (const key of config.apiKeys) {
 			this.addTab(tabStrip, `key-${key.id}`, `API Key \u00b7 ${key.label}`);
 		}
@@ -101,6 +105,8 @@ export class KadoSettingsTab extends PluginSettingTab {
 			renderGeneralTab(contentEl, this.plugin, onRedisplay, onSwitchTab);
 		} else if (this.activeTab === 'security') {
 			renderGlobalSecurityTab(contentEl, this.plugin, onRedisplay);
+		} else if (this.activeTab === 'dry-run') {
+			renderDryRunTab(contentEl, this.plugin, this.dryRunState);
 		} else if (this.activeTab.startsWith('key-')) {
 			const keyId = this.activeTab.slice(4);
 			renderApiKeyTab(contentEl, this.plugin, keyId, onRedisplay, onSwitchTab);
