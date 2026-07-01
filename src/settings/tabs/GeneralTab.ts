@@ -6,7 +6,9 @@ import {Notice, Setting} from 'obsidian';
 import type KadoPlugin from '../../main';
 import {VaultFolderModal} from '../components/VaultFolderModal';
 import {RenameRiskModal} from '../components/RenameRiskModal';
+import {ImportConfigModal} from '../components/ImportConfigModal';
 import {getAlwaysUpdateLinks} from '../../obsidian/vault-config';
+import {exportConfig, parseImport, applyImport, type ImportChanges} from '../../core/config-portability';
 
 export function renderGeneralTab(
 	containerEl: HTMLElement,
@@ -304,4 +306,103 @@ export function renderGeneralTab(
 				config.debugLogging = value;
 				await plugin.saveSettings();
 			}));
+
+	// ── Backup & Restore Section ──
+	new Setting(containerEl).setName('Backup & restore').setHeading();
+
+	const exportDesc = containerEl.ownerDocument.createDocumentFragment();
+	exportDesc.append('Download the whole configuration as a JSON file. ');
+	const warn = containerEl.ownerDocument.createElement('strong');
+	warn.textContent = 'The file contains your API key secrets — store it securely and never share it.';
+	exportDesc.appendChild(warn);
+
+	new Setting(containerEl)
+		.setName('Export configuration')
+		.setDesc(exportDesc)
+		.addButton(btn => btn
+			.setButtonText('Export config')
+			.onClick(() => {
+				const envelope = exportConfig(plugin.configManager.getConfig(), Date.now());
+				downloadJson(containerEl, 'kado-config.json', JSON.stringify(envelope, null, 2));
+				new Notice('Configuration exported — the file contains secret keys, keep it safe');
+			}));
+
+	new Setting(containerEl)
+		.setName('Import configuration')
+		.setDesc('Restore from an exported file. You choose which sections to apply; nothing changes until you confirm.')
+		.addButton(btn => btn
+			.setButtonText('Import config')
+			.onClick(() => {
+				pickJsonFile(containerEl, (text) => {
+					let raw: unknown;
+					try {
+						raw = JSON.parse(text);
+					} catch {
+						new Notice('Import failed: file is not valid JSON');
+						return;
+					}
+					const parsed = parseImport(raw);
+					if (!parsed.ok) {
+						new Notice(`Import failed: ${parsed.error}`);
+						return;
+					}
+					new ImportConfigModal(plugin.app, {
+						summary: parsed.summary,
+						onConfirm: (selection) => {
+							const {config: merged, changes} = applyImport(plugin.configManager.getConfig(), parsed.config, selection);
+							plugin.configManager.replaceConfig(merged);
+							void plugin.saveSettings().then(async () => {
+								// Apply imported server settings live if the server is running.
+								if (changes.general && plugin.mcpServer?.isRunning()) {
+									await plugin.mcpServer.stop();
+									if (merged.server.enabled) {
+										await plugin.mcpServer.start(merged.server);
+									}
+									plugin.syncServerStatusBar();
+								}
+								onRedisplay();
+								new Notice(summarizeImportChanges(changes));
+							});
+						},
+					}).open();
+				});
+			}));
+}
+
+/** Triggers a browser download of `contents` as a file (desktop Electron). */
+function downloadJson(host: HTMLElement, filename: string, contents: string): void {
+	const doc = host.ownerDocument;
+	const blob = new Blob([contents], {type: 'application/json'});
+	const url = URL.createObjectURL(blob);
+	const anchor = doc.createElement('a');
+	anchor.href = url;
+	anchor.download = filename;
+	doc.body.appendChild(anchor);
+	anchor.click();
+	anchor.remove();
+	window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Opens a native file picker for a single JSON file and passes its text to `onRead`. */
+function pickJsonFile(host: HTMLElement, onRead: (text: string) => void): void {
+	const doc = host.ownerDocument;
+	const input = doc.createElement('input');
+	input.type = 'file';
+	input.accept = 'application/json,.json';
+	input.addEventListener('change', () => {
+		const file = input.files?.[0];
+		if (!file) return;
+		void file.text().then(onRead, () => new Notice('Import failed: could not read the file'));
+	});
+	input.click();
+}
+
+/** Builds a human-readable Notice message from the applied import changes. */
+function summarizeImportChanges(changes: ImportChanges): string {
+	const parts: string[] = [];
+	if (changes.general) parts.push('general settings');
+	if (changes.security) parts.push('global security');
+	if (changes.keysAdded) parts.push(`${changes.keysAdded} key(s) added`);
+	if (changes.keysReplaced) parts.push(`${changes.keysReplaced} key(s) replaced`);
+	return parts.length > 0 ? `Imported: ${parts.join(', ')}` : 'Nothing was selected to import';
 }

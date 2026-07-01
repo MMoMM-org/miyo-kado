@@ -38,6 +38,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Rate limiting** -- configurable per-IP throttle (default 20 requests per 5 s; tunable live, `0` disables)
 - **Audit logging** -- NDJSON log with rotation (metadata only, no content)
 - **Permission Test panel** -- a settings tab that dry-runs any key + operation + path against the real permission chain (in memory, no vault access) and shows ALLOWED/DENIED, the deciding gate, and why -- so you can verify a scope before an assistant connects
+- **Backup & restore** -- export the whole config to a JSON file and import it back with per-section selection (general settings / global security / individual keys); for migrating between vaults or machines and recovering from mistakes
 - **Status bar indicator** -- the 門 gate glyph shows server state at a glance (listening / off / bind error) and throbs on each tool call, colour-coded for reads vs. writes, with the acting key's name in the tooltip; a rejected call lingers red for a few seconds then self-clears. Click it to open Kado's settings
 
 ## Architecture & the MiYo ecosystem
@@ -73,9 +74,7 @@ Tracked as GitHub issues:
 
 - **Tag permissions beyond read-only** ([#81](https://github.com/MMoMM-org/miyo-kado/issues/81)) -- deny permission so tags can *exclude* matching items from otherwise-allowed paths.
 - **Granular whitelist / blacklist toggle** ([#82](https://github.com/MMoMM-org/miyo-kado/issues/82)) -- per-section toggle for mixed strategies.
-- **Settings import / export** ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)) -- backup/restore for the whole config.
-
-Shipped: **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)); sub-path key scopes (narrower sub-paths inside an allowed parent) landed in v0.15.0.
+Shipped: **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)) and **Backup & restore** config export/import ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)); sub-path key scopes (narrower sub-paths inside an allowed parent) landed in v0.15.0.
 
 ## Known edge cases
 
