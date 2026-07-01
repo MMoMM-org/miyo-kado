@@ -140,6 +140,10 @@ Click **Delete API key** in the danger zone. This cannot be undone.
 
 ## Permission Test Tab
 
+<p align="center">
+  <img src="../assets/settings-permission-test.png" alt="MiYo Kado Permission Test settings tab showing a simulated request with its ALLOWED/DENIED result and deciding gate" width="560" />
+</p>
+
 Configuring whitelists, blacklists, and per-datatype CRUD flags across a global scope and each key's scope is easy to get subtly wrong. The **Permission Test** tab lets you check the outcome before an assistant ever connects — it runs the *same* permission chain the live tools use, purely in memory. Nothing is read from or written to the vault.
 
 Pick:
