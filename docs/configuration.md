@@ -138,6 +138,28 @@ Click **Regenerate** to replace the secret. The old key is immediately invalidat
 
 Click **Delete API key** in the danger zone. This cannot be undone.
 
+## Backup & Restore
+
+The **General** tab has a Backup & restore section for moving your whole configuration between vaults or machines and recovering from mistakes.
+
+### Export
+
+**Export config** downloads the entire configuration — server settings, global security scope, every API key, and audit settings — as a single `kado-config.json` file.
+
+> ⚠️ **The export contains your API key secrets** (the `kado_…` values are the bearer tokens clients authenticate with). Treat the file like a password: store it securely, and never commit it or share it. This is deliberate — a backup has to include the secrets so a restore reconnects your existing clients without reconfiguring them.
+
+### Import
+
+**Import config** opens a file picker, validates the file, then shows a chooser so you restore exactly what you want:
+
+- **General settings** — server, rate limits, audit logging, rename, debug options.
+- **Global security** — the whole global scope (mode, paths, tags).
+- **Each API key** — pick any subset. A key is matched by its id: an imported key with an existing id **overwrites** it, a new id is **added**. Unselected keys are left untouched.
+
+Nothing changes until you confirm. Selected sections replace the matching parts of your current config; the rest is left as-is. If the server is running and you import general settings, it restarts automatically so the new settings take effect.
+
+This makes common tasks easy: copy one vault's global security to another, hand a single key to a second machine, or roll back after a bad change — without a full replace.
+
 ## What's next
 
 - [Example Configurations](example-configs.md) -- common setups with permission matrices
