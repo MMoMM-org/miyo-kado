@@ -1,3 +1,10 @@
+# [0.21.0](https://github.com/MMoMM-org/miyo-kado/compare/0.20.0...0.21.0) (2026-07-01)
+
+
+### Features
+
+* settings backup & restore (config import/export) ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)) ([#92](https://github.com/MMoMM-org/miyo-kado/issues/92)) ([d5b907c](https://github.com/MMoMM-org/miyo-kado/commit/d5b907c96dae7233d3d3dc0e100fe0c7bf0d340e))
+
 # [0.20.0](https://github.com/MMoMM-org/miyo-kado/compare/0.19.1...0.20.0) (2026-07-01)
 
 
