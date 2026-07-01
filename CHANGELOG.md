@@ -1,3 +1,10 @@
+# [0.20.0](https://github.com/MMoMM-org/miyo-kado/compare/0.19.1...0.20.0) (2026-07-01)
+
+
+### Features
+
+* Permission Test (dry-run) settings panel ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)) ([#90](https://github.com/MMoMM-org/miyo-kado/issues/90)) ([bda40a6](https://github.com/MMoMM-org/miyo-kado/commit/bda40a6f6731991a302128b26be4385852d24c45)), closes [#81](https://github.com/MMoMM-org/miyo-kado/issues/81) [#81](https://github.com/MMoMM-org/miyo-kado/issues/81)
+
 ## [0.19.1](https://github.com/MMoMM-org/miyo-kado/compare/0.19.0...0.19.1) (2026-07-01)
 
 
