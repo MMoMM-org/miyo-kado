@@ -157,6 +157,25 @@ export abstract class FuzzySuggestModal<T> {
 	}
 }
 
+/**
+ * Minimal AbstractInputSuggest mock. Real popup rendering is internal to
+ * Obsidian; tests exercise the subclass contract directly via getSuggestions()
+ * and selectSuggestion(). Stores app + the bound input element.
+ */
+export abstract class AbstractInputSuggest<T> {
+	app: App;
+	protected textInputEl: HTMLInputElement;
+	constructor(app: App, textInputEl: HTMLInputElement) {
+		this.app = app;
+		this.textInputEl = textInputEl;
+	}
+	close = vi.fn();
+	setValue = vi.fn();
+	protected abstract getSuggestions(query: string): T[] | Promise<T[]>;
+	abstract renderSuggestion(value: T, el: HTMLElement): void;
+	abstract selectSuggestion(value: T): void;
+}
+
 export class Notice {
 	static _instances: Notice[] = [];
 	constructor(public message: string, public timeout?: number) {
