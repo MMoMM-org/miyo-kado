@@ -12,9 +12,9 @@ import {
 	type ApiKeyConfig,
 	type KadoConfig,
 	createDefaultConfig,
-	createDefaultSecurityConfig,
 	createDefaultApiKeyConfig,
 } from '../types/canonical';
+import {normalizeConfig} from './config-normalize';
 import {kadoLog} from './logger';
 
 /** Manages the KadoConfig lifecycle: load from storage, merge defaults, save, and key management. */
@@ -30,73 +30,7 @@ export class ConfigManager {
 
 	/** Load stored data and merge with defaults. Handles null/undefined inputs. */
 	async load(): Promise<void> {
-		const stored = await this.loadFn();
-		if (stored === null || stored === undefined || typeof stored !== 'object') {
-			this.config = createDefaultConfig();
-			return;
-		}
-		const defaults = createDefaultConfig();
-		const partial = stored as Partial<KadoConfig>;
-
-		// Merge audit — handle migration from old logFilePath to logDirectory/logFileName
-		const storedAudit = (partial.audit ?? {}) as Record<string, unknown>;
-		const mergedAudit = {...defaults.audit, ...storedAudit};
-		// Remove legacy field if present
-		if ('logFilePath' in mergedAudit) {
-			delete (mergedAudit as Record<string, unknown>)['logFilePath'];
-		}
-
-		// Merge security scope — handle migration from old globalAreas to security
-		const storedSecurity = (partial as Record<string, unknown>).security as Partial<typeof defaults.security> | undefined;
-		const mergedSecurity = {
-			...createDefaultSecurityConfig(),
-			...(storedSecurity ?? {}),
-		};
-
-		// Migrate legacy path "/" → "**" in global security paths
-		for (const entry of mergedSecurity.paths) {
-			if (entry.path === '/') {
-				entry.path = '**';
-			}
-		}
-
-		// Ensure open-notes flags are boolean (default false) on global security
-		mergedSecurity.allowActiveNote = mergedSecurity.allowActiveNote === true;
-		mergedSecurity.allowOtherNotes = mergedSecurity.allowOtherNotes === true;
-
-		// Ensure apiKeys have new flat fields (listMode, paths, tags)
-		const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
-			...key,
-			listMode: key.listMode ?? 'whitelist' as const,
-			paths: key.paths ?? [],
-			tags: key.tags ?? [],
-			allowActiveNote: (key as unknown as Record<string, unknown>).allowActiveNote === true,
-			allowOtherNotes: (key as unknown as Record<string, unknown>).allowOtherNotes === true,
-		}));
-
-		// Migrate legacy path "/" → "**" in each API key's paths
-		for (const key of keys) {
-			for (const entry of key.paths) {
-				if (entry.path === '/') {
-					entry.path = '**';
-				}
-			}
-		}
-
-		this.config = {
-			...defaults,
-			...partial,
-			server: {...defaults.server, ...(partial.server ?? {})},
-			audit: mergedAudit as typeof defaults.audit,
-			security: mergedSecurity,
-			apiKeys: keys,
-			debugLogging: partial.debugLogging ?? defaults.debugLogging,
-			renameWhenLinkUpdateOff: partial.renameWhenLinkUpdateOff === true,
-			renameTimeoutMs: typeof partial.renameTimeoutMs === 'number' && Number.isFinite(partial.renameTimeoutMs) && partial.renameTimeoutMs > 0
-				? partial.renameTimeoutMs
-				: defaults.renameTimeoutMs,
-			renameWarningAcknowledged: partial.renameWarningAcknowledged === true,
-		};
+		this.config = normalizeConfig(await this.loadFn());
 	}
 
 	/** Persist the current config via the save callback. */
@@ -108,6 +42,15 @@ export class ConfigManager {
 	/** Return the current in-memory config (read-only by convention). */
 	getConfig(): KadoConfig {
 		return this.config;
+	}
+
+	/**
+	 * Replace the entire in-memory config (used by config import, #84). The
+	 * caller is responsible for building a complete, normalized config (e.g. via
+	 * applyImport) and for persisting afterwards via save().
+	 */
+	replaceConfig(config: KadoConfig): void {
+		this.config = config;
 	}
 
 	/**
