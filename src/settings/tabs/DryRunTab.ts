@@ -12,10 +12,10 @@
  * container — never a full settings redisplay — so text inputs keep focus.
  */
 
-import {Setting} from 'obsidian';
+import {Setting, TFolder} from 'obsidian';
 import type KadoPlugin from '../../main';
 import {createDefaultGateChain} from '../../core/permission-chain';
-import {runDryRun} from '../../core/dry-run';
+import {runDryRun, toSubtreeProbe} from '../../core/dry-run';
 import type {DryRunInput, DryRunOperation} from '../../core/dry-run';
 import type {ReadDataType} from '../../types/canonical';
 import {PathInputSuggest} from '../components/PathInputSuggest';
@@ -211,15 +211,30 @@ function renderResult(resultEl: HTMLElement, plugin: KadoPlugin, state: DryRunSt
 		return;
 	}
 
+	// A whitelisted folder `X` covers its subtree (`X/**`), which does not match
+	// the bare folder path — so probe folder selections as `X/` (see toSubtreeProbe).
+	const isFolder = (p: string): boolean => plugin.app.vault.getAbstractFileByPath(p) instanceof TFolder;
+	const enteredPath = state.path.trim();
+	const probedPath = toSubtreeProbe(enteredPath, isFolder(enteredPath));
+	const enteredTarget = state.target.trim();
+	const probedTarget = enteredTarget ? toSubtreeProbe(enteredTarget, isFolder(enteredTarget)) : undefined;
+
 	const input: DryRunInput = {
 		keyId: state.keyId!,
 		operation: state.operation,
 		dataType: state.dataType,
-		path: state.path.trim(),
-		target: state.target.trim() || undefined,
+		path: probedPath,
+		target: probedTarget,
 		tag: state.tag.trim() || undefined,
 	};
 	const result = runDryRun(input, config, createDefaultGateChain());
+
+	if (probedPath !== enteredPath) {
+		resultEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: `Folder selected — tested as its contents (${probedPath}).`,
+		});
+	}
 
 	const verdict = resultEl.createDiv({cls: `kado-dryrun-verdict ${result.allowed ? 'is-allowed' : 'is-denied'}`});
 	verdict.createSpan({cls: 'kado-dryrun-badge', text: result.allowed ? 'ALLOWED' : 'DENIED'});
