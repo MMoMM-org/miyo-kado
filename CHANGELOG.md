@@ -1,3 +1,13 @@
+## [1.0.0](https://github.com/MMoMM-org/miyo-kado/compare/0.21.1...1.0.0) (2026-07-02)
+
+### ⚠ BREAKING CHANGES
+
+* first stable 1.0.0 release. From now on, `!` / BREAKING CHANGE commits produce a major version bump.
+
+### Features
+
+* 1.0.0 — first stable release ([#95](https://github.com/MMoMM-org/miyo-kado/issues/95)) ([fc16444](https://github.com/MMoMM-org/miyo-kado/commit/fc164445a02d18e26e8b25b039df497714c66439))
+
 ## [0.21.1](https://github.com/MMoMM-org/miyo-kado/compare/0.21.0...0.21.1) (2026-07-02)
 
 
