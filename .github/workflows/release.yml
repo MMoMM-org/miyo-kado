@@ -36,6 +36,17 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: npx semantic-release
 
+            - name: Guard against silently-dropped releases
+              run: |
+                  LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+                  RANGE="${LAST_TAG:+$LAST_TAG..}HEAD"
+                  if git log "$RANGE" --format='%s' | grep -qE '^(feat|fix)(\(.+\))?!?:'; then
+                    echo "::error::Release-worthy feat/fix commit(s) present since ${LAST_TAG:-<root>} but no release was cut — likely a commit-analyzer preset/config drop."
+                    git log "$RANGE" --format='  %s' | grep -E '^  (feat|fix)(\(.+\))?!?:'
+                    exit 1
+                  fi
+                  echo "Release guard OK."
+
             - name: Attest release artifacts
               if: success() && hashFiles('build/main.js', 'build/styles.css') != ''
               uses: actions/attest-build-provenance@v2
