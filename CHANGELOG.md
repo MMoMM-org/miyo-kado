@@ -1,3 +1,10 @@
+## [0.21.1](https://github.com/MMoMM-org/miyo-kado/compare/0.21.0...0.21.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* **settings:** dry-run probes a selected folder as its subtree ([#94](https://github.com/MMoMM-org/miyo-kado/issues/94)) ([107488e](https://github.com/MMoMM-org/miyo-kado/commit/107488e1b1d3feb53b9edef9e3ec037807a9d4db))
+
 # [0.21.0](https://github.com/MMoMM-org/miyo-kado/compare/0.20.0...0.21.0) (2026-07-01)
 
 
