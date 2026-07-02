@@ -140,6 +140,10 @@ Click **Delete API key** in the danger zone. This cannot be undone.
 
 ## Permission Test Tab
 
+<p align="center">
+  <img src="../assets/settings-permission-test-denied.png" alt="MiYo Kado Permission Test settings tab showing a DENIED result with the deciding gate and reason" width="560" />
+</p>
+
 Configuring whitelists, blacklists, and per-datatype CRUD flags across a global scope and each key's scope is easy to get subtly wrong. The **Permission Test** tab lets you check the outcome before an assistant ever connects — it runs the *same* permission chain the live tools use, purely in memory. Nothing is read from or written to the vault.
 
 Pick:
@@ -156,6 +160,10 @@ The tag field is an independent, informational readout: it reports whether the t
 
 ## Backup & Restore
 
+<p align="center">
+  <img src="../assets/settings-backup-restore.png" alt="MiYo Kado Backup & restore section with Export and Import buttons" width="560" />
+</p>
+
 The **General** tab has a Backup & restore section for moving your whole configuration between vaults or machines and recovering from mistakes.
 
 ### Export
@@ -167,6 +175,10 @@ The **General** tab has a Backup & restore section for moving your whole configu
 ### Import
 
 **Import config** opens a file picker, validates the file, then shows a chooser so you restore exactly what you want:
+
+<p align="center">
+  <img src="../assets/settings-import-dialogue.png" alt="MiYo Kado import dialog with per-section toggles for general settings, global security, and each API key" width="480" />
+</p>
 
 - **General settings** — server, rate limits, audit logging, rename, debug options.
 - **Global security** — the whole global scope (mode, paths, tags).

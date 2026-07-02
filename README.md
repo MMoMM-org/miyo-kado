@@ -108,7 +108,7 @@ Shipped: **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/m
 
 ## Screenshots
 
-**General tab** -- server status, port, audit logging.
+**General tab** -- server status, port, audit logging, and backup & restore.
 
 <p align="center">
   <img src="assets/settings-general.png" alt="MiYo Kado General settings tab" width="720" />
@@ -120,10 +120,22 @@ Shipped: **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/m
   <img src="assets/settings-global-security.png" alt="MiYo Kado Global Security settings tab with two whitelisted paths and one tag" width="720" />
 </p>
 
+**Permission Test tab** -- dry-run any key + operation + path against the real permission chain (in memory) and see ALLOWED/DENIED with the deciding gate.
+
+<p align="center">
+  <img src="assets/settings-permission-test-allowed.png" alt="MiYo Kado Permission Test settings tab showing an ALLOWED result with the tag-scope readout" width="720" />
+</p>
+
 **API Key tab** -- per-key access. Each key has its own access mode, paths, tags, and permission matrix, all constrained by the global security scope.
 
 <p align="center">
   <img src="assets/settings-api-key.png" alt="MiYo Kado API Key settings tab showing key management, permissions, paths and tags" width="720" />
+</p>
+
+**Backup & restore** -- export the whole config to a JSON file, or import one and choose per-section (general / global security / each key) what to restore.
+
+<p align="center">
+  <img src="assets/settings-import-dialogue.png" alt="MiYo Kado import dialog with per-section toggles" width="480" />
 </p>
 
 ## Security Model
