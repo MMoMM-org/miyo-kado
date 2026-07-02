@@ -10,7 +10,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {runDryRun} from '../../src/core/dry-run';
+import {runDryRun, toSubtreeProbe} from '../../src/core/dry-run';
 import {createDefaultGateChain} from '../../src/core/permission-chain';
 import {createAllPermissions} from '../../src/core/gates/scope-resolver';
 import {createDefaultConfig, createDefaultApiKeyConfig} from '../../src/types/canonical';
@@ -233,5 +233,47 @@ describe('runDryRun — tag-scope readout', () => {
 		const res = runDryRun(
 			{keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md', tag: '#project'}, config, gates());
 		expect(res.tagScope).toBe('in-scope');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// toSubtreeProbe — folder-vs-subtree normalization (bug: bare folder → DENIED)
+// ---------------------------------------------------------------------------
+
+describe('toSubtreeProbe', () => {
+	it('appends a trailing slash for a folder path', () => {
+		expect(toSubtreeProbe('allowed', true)).toBe('allowed/');
+	});
+
+	it('leaves a file path unchanged', () => {
+		expect(toSubtreeProbe('allowed/note.md', false)).toBe('allowed/note.md');
+	});
+
+	it('does not double an existing trailing slash', () => {
+		expect(toSubtreeProbe('allowed/', true)).toBe('allowed/');
+	});
+
+	it('leaves an empty path unchanged', () => {
+		expect(toSubtreeProbe('', true)).toBe('');
+	});
+
+	it('trims surrounding whitespace', () => {
+		expect(toSubtreeProbe('  allowed  ', true)).toBe('allowed/');
+	});
+});
+
+describe('runDryRun — folder subtree probe (regression)', () => {
+	it('a bare folder path against an X/** scope is DENIED, but its subtree probe is ALLOWED', () => {
+		// Scope stored as the explicit subtree form "allowed/**" (as the config can
+		// hold it) matches files inside but NOT the bare folder path "allowed".
+		const config = configWith('allowed/**', createAllPermissions());
+
+		const bare = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'allowed'}, config, gates());
+		expect(bare.allowed).toBe(false);
+
+		// Probing the folder as its subtree (what the UI now does) is ALLOWED.
+		const probed = runDryRun(
+			{keyId: KEY_ID, operation: 'read', dataType: 'note', path: toSubtreeProbe('allowed', true)}, config, gates());
+		expect(probed.allowed).toBe(true);
 	});
 });

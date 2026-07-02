@@ -72,6 +72,23 @@ export interface DryRunResult {
 }
 
 /**
+ * When a dry-run path points at a FOLDER, probe it as its subtree by appending a
+ * trailing slash.
+ *
+ * A whitelist entry `X` auto-expands to `X/**`, which matches files *inside* X
+ * (e.g. `X/a.md`) but NOT the bare folder path `X` — `matchGlob('X/**', 'X')` is
+ * false, while `matchGlob('X/**', 'X/')` is true. Real MCP calls always target
+ * files, so this never bites them; but the Permission Test panel lets you pick a
+ * bare folder, which would otherwise report a misleading DENIED. The caller
+ * determines `isFolder` (it needs the vault); this helper stays pure.
+ */
+export function toSubtreeProbe(path: string, isFolder: boolean): string {
+	const p = path.trim();
+	if (!isFolder || p === '' || p.endsWith('/')) return p;
+	return `${p}/`;
+}
+
+/**
  * Evaluates a dry-run against the real permission chain.
  * `gates` should be `createDefaultGateChain()` (or the plugin's live chain).
  */
