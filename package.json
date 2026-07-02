@@ -28,6 +28,7 @@
 		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
 		"@types/node": "^22.0.0",
+		"conventional-changelog-conventionalcommits": "^9.3.1",
 		"esbuild": "0.25.5",
 		"eslint-plugin-obsidianmd": "0.1.9",
 		"globals": "14.0.0",
