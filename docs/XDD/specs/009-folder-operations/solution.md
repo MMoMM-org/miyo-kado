@@ -126,6 +126,18 @@ Composed over the existing gate chain via synthetic requests
 
 FORBIDDEN denials stay existence-silent, consistent with the rest of Kado.
 
+### C-6 Concurrency — folder ops skip optimistic concurrency (live-found)
+Folder delete/rename carry `expectedModified: 0` (a folder has no mtime; empty-
+only / in-place + clobber are the safety). The tool handlers therefore **skip
+`validateConcurrency` entirely for `operation='folder'`**. This was hardened after
+live testing: the guard originally ran for folder ops too, and when a folder-op
+path resolved to a real **file**, `getFileMtime` returned that file's mtime, which
+mismatched `expectedModified=0` and produced a spurious `CONFLICT` before the
+adapter could return the correct `VALIDATION_ERROR "not a folder"`. Mocked handler
+tests used `getFileMtime → undefined` so they never hit it — only a real vault
+did. Fixed in both the delete and rename handlers (`src/mcp/tools.ts`) with
+regression unit tests (`getFileMtime → 9999` must not CONFLICT a folder op).
+
 ## ADRs
 
 ### ADR-1 — Reuse tools, branch adapters on file type

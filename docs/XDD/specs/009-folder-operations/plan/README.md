@@ -148,12 +148,19 @@ other folder policy.
 
 ## Phase 5 — Docs, live-verify, release wiring  · `in_progress` (docs done; live-verify pending)
 
-- **T5.1** ⏳ **PENDING — user runs in a real vault.** Checklist authored:
-  `live-test-checklist.md` (create mkdir-p, empty/non-empty delete + trash
-  destination, in-place rename + descendant backlink rewrite with auto-update ON
-  and OFF, RBAC block/allow for global AND key scope, config byte-identical after
-  a block). Mocked tests can't cover Obsidian's real `createFolder`/`trashFile`/
-  `renameFile` semantics or the dialog. Record deviations back into `solution.md`.
+- **T5.1** ✅ **Live-verified** in a real vault via `test/live/folder-ops-live.test.ts`
+  (7/7 pass, two-layer MCP + on-disk): mkdir-p create, non-empty delete refused,
+  empty delete trashed (gone on disk), delete-on-a-file → "not a folder", delete
+  missing → NOT_FOUND, in-place rename (descendant moved on disk), cross-parent
+  rename refused. **Live-found bug (mocks missed it):** the delete/rename handler
+  ran optimistic concurrency for `operation='folder'` too; when the path resolved
+  to a real FILE, `getFileMtime` returned its mtime and `expectedModified=0`
+  produced a spurious `CONFLICT` before the adapter could return "not a folder"
+  (mocked handler tests used `getFileMtime → undefined`, so it never surfaced).
+  Fix: skip optimistic concurrency for `operation='folder'` in both handlers
+  (`src/mcp/tools.ts`) + regression unit tests. **Still to run manually** (need a
+  bespoke config / vault-setting change, see `live-test-checklist.md`): the RBAC
+  permission-neutral block, and the auto-update-links-OFF timeout path.
 - **T5.2** ✅ Docs updated: `docs/api-reference.md` (kado-write implicit mkdir-p;
   kado-delete `folder` op + empty-only; kado-rename `folder` op, in-place-only,
   RBAC neutrality guard, examples), `docs/permissioning-for-pkm.md` (structural

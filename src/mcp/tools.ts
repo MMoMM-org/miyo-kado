@@ -633,10 +633,16 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			return mapError(perm.error, deriveHints({tool: 'kado-delete', request, error: perm.error}));
 		}
 
-		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
-		if (!concurrency.allowed) {
-			kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
-			return mapError(concurrency.error, deriveHints({tool: 'kado-delete', request, error: concurrency.error}));
+		// Folder delete carries no expectedModified (empty-only is the safety), and
+		// getFileMtime would return a real mtime if the path happens to be a FILE —
+		// which would spuriously CONFLICT before the adapter can say "not a folder".
+		// So skip optimistic concurrency for folder ops entirely.
+		if (request.operation !== 'folder') {
+			const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
+			if (!concurrency.allowed) {
+				kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
+				return mapError(concurrency.error, deriveHints({tool: 'kado-delete', request, error: concurrency.error}));
+			}
 		}
 
 		const startMs = performance.now();
@@ -701,10 +707,14 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			}
 		}
 
-		const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
-		if (!concurrency.allowed) {
-			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
-			return mapError(concurrency.error, deriveHints({tool: 'kado-rename', request, error: concurrency.error}));
+		// Folder rename carries no expectedModified (in-place + clobber checks are the
+		// safety); skip optimistic concurrency for folder ops for the same reason as delete.
+		if (request.operation !== 'folder') {
+			const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
+			if (!concurrency.allowed) {
+				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
+				return mapError(concurrency.error, deriveHints({tool: 'kado-rename', request, error: concurrency.error}));
+			}
 		}
 
 		const startMs = performance.now();

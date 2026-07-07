@@ -485,6 +485,19 @@ describe('kado-delete handler — folder', () => {
 		expect(getFirstText(result)).toContain('Projects/Empty');
 	});
 
+	it('does not run optimistic concurrency for a folder delete (path resolving to a real mtime must not CONFLICT)', async () => {
+		// Regression (live-found): getFileMtime returns a real mtime when the path is
+		// a FILE; with expectedModified defaulted to 0 the concurrency guard would
+		// spuriously CONFLICT before the adapter can return "not a folder".
+		const router = vi.fn(async () => ({path: 'allowed/x'}));
+		const handler = getDeleteHandler(makeDeps({router, getFileMtime: vi.fn(() => 9999)}));
+
+		const result = await handler({operation: 'folder', path: 'allowed/x'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+	});
+
 	it('denies a folder delete when the gate chain rejects (via folder-policy synthetic note delete)', async () => {
 		const denyError = makeCoreError({code: 'FORBIDDEN'});
 		const router = vi.fn(async () => ({path: 'Projects/Empty'}));
@@ -1861,7 +1874,9 @@ describe('kado-rename handler', () => {
 			expect(req).toMatchObject({kind: 'rename', operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'});
 			return {source: 'Projects/alt', target: 'Projects/neu', modified: 0};
 		});
-		const handler = getRenameHandler(makeDeps({router})); // default getFileMtime → undefined
+		// getFileMtime returns a real value → proves folder rename SKIPS optimistic
+		// concurrency (expectedModified defaults to 0, which would otherwise CONFLICT).
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 9999)}));
 
 		const result = await handler(
 			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
