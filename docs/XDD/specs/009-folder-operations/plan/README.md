@@ -146,20 +146,25 @@ other folder policy.
   > file is byte-identical afterward; confirm the common (neutral) rename is
   > frictionless.
 
-## Phase 5 — Docs, live-verify, release wiring  · `pending`
+## Phase 5 — Docs, live-verify, release wiring  · `in_progress` (docs done; live-verify pending)
 
-- **T5.1** Live-test in a real vault (mocked tests missed the file-rename hang —
-  same risk here): confirm (a) write into a new folder, (b) folder rename with
-  auto-update-links ON and OFF (dialog/timeout + backlink rewrite for
-  descendants), (c) empty vs non-empty delete, (d) an RBAC-crossing rename
-  blocks. Record findings back into `solution.md` if behaviour differs.
-- **T5.2** Update `docs/api-reference.md`, `docs/permissioning-for-pkm.md`, and
-  `README.md` (folder behaviour of write/rename/delete; the empty-only and
-  in-place constraints; the block-not-migrate RBAC rule).
-- **T5.3** Update spec README status → Implemented; link the PR/issue; add any
-  live-test ADR refinements (mirror the 008 pattern).
-- **T5.4** Conventional-commit history reviewed; ensure the squash subject
-  reflects a `feat` (folder operations) for semantic-release.
+- **T5.1** ⏳ **PENDING — user runs in a real vault.** Checklist authored:
+  `live-test-checklist.md` (create mkdir-p, empty/non-empty delete + trash
+  destination, in-place rename + descendant backlink rewrite with auto-update ON
+  and OFF, RBAC block/allow for global AND key scope, config byte-identical after
+  a block). Mocked tests can't cover Obsidian's real `createFolder`/`trashFile`/
+  `renameFile` semantics or the dialog. Record deviations back into `solution.md`.
+- **T5.2** ✅ Docs updated: `docs/api-reference.md` (kado-write implicit mkdir-p;
+  kado-delete `folder` op + empty-only; kado-rename `folder` op, in-place-only,
+  RBAC neutrality guard, examples), `docs/permissioning-for-pkm.md` (structural
+  ops gated; folder rename permission-neutral, block-not-migrate),
+  `README.md` (Folder operations feature bullet).
+- **T5.3** ✅ Spec README status → Implemented (live-verify pending);
+  `live-test-checklist.md` added; solution.md C-3/C-4/C-5 marked SHIPPED with the
+  as-built refinements.
+- **T5.4** ⏳ Conventional-commit history is clean (`feat(folder-ops): …` per
+  phase). At merge, ensure the squash subject stays a `feat` so semantic-release
+  cuts a minor. **Not yet raised as a PR / linked to an issue.**
 
 ---
 

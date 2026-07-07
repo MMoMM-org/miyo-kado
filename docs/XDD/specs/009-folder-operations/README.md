@@ -5,10 +5,17 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-07-07 |
-| **Current Phase** | Planned (spec + plan authored, not yet implemented) |
+| **Current Phase** | Implemented (Phases 1–4 shipped + docs); live-verify pending (Phase 5 / T5.1) |
 | **Last Updated** | 2026-07-07 |
 | **Branch** | `feat/folder-operations` |
 | **Tracking** | _to be linked to the folder-operations issue / PR_ |
+
+> **Implementation status.** Phases 1–4 (create / delete / rename / RBAC
+> neutrality) are code-complete and unit/integration-tested (full suite green),
+> and the user docs are updated. The only remaining item is **T5.1 live-verify**
+> in a real Obsidian vault — mocked tests assert call sequences and pure logic,
+> not Obsidian's real `createFolder`/`trashFile`/`renameFile` semantics or the
+> auto-update-links dialog. See `live-test-checklist.md`.
 
 > **Design origin.** Authored from a design dialogue with the user about how Kado
 > should handle vault *folders* (create / rename / delete), which today are not a
