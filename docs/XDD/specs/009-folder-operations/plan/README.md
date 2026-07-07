@@ -9,21 +9,33 @@ Legend: `pending` | `in_progress` | `completed`
 
 ---
 
-## Phase 1 — Implicit parent creation on write  · `pending`
+## Phase 1 — Implicit parent creation on write  · `completed` (2026-07-07)
 Covers FR-1. Smallest, independent, immediately useful.
 
-- **T1.1** RED: unit test — writing a note to `A/B/C/note.md` with `A/B/C`
-  absent creates the folders and the note; existing-path write still `CONFLICT`.
-  Extend `test/__mocks__/obsidian.ts` so `vault.create` throws on a missing
-  parent (today it is a bare `vi.fn()` and masks the real behaviour) and
-  `createFolder`/`getAbstractFileByPath` model a folder tree.
-- **T1.2** GREEN: add `src/obsidian/ensure-parent-folder.ts`
-  (`ensureParentFolder(app, path)` = `exists`→`createFolder` with race catch);
-  call it in `createNote` and `writeFile` before create.
-- **T1.3** REFACTOR: repoint the audit-log folder creation (`src/main.ts:112`)
-  at the shared helper (DRY). Same test for binary write (`file-adapter`).
-- **T1.4** Verify: `npm run build`, `tsc` over `test/`, unit suite green.
-- **Exit:** writes auto-create parents; audit logger uses the one helper.
+- **T1.1** ✅ RED: `test/obsidian/ensure-parent-folder.test.ts` (helper unit
+  tests) + adapter wiring tests in `note-adapter.test.ts` / `file-adapter.test.ts`.
+  **Deviation from the drafted approach:** rather than make the shared mock
+  stateful (teach `vault.create` to throw on a missing parent + model a folder
+  tree — risky ripple across 1600 tests), non-vacuity is secured by (a) a
+  dedicated helper test with realistic `adapter.exists`/`createFolder` behaviour
+  and (b) an **ordering assertion** in each adapter test (`createFolder`'s
+  invocation order < `create`'s) — this fails if `ensureParentFolder` is absent
+  or called after the write. Global mock change limited to adding `createFolder`.
+- **T1.2** ✅ GREEN: `src/obsidian/ensure-parent-folder.ts`
+  (`ensureParentFolder(app, path)` = `exists`→`createFolder`, race-catch; reuses
+  `parentDir` from `core/rename-policy`). Called in `createNote` (`note-adapter`)
+  and `writeFile` (`file-adapter`) before create.
+- **T1.3** ✅ REFACTOR: audit-log folder creation (`src/main.ts`) now calls the
+  shared helper (DRY — one implementation for adapters + logger).
+- **T1.4** ✅ Verify: `npm run build` clean; `eslint src/` clean; full suite
+  **1602 passed**; touched test files typecheck-clean under an obsidian→mock
+  alias (the bare-tsc `App` 2345 flood is a resolution artifact — the project
+  only typechecks `src/**`, so tests are checked against the mock at runtime).
+- **Exit:** ✅ writes auto-create parents; audit logger uses the one helper.
+
+  > **Not yet live-verified** (deferred to Phase 5 / T5.1): confirm in a real
+  > vault that a `kado-write` into a genuinely missing folder creates it — mocked
+  > tests assert the call sequence, not Obsidian's real `createFolder` semantics.
 
 ## Phase 2 — Folder-aware delete (empty only)  · `pending`
 Covers FR-3. No RBAC subtlety (empty ⇒ no descendants), so it lands before rename.

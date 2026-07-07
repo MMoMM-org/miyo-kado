@@ -48,6 +48,7 @@ export class App {
 		read: vi.fn(),
 		cachedRead: vi.fn(),
 		create: vi.fn(),
+		createFolder: vi.fn(async () => new TFolder()),
 		modify: vi.fn(),
 		// process: atomic read-modify-write. The transform callback receives the
 		// current file content as a string and must return the new content.

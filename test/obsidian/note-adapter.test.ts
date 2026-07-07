@@ -129,6 +129,36 @@ describe('NoteAdapter', () => {
 			});
 			expect(app.vault.create).not.toHaveBeenCalled();
 		});
+
+		it('creates the missing parent folder before writing the note (implicit mkdir -p)', async () => {
+			const createdFile = makeTFile({path: 'A/B/C/note.md'});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+			vi.mocked(app.vault.adapter.exists).mockResolvedValue(false);
+			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({path: 'A/B/C/note.md'}));
+
+			expect(app.vault.createFolder).toHaveBeenCalledWith('A/B/C');
+			expect(app.vault.create).toHaveBeenCalledWith('A/B/C/note.md', '# Hello');
+			// The folder must be created BEFORE the note is written, else vault.create throws.
+			const folderOrder = vi.mocked(app.vault.createFolder).mock.invocationCallOrder[0]!;
+			const createOrder = vi.mocked(app.vault.create).mock.invocationCallOrder[0]!;
+			expect(folderOrder).toBeLessThan(createOrder);
+		});
+
+		it('does not create a folder when the parent already exists', async () => {
+			const createdFile = makeTFile({path: 'A/note.md'});
+			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
+			vi.mocked(app.vault.adapter.exists).mockResolvedValue(true);
+			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
+
+			const adapter = createNoteAdapter(app);
+			await adapter.write(makeWriteRequest({path: 'A/note.md'}));
+
+			expect(app.vault.createFolder).not.toHaveBeenCalled();
+			expect(app.vault.create).toHaveBeenCalledWith('A/note.md', '# Hello');
+		});
 	});
 
 	describe('write() — update (with expectedModified)', () => {
