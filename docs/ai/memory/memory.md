@@ -7,7 +7,7 @@
 - [general.md](general.md) — conventions, style, naming [updated: 2026-03-30]
 - [tools.md](tools.md) — CI, build, local dev [updated: 2026-04-14]
 - [domain.md](domain.md) — business rules, data models [updated: 2026-06-15]
-- [decisions.md](decisions.md) — architecture choices [updated: 2026-06-15]
+- [decisions.md](decisions.md) — architecture choices [updated: 2026-07-07]
 - [context.md](context.md) — current focus [updated: 2026-06-15]
 - [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-06-20]
 
