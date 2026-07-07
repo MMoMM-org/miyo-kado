@@ -69,7 +69,7 @@ export type DataType = 'note' | 'frontmatter' | 'file' | 'dataview-inline-field'
 export type ReadDataType = DataType | 'tags';
 
 /** Data types supported by kado-delete. Inline fields are intentionally excluded. */
-export type DeleteDataType = 'note' | 'frontmatter' | 'file';
+export type DeleteDataType = 'note' | 'frontmatter' | 'file' | 'folder';
 
 /**
  * Data types supported by kado-rename. Rename is a file-level move, so only the

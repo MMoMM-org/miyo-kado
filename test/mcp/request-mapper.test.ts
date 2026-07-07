@@ -697,6 +697,26 @@ describe('mapDeleteRequest()', () => {
 			.toThrow(/missing required field "expectedModified"/);
 	});
 
+	it('maps a folder delete request without requiring expectedModified', () => {
+		const result = mapDeleteRequest({operation: 'folder', path: 'Projects/Empty'}, KEY_ID) as CoreDeleteRequest;
+
+		expect(result).toMatchObject({
+			kind: 'delete',
+			operation: 'folder',
+			path: 'Projects/Empty',
+			expectedModified: 0,
+		});
+		expect(result.keys).toBeUndefined();
+	});
+
+	it('accepts a folder path that ends in .md (a folder named like a file)', () => {
+		// validateOperationExtension is a no-op for folder; the adapter resolves
+		// the real type at delete time, so the mapper must not reject on extension.
+		const result = mapDeleteRequest({operation: 'folder', path: 'weird.md'}, KEY_ID) as CoreDeleteRequest;
+		expect(result.operation).toBe('folder');
+		expect(result.path).toBe('weird.md');
+	});
+
 	it('rejects non-numeric expectedModified', () => {
 		expect(() => mapDeleteRequest(
 			makeDeleteArgs({expectedModified: 'not-a-number'}),

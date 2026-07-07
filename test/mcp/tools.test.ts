@@ -453,6 +453,45 @@ describe('kado-write handler', () => {
 });
 
 // ---------------------------------------------------------------------------
+// kado-delete handler — folder delete (spec 009, Phase 2)
+// ---------------------------------------------------------------------------
+
+describe('kado-delete handler — folder', () => {
+	function getDeleteHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		const reg = server.tools.find((t) => t.name === 'kado-delete')!;
+		return reg.handler;
+	}
+
+	it('routes a folder delete to the router without requiring expectedModified', async () => {
+		const router = vi.fn(async (req: CoreRequest) => {
+			expect(req).toMatchObject({kind: 'delete', operation: 'folder', path: 'Projects/Empty'});
+			return {path: 'Projects/Empty'};
+		});
+		const handler = getDeleteHandler(makeDeps({router}));
+
+		const result = await handler({operation: 'folder', path: 'Projects/Empty'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+		expect(getFirstText(result)).toContain('Projects/Empty');
+	});
+
+	it('denies a folder delete when the gate chain rejects (via folder-policy synthetic note delete)', async () => {
+		const denyError = makeCoreError({code: 'FORBIDDEN'});
+		const router = vi.fn(async () => ({path: 'Projects/Empty'}));
+		const handler = getDeleteHandler(makeDeps({router, gates: [makeDenyGate(denyError)]}));
+
+		const result = await handler({operation: 'folder', path: 'Projects/Empty'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(router).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // kado-search handler
 // ---------------------------------------------------------------------------
 

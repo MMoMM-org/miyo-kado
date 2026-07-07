@@ -13,6 +13,7 @@
  */
 
 import type {App} from 'obsidian';
+import {TFolder} from 'obsidian';
 import type {DeleteAdapter} from '../core/operation-router';
 import type {CoreDeleteRequest, CoreDeleteResult, CoreError, CoreErrorCode} from '../types/canonical';
 
@@ -64,6 +65,37 @@ export function createFileDeleteAdapter(app: App): DeleteAdapter {
 			const file = app.vault.getFileByPath(request.path);
 			if (!file) throw notFoundError(request.path);
 			await app.fileManager.trashFile(file);
+			return {path: request.path};
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Folder delete — trashes an EMPTY folder (spec 009, Phase 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a DeleteAdapter that trashes an empty folder via fileManager.trashFile.
+ *
+ * Empty-only by design (spec 009 ADR-3): a non-empty folder is refused with
+ * VALIDATION_ERROR rather than recursively trashing its contents. This sidesteps
+ * recursive subtree permission gating — an empty folder has no descendants to
+ * authorize, so the single folder-path permission check upstream is complete.
+ * The children re-check happens here (not just upstream) so a file created
+ * between the caller's decision and this call cannot be silently trashed.
+ */
+export function createFolderDeleteAdapter(app: App): DeleteAdapter {
+	return {
+		async delete(request: CoreDeleteRequest): Promise<CoreDeleteResult> {
+			const target = app.vault.getAbstractFileByPath(request.path);
+			if (!target) throw notFoundError(request.path);
+			if (!(target instanceof TFolder)) {
+				throw validationError(`Path is not a folder: ${request.path} (use operation=note/file to delete a file)`);
+			}
+			if (target.children.length > 0) {
+				throw validationError(`Folder not empty: ${request.path} (${target.children.length} item(s) — delete its contents first)`);
+			}
+			await app.fileManager.trashFile(target);
 			return {path: request.path};
 		},
 	};

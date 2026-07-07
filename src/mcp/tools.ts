@@ -20,6 +20,7 @@ import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequ
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
+import {evaluateFolderDeletePermissions} from '../core/folder-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {deriveHints} from './hints';
@@ -133,10 +134,10 @@ export const kadoWriteShape = {
 const kadoDeleteShape = {
 	// Accept all 4 DataType values at the SDK boundary; mapDeleteRequest rejects
 	// 'dataview-inline-field' with a canonical VALIDATION_ERROR the client can parse.
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to delete. Extension-strict: note/frontmatter require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = trash the markdown file. file = trash a non-markdown file. frontmatter = remove specific keys from a markdown file\'s YAML. dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
-	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file.'),
-	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
-	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'folder', 'dataview-inline-field']).describe('What to delete. Extension-strict: note/frontmatter require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = trash the markdown file. file = trash a non-markdown file. frontmatter = remove specific keys from a markdown file\'s YAML. folder = trash an EMPTY folder (VALIDATION_ERROR if it still contains anything; no recursive delete). dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
+	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file, the folder path for folder.'),
+	expectedModified: z.number().optional().describe('The "modified" timestamp from a prior read. Required for note/file/frontmatter (CONFLICT if the file changed since); not needed for operation="folder".'),
+	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file/folder.'),
 };
 
 const kadoRenameShape = {
@@ -366,6 +367,8 @@ function extractDataType(request: CoreRequest): DataType {
 	if (isCoreGraphRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
 	if (request.operation === 'tags') return 'note';
+	// Folder delete is authorized and audited as a note operation (folder-policy).
+	if (request.operation === 'folder') return 'note';
 	return request.operation;
 }
 
@@ -617,7 +620,13 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
 
-		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
+		// Folder delete has no per-folder permission dimension: authorize it as a
+		// synthetic note.delete at the folder path via the same gate chain (zero
+		// new gates). All other operations use the generic per-datatype chain.
+		const config = deps.configManager.getConfig();
+		const perm = request.operation === 'folder'
+			? evaluateFolderDeletePermissions(request, config, deps.gates)
+			: evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-delete', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-delete', request, error: perm.error}));

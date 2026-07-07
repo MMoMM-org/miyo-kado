@@ -23,6 +23,7 @@ import {
 	createNoteDeleteAdapter,
 	createFileDeleteAdapter,
 	createFrontmatterDeleteAdapter,
+	createFolderDeleteAdapter,
 } from './obsidian/delete-adapter';
 import {createRenameAdapter} from './obsidian/rename-adapter';
 import {LinkGraphIndex} from './obsidian/link-graph-index';
@@ -92,6 +93,7 @@ export default class KadoPlugin extends Plugin {
 				note: createNoteDeleteAdapter(this.app),
 				file: createFileDeleteAdapter(this.app),
 				frontmatter: createFrontmatterDeleteAdapter(this.app),
+				folder: createFolderDeleteAdapter(this.app),
 			},
 			rename: createRenameAdapter(this.app),
 			graph: createGraphAdapter(linkGraphIndex),

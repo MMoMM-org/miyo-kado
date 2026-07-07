@@ -55,18 +55,27 @@ In `createRenameAdapter` (`src/obsidian/rename-adapter.ts`):
 The existing "missing target parent folder" guard is irrelevant for in-place
 folder rename (parent is unchanged) but stays for the file path.
 
-### C-3 Delete (folder branch, empty only)
-A new `createFolderDeleteAdapter` (or a `TFolder` branch shared by the note/file
-delete adapters in `src/obsidian/delete-adapter.ts`):
+### C-3 Delete (folder branch, empty only) — SHIPPED
+Exposed as an explicit **`operation: 'folder'`** on `kado-delete` (a new
+`DeleteDataType` member), NOT inferred from the resolved path type — the delete
+tool is `operation`-dispatched and extension-strict, so inference would have
+meant abusing `operation='file'` on a folder path (hacky, undiscoverable for a
+destructive op). `expectedModified` is not required for `folder`.
 
-1. Resolve via `getAbstractFileByPath`.
-2. `TFolder` with `children.length > 0` → `VALIDATION_ERROR` ("Folder not
-   empty").
-3. Empty `TFolder` → `await app.fileManager.trashFile(folder)` (respects the
+`createFolderDeleteAdapter` in `src/obsidian/delete-adapter.ts`:
+
+1. Resolve via `getAbstractFileByPath`; `null` → `NOT_FOUND`.
+2. `!(target instanceof TFolder)` (i.e. a file) → `VALIDATION_ERROR` ("not a
+   folder").
+3. `TFolder` with `children.length > 0` → `VALIDATION_ERROR` ("Folder not
+   empty"). Re-checked here (not only upstream) so a file created between the
+   caller's decision and this call cannot be silently trashed.
+4. Empty `TFolder` → `await app.fileManager.trashFile(folder)` (respects the
    user's "Deleted files" setting, same as note/file delete).
 
-No subtree gating: an empty folder has no descendants, so the single
-folder-path permission check is complete.
+Registered in `main.ts` deleteAdapters; routed by the existing
+`deleteAdapters[operation]` dispatch. No subtree gating: an empty folder has no
+descendants, so the single folder-path permission check is complete.
 
 ### C-4 RBAC permission-neutral invariant (the core policy)
 A folder rename rewrites every descendant path `source/rel → target/rel`. Access
@@ -97,7 +106,11 @@ Composed over the existing gate chain via synthetic requests
 - **Folder rename** → `update` on the folder path (in-place, so source parent ==
   target parent; a single `update` check on the folder path is sufficient, with
   C-4 covering descendant neutrality).
-- **Folder delete** → `delete` on the folder path.
+- **Folder delete** → `delete` on the folder path, resolved as a synthetic
+  `note.delete` via `src/core/folder-policy.ts` (`evaluateFolderDeletePermissions`
+  — SHIPPED). A folder has no permission dimension of its own; `note` is the
+  dominant datatype and the folder exists to hold notes, so "may delete notes
+  here" is the natural authority (mirrors `tags`→`note.read`). Audited as `note`.
 - **Implicit parent create** → no extra check; the parent of a path the caller
   may already write is within the permitted scope.
 

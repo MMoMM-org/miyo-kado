@@ -37,19 +37,40 @@ Covers FR-1. Smallest, independent, immediately useful.
   > vault that a `kado-write` into a genuinely missing folder creates it — mocked
   > tests assert the call sequence, not Obsidian's real `createFolder` semantics.
 
-## Phase 2 — Folder-aware delete (empty only)  · `pending`
+## Phase 2 — Folder-aware delete (empty only)  · `completed` (2026-07-07)
 Covers FR-3. No RBAC subtlety (empty ⇒ no descendants), so it lands before rename.
 
-- **T2.1** RED: tests — delete empty folder → trashed; non-empty folder →
-  `VALIDATION_ERROR "Folder not empty"`; missing path → `NOT_FOUND`;
-  no-permission folder → FORBIDDEN (existence-silent).
-- **T2.2** GREEN: resolve via `getAbstractFileByPath`; `TFolder` branch checks
-  `children.length` then `fileManager.trashFile`. Wire folder dispatch in the
-  `kado-delete` handler (`src/mcp/tools.ts`) with gate composition (`delete` on
-  the folder path).
-- **T2.3** Integration test through the tool layer (request → gate → adapter).
-- **T2.4** Verify: build + tsc(test) + suites green.
-- **Exit:** empty folders deletable; non-empty safely refused.
+**Design refinement (vs the drafted "infer folder from resolved type"):** the
+delete tool is `operation`-dispatched and extension-strict, so inferring a folder
+from the path type would have meant abusing `operation='file'` on a non-`.md`
+folder path — hacky and undiscoverable for a destructive op. Chosen instead: an
+explicit **`operation: 'folder'`** (new `DeleteDataType` member). Permission has
+no per-folder dimension, so a folder delete is authorized as a **synthetic
+`note.delete` at the folder path** via `src/core/folder-policy.ts`
+(`evaluateFolderDeletePermissions`) — the rename-policy/graph-policy pattern,
+**zero new gates**. `expectedModified` is not required for folders (a folder has
+no mtime; empty-only is the safety, and concurrency is inert because
+`getFileMtime` returns undefined for a folder path). Audit records it as a `note`
+op (`extractDataType`).
+
+- **T2.1** ✅ RED then GREEN: `delete-adapter.test.ts` (+4) — empty → trashed;
+  non-empty → `VALIDATION_ERROR "not empty"`; missing → `NOT_FOUND`; path is a
+  file → `VALIDATION_ERROR "not a folder"`.
+- **T2.2** ✅ GREEN: `createFolderDeleteAdapter` (`getAbstractFileByPath` →
+  `instanceof TFolder` → `children.length` check → `fileManager.trashFile`);
+  registered in `main.ts` deleteAdapters; `DeleteDataType += 'folder'`; mapper
+  accepts `folder` and skips `expectedModified`; tool schema exposes `folder`;
+  handler branches permission through `folder-policy`.
+- **T2.3** ✅ Integration: `operation-router.test.ts` (folder route) +
+  `tools.test.ts` (`kado-delete handler — folder`: routes without
+  expectedModified; FORBIDDEN via the folder-policy gate branch); mapper tests.
+- **T2.4** ✅ Verify: build clean; eslint clean; full suite **1614 passed**;
+  touched test files typecheck-clean under the obsidian→mock alias.
+- **Exit:** ✅ empty folders deletable; non-empty / file / missing safely refused.
+
+  > **Not yet live-verified** (Phase 5 / T5.1): real-vault empty vs non-empty
+  > delete, and that `trashFile` on a `TFolder` respects the "Deleted files"
+  > setting.
 
 ## Phase 3 — Folder-aware rename (in-place, no RBAC check yet)  · `pending`
 Covers FR-2 mechanics, minus the neutrality invariant (Phase 4).

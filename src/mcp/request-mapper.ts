@@ -202,7 +202,7 @@ function normalizeDirPath(path: string, operation: string): string {
 }
 
 /** Allowed operation values for kado-delete (inline fields excluded). */
-const DELETE_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file']);
+const DELETE_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file', 'folder']);
 
 /**
  * Maps raw MCP tool arguments into a CoreDeleteRequest.
@@ -214,14 +214,20 @@ const DELETE_DATA_TYPES = new Set<string>(['note', 'frontmatter', 'file']);
 export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
 	const operation = requireString(args, 'operation', 'mapDeleteRequest');
 	if (!DELETE_DATA_TYPES.has(operation)) {
-		throw new Error(`mapDeleteRequest: operation must be one of note|frontmatter|file (got '${operation}')`);
+		throw new Error(`mapDeleteRequest: operation must be one of note|frontmatter|file|folder (got '${operation}')`);
 	}
 	const path = requireString(args, 'path', 'mapDeleteRequest');
 	validateOperationExtension(operation, path, 'mapDeleteRequest');
 
-	const rawExpected = requirePresent(args, 'expectedModified', 'mapDeleteRequest');
-	if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
-		throw new Error('mapDeleteRequest: expectedModified must be a number');
+	// A folder has no content timestamp; empty-only delete is the safety, not
+	// optimistic concurrency, so expectedModified is not required for folders.
+	let expectedModified = 0;
+	if (operation !== 'folder') {
+		const rawExpected = requirePresent(args, 'expectedModified', 'mapDeleteRequest');
+		if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
+			throw new Error('mapDeleteRequest: expectedModified must be a number');
+		}
+		expectedModified = rawExpected;
 	}
 
 	const result: CoreDeleteRequest = {
@@ -229,7 +235,7 @@ export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
 		apiKeyId: keyId,
 		operation: operation as DeleteDataType,
 		path,
-		expectedModified: rawExpected,
+		expectedModified,
 	};
 
 	if (operation === 'frontmatter') {

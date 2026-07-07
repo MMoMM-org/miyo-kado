@@ -6,10 +6,12 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
+import {TFile, TFolder} from '../__mocks__/obsidian';
 import {
 	createNoteDeleteAdapter,
 	createFileDeleteAdapter,
 	createFrontmatterDeleteAdapter,
+	createFolderDeleteAdapter,
 } from '../../src/obsidian/delete-adapter';
 import type {CoreDeleteRequest} from '../../src/types/canonical';
 
@@ -35,6 +37,7 @@ function makeTFile(path = 'notes/test.md', statOverrides?: Parameters<typeof mak
 
 interface AppOverrides {
 	getFileByPath?: ReturnType<typeof vi.fn>;
+	getAbstractFileByPath?: ReturnType<typeof vi.fn>;
 	trashFile?: ReturnType<typeof vi.fn>;
 	processFrontMatter?: ReturnType<typeof vi.fn>;
 }
@@ -43,12 +46,22 @@ function makeApp(overrides?: AppOverrides) {
 	return {
 		vault: {
 			getFileByPath: overrides?.getFileByPath ?? vi.fn(),
+			getAbstractFileByPath: overrides?.getAbstractFileByPath ?? vi.fn(),
 		},
 		fileManager: {
 			trashFile: overrides?.trashFile ?? vi.fn().mockResolvedValue(undefined),
 			processFrontMatter: overrides?.processFrontMatter ?? vi.fn(),
 		},
 	};
+}
+
+/** Builds a mock TFolder with the given path and children. */
+function makeTFolder(path: string, children: unknown[] = []): TFolder {
+	const folder = new TFolder();
+	folder.path = path;
+	folder.name = path.split('/').pop() ?? path;
+	folder.children = children as TFolder['children'];
+	return folder;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,5 +269,64 @@ describe('createFrontmatterDeleteAdapter() — delete()', () => {
 		}))).resolves.toBeDefined();
 
 		expect(fm).toEqual({existing: 'stays'});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Folder delete adapter (spec 009, Phase 2) — empty-only
+// ---------------------------------------------------------------------------
+
+describe('createFolderDeleteAdapter() — delete()', () => {
+	function makeFolderRequest(path: string): CoreDeleteRequest {
+		return {kind: 'delete', apiKeyId: 'kado_test-key', operation: 'folder', path, expectedModified: 0};
+	}
+
+	it('trashes an empty folder via fileManager.trashFile', async () => {
+		const folder = makeTFolder('Projects/Empty', []);
+		const getAbstractFileByPath = vi.fn().mockReturnValue(folder);
+		const trashFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({getAbstractFileByPath, trashFile});
+		const adapter = createFolderDeleteAdapter(app as never);
+
+		const result = await adapter.delete(makeFolderRequest('Projects/Empty'));
+
+		expect(getAbstractFileByPath).toHaveBeenCalledWith('Projects/Empty');
+		expect(trashFile).toHaveBeenCalledWith(folder);
+		expect(result).toEqual({path: 'Projects/Empty'});
+	});
+
+	it('refuses a non-empty folder with VALIDATION_ERROR and does not trash', async () => {
+		const folder = makeTFolder('Projects/Full', [makeTFile('Projects/Full/a.md')]);
+		const trashFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({getAbstractFileByPath: vi.fn().mockReturnValue(folder), trashFile});
+		const adapter = createFolderDeleteAdapter(app as never);
+
+		await expect(adapter.delete(makeFolderRequest('Projects/Full'))).rejects.toMatchObject({
+			code: 'VALIDATION_ERROR',
+			message: expect.stringContaining('not empty'),
+		});
+		expect(trashFile).not.toHaveBeenCalled();
+	});
+
+	it('returns NOT_FOUND when the path does not resolve', async () => {
+		const app = makeApp({getAbstractFileByPath: vi.fn().mockReturnValue(null)});
+		const adapter = createFolderDeleteAdapter(app as never);
+
+		await expect(adapter.delete(makeFolderRequest('Projects/Ghost'))).rejects.toMatchObject({
+			code: 'NOT_FOUND',
+		});
+	});
+
+	it('returns VALIDATION_ERROR when the path is a file, not a folder', async () => {
+		const file = makeTFile('Projects/note.md');
+		const trashFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({getAbstractFileByPath: vi.fn().mockReturnValue(file), trashFile});
+		const adapter = createFolderDeleteAdapter(app as never);
+
+		await expect(adapter.delete(makeFolderRequest('Projects/note.md'))).rejects.toMatchObject({
+			code: 'VALIDATION_ERROR',
+			message: expect.stringContaining('not a folder'),
+		});
+		expect(trashFile).not.toHaveBeenCalled();
 	});
 });
