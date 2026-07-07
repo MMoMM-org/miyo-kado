@@ -826,6 +826,26 @@ describe('mapRenameRequest()', () => {
 		expect(result.target).toBe('y/img.png');
 	});
 
+	it('maps a folder rename request without requiring expectedModified', () => {
+		const result = mapRenameRequest(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			KEY_ID,
+		) as CoreRenameRequest;
+
+		expect(result).toMatchObject({
+			kind: 'rename',
+			operation: 'folder',
+			source: 'Projects/alt',
+			target: 'Projects/neu',
+			expectedModified: 0,
+		});
+	});
+
+	it('rejects a folder rename where source === target', () => {
+		expect(() => mapRenameRequest({operation: 'folder', source: 'A/x', target: 'A/x'}, KEY_ID))
+			.toThrow(/source and target must differ/);
+	});
+
 	it('rejects operation="frontmatter" with VALIDATION_ERROR', () => {
 		expect(() => mapRenameRequest(makeRenameArgs({operation: 'frontmatter'}), KEY_ID))
 			.toThrow(/operation must be one of note\|file/);

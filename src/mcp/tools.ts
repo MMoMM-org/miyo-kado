@@ -20,7 +20,7 @@ import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequ
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
-import {evaluateFolderDeletePermissions} from '../core/folder-policy';
+import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions} from '../core/folder-policy';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {deriveHints} from './hints';
@@ -141,10 +141,10 @@ const kadoDeleteShape = {
 };
 
 const kadoRenameShape = {
-	operation: z.enum(['note', 'file']).describe('What to move. Extension-strict: note requires .md paths; file requires non-.md paths. Both source and target must share the same extension class — a rename can never change a file\'s type (mismatches return VALIDATION_ERROR).'),
-	source: z.string().describe('Current vault-relative path of the file to move, e.g. "100 Inbox/draft.md".'),
-	target: z.string().describe('Desired vault-relative path, e.g. "100 Inbox/final.md" (rename) or "200 Notes/final.md" (move). Must not already exist — returns CONFLICT otherwise.'),
-	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read of the SOURCE file. Returns CONFLICT if the source changed since.'),
+	operation: z.enum(['note', 'file', 'folder']).describe('What to move. note requires .md paths; file requires non-.md paths (both source and target must share the same extension class — a rename can never change a file\'s type). folder renames a folder IN PLACE only: source and target must share the same parent (e.g. "A/old" → "A/new"), moving a folder to a different parent returns VALIDATION_ERROR.'),
+	source: z.string().describe('Current vault-relative path of the file or folder to rename, e.g. "100 Inbox/draft.md" or "100 Inbox".'),
+	target: z.string().describe('Desired vault-relative path, e.g. "100 Inbox/final.md" (rename) or "200 Notes/final.md" (move). For folder: same parent as source. Must not already exist — returns CONFLICT otherwise.'),
+	expectedModified: z.number().optional().describe('The "modified" timestamp from a prior read of the SOURCE file. Required for note/file (CONFLICT if the source changed since); not needed for operation="folder".'),
 };
 
 export const kadoOpenNotesShape = {
@@ -673,7 +673,13 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
 
-		const {result: perm} = evaluateRenamePermissions(request, deps.configManager.getConfig(), deps.gates);
+		// Folder rename has no per-folder permission dimension: authorize it as
+		// synthetic note.update on source AND target via the same gate chain (zero
+		// new gates). Other operations use the note/file rename-vs-move policy.
+		const config = deps.configManager.getConfig();
+		const {result: perm} = request.operation === 'folder'
+			? evaluateFolderRenamePermissions(request, config, deps.gates)
+			: evaluateRenamePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-rename', request, error: perm.error}));
@@ -690,7 +696,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			// Guard against a hang: when Obsidian's auto-update-links is off, renameFile
 			// blocks on a confirmation modal that an MCP caller cannot answer. Bound the
 			// wait and report TIMEOUT instead of leaving the client hanging forever.
-			const timeoutMs = deps.configManager.getConfig().renameTimeoutMs;
+			const timeoutMs = config.renameTimeoutMs;
 			const work = deps.router(request);
 			const raced = await raceWithTimeout(work, timeoutMs);
 			if (raced === TIMED_OUT) {

@@ -13,7 +13,7 @@
  * container. This mirrors how 'tags' reads map to note.read in the datatype gate.
  */
 
-import type {CoreDeleteRequest, GateResult, KadoConfig, PermissionGate} from '../types/canonical';
+import type {CoreDeleteRequest, CoreRenameRequest, CoreWriteRequest, GateResult, KadoConfig, PermissionGate} from '../types/canonical';
 import {evaluatePermissions} from './permission-chain';
 
 /**
@@ -34,4 +34,27 @@ export function evaluateFolderDeletePermissions(
 		expectedModified: 0,
 	};
 	return evaluatePermissions(synth, config, gates);
+}
+
+/**
+ * Evaluates permission for an in-place folder rename by composing the existing
+ * gate chain over synthetic `note` updates at BOTH the source and target paths
+ * (a rename is a form of editing → `update`, checked on both so filename-specific
+ * scopes still gate). A folder rename is in-place (same parent, enforced by the
+ * adapter), so source and target share a folder; modeled as note.update for the
+ * same reason as folder delete → note.delete. Returns the gate result plus a
+ * fixed `mode:'rename'` so the caller can destructure it like the file path.
+ */
+export function evaluateFolderRenamePermissions(
+	request: CoreRenameRequest,
+	config: KadoConfig,
+	gates: PermissionGate[],
+): {result: GateResult; mode: 'rename'} {
+	for (const path of [request.source, request.target]) {
+		// expectedModified set → inferCrudAction = 'update'.
+		const synth: CoreWriteRequest = {apiKeyId: request.apiKeyId, operation: 'note', path, content: '', expectedModified: 0};
+		const r = evaluatePermissions(synth, config, gates);
+		if (!r.allowed) return {result: r, mode: 'rename'};
+	}
+	return {result: {allowed: true}, mode: 'rename'};
 }

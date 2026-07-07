@@ -72,22 +72,44 @@ op (`extractDataType`).
   > delete, and that `trashFile` on a `TFolder` respects the "Deleted files"
   > setting.
 
-## Phase 3 — Folder-aware rename (in-place, no RBAC check yet)  · `pending`
+## Phase 3 — Folder-aware rename (in-place, no RBAC check yet)  · `completed` (2026-07-07)
 Covers FR-2 mechanics, minus the neutrality invariant (Phase 4).
 
-- **T3.1** RED: tests — `/test/alt → /test/neu` renames the folder and its
-  descendants keep resolving; `/test/alt → /neu/alt` → `VALIDATION_ERROR`
-  (cannot move folders); occupied target → `CONFLICT`; missing → `NOT_FOUND`.
-- **T3.2** GREEN: `getAbstractFileByPath` + `TFolder` branch in
-  `rename-adapter.ts`; same-parent guard via `parentDir`; clobber guard via
-  `getAbstractFileByPath(target)`; `fileManager.renameFile(folder, target)`.
-- **T3.3** Extend `core/rename-policy.ts`: classify folder in-place rename;
-  compose `update` permission on the folder path (pure, SDK-free unit tests).
-- **T3.4** Registration gate: fold folder rename into the existing
-  auto-update-links registration condition + `renameTimeoutMs` (reuse, ADR-5).
-- **T3.5** Verify: build + tsc(test) + suites green.
-- **Exit:** in-place folder rename works and is permission-gated; cross-folder
-  and clobber refused.
+- **T3.1/T3.2** ✅ `rename-adapter.ts`: source now resolves via
+  `getAbstractFileByPath` (was file-only `getFileByPath`), narrowed with
+  `instanceof TFolder`/`instanceof TFile`. New `renameFolder` helper: same-parent
+  guard (`parentDir(source) !== parentDir(target)` → `VALIDATION_ERROR "in place
+  only"`), clobber guard (`CONFLICT`), `fileManager.renameFile(folder, target)`
+  (rewrites descendant backlinks natively), result `modified: 0` (folders have no
+  mtime). Tests: in-place rename, cross-parent → VALIDATION_ERROR, clobber →
+  CONFLICT, missing → NOT_FOUND. **The source-resolution change also required
+  updating the existing file-rename tests** (they mocked `getFileByPath`; now
+  they provide the source through `getAbstractFileByPath`) — file-rename
+  behaviour is unchanged, verified by the same assertions.
+- **T3.3** ✅ Permission via `evaluateFolderRenamePermissions` in
+  `src/core/folder-policy.ts` — synthetic **note.update** on BOTH source and
+  target (a rename is editing; both checked so filename-specific scopes gate).
+  Zero new gates. `rename-policy.ts` also coerces a stray `folder` op to `note`
+  defensively. Pure unit tests (allow / deny-on-source-first / both-paths-gated).
+- **T3.4** ✅ Registration gate + timeout: folder rename is just
+  `operation='folder'` on the SAME `kado-rename` tool, so it inherits the
+  conditional registration (auto-update-links) and `renameTimeoutMs` guard for
+  free — no separate wiring. Mapper accepts `folder`, skips `expectedModified`;
+  handler branches permission to the folder policy.
+- **T3.5** ✅ Verify: build clean; eslint clean (incl. the obsidianmd
+  `no-tfile-tfolder-cast` rule — narrowing via `instanceof`, not casts); full
+  suite **1625 passed**; touched test files typecheck-clean under the mock alias.
+- **Exit:** ✅ in-place folder rename works and is permission-gated; cross-folder
+  move and clobber refused.
+
+  > **Live-verify items (Phase 5 / T5.1):** (1) real-vault folder rename with
+  > auto-update-links ON and OFF (descendant backlink rewrite; dialog/timeout);
+  > (2) **known timeout-path gap** — on the auto-update-links-OFF timeout branch
+  > the handler confirms success via `getFileMtime(target)`, which returns
+  > undefined for a *folder* (it is file-only), so a folder rename that actually
+  > succeeded could be reported as `TIMEOUT`. Harmless when auto-update is on
+  > (the default, and the only state where rename is registered by default);
+  > revisit if folder rename is enabled with auto-update off.
 
 ## Phase 4 — RBAC permission-neutral invariant  · `pending`
 Covers FR-4 / C-4 / ADR-4 — the policy core.

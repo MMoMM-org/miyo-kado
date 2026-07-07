@@ -252,8 +252,8 @@ export function mapDeleteRequest(args: Args, keyId: string): CoreDeleteRequest {
 	return result;
 }
 
-/** Allowed operation values for kado-rename (file-level moves only). */
-const RENAME_DATA_TYPES = new Set<string>(['note', 'file']);
+/** Allowed operation values for kado-rename (note/file moves + in-place folder rename). */
+const RENAME_DATA_TYPES = new Set<string>(['note', 'file', 'folder']);
 
 /**
  * Maps raw MCP tool arguments into a CoreRenameRequest.
@@ -268,7 +268,7 @@ const RENAME_DATA_TYPES = new Set<string>(['note', 'file']);
 export function mapRenameRequest(args: Args, keyId: string): CoreRenameRequest {
 	const operation = requireString(args, 'operation', 'mapRenameRequest');
 	if (!RENAME_DATA_TYPES.has(operation)) {
-		throw new Error(`mapRenameRequest: operation must be one of note|file (got '${operation}')`);
+		throw new Error(`mapRenameRequest: operation must be one of note|file|folder (got '${operation}')`);
 	}
 	// Canonicalize both paths once at the boundary (strip leading/duplicate slashes)
 	// so rename-vs-move classification, permission gating, the mtime lookup, the
@@ -281,9 +281,15 @@ export function mapRenameRequest(args: Args, keyId: string): CoreRenameRequest {
 		throw new Error('mapRenameRequest: source and target must differ');
 	}
 
-	const rawExpected = requirePresent(args, 'expectedModified', 'mapRenameRequest');
-	if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
-		throw new Error('mapRenameRequest: expectedModified must be a number');
+	// A folder has no content timestamp; the in-place constraint + clobber check
+	// are the safety, so expectedModified is not required for folder renames.
+	let expectedModified = 0;
+	if (operation !== 'folder') {
+		const rawExpected = requirePresent(args, 'expectedModified', 'mapRenameRequest');
+		if (typeof rawExpected !== 'number' || !Number.isFinite(rawExpected)) {
+			throw new Error('mapRenameRequest: expectedModified must be a number');
+		}
+		expectedModified = rawExpected;
 	}
 
 	return {
@@ -292,7 +298,7 @@ export function mapRenameRequest(args: Args, keyId: string): CoreRenameRequest {
 		operation: operation as RenameDataType,
 		source,
 		target,
-		expectedModified: rawExpected,
+		expectedModified,
 	};
 }
 

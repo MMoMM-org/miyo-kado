@@ -5,8 +5,8 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {evaluateFolderDeletePermissions} from '../../src/core/folder-policy';
-import type {CoreDeleteRequest, KadoConfig, PermissionGate, GateResult, CoreRequest} from '../../src/types/canonical';
+import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions} from '../../src/core/folder-policy';
+import type {CoreDeleteRequest, CoreRenameRequest, KadoConfig, PermissionGate, GateResult, CoreRequest} from '../../src/types/canonical';
 
 const config = {apiKeys: []} as unknown as KadoConfig;
 
@@ -42,5 +42,34 @@ describe('evaluateFolderDeletePermissions()', () => {
 			operation: 'note',
 			path: 'Projects/Empty',
 		}));
+	});
+});
+
+const renameReq: CoreRenameRequest = {
+	kind: 'rename', apiKeyId: 'k', operation: 'folder',
+	source: 'Projects/alt', target: 'Projects/neu', expectedModified: 0,
+};
+
+describe('evaluateFolderRenamePermissions()', () => {
+	it('allows when synthetic note updates on both paths pass', () => {
+		const result = evaluateFolderRenamePermissions(renameReq, config, [gate({allowed: true})]);
+		expect(result.result.allowed).toBe(true);
+		expect(result.mode).toBe('rename');
+	});
+
+	it('denies when the gate rejects (checked on source first)', () => {
+		const denied: GateResult = {allowed: false, error: {code: 'FORBIDDEN', message: 'no', gate: 'key-scope'}};
+		const spy = vi.fn();
+		const result = evaluateFolderRenamePermissions(renameReq, config, [gate(denied, spy)]);
+		expect(result.result.allowed).toBe(false);
+		// short-circuits on the source path
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(spy).toHaveBeenCalledWith(expect.objectContaining({operation: 'note', path: 'Projects/alt'}));
+	});
+
+	it('gates a note UPDATE on BOTH source and target paths', () => {
+		const paths: string[] = [];
+		evaluateFolderRenamePermissions(renameReq, config, [gate({allowed: true}, (r) => paths.push((r as {path: string}).path))]);
+		expect(paths).toEqual(['Projects/alt', 'Projects/neu']);
 	});
 });

@@ -76,7 +76,7 @@ export type DeleteDataType = 'note' | 'frontmatter' | 'file' | 'folder';
  * two file-backed data types apply — frontmatter and inline fields are intra-file
  * constructs with no path of their own.
  */
-export type RenameDataType = 'note' | 'file';
+export type RenameDataType = 'note' | 'file' | 'folder';
 
 export type CrudOperation = 'create' | 'read' | 'update' | 'delete';
 

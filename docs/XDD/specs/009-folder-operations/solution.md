@@ -103,9 +103,11 @@ The user consciously edits their config and retries if they want the crossing.
 Composed over the existing gate chain via synthetic requests
 (`evaluatePermissions`, rename-policy pattern — zero new gates):
 
-- **Folder rename** → `update` on the folder path (in-place, so source parent ==
-  target parent; a single `update` check on the folder path is sufficient, with
-  C-4 covering descendant neutrality).
+- **Folder rename** → `note.update` on BOTH the source and target folder paths,
+  resolved via `src/core/folder-policy.ts` (`evaluateFolderRenamePermissions` —
+  SHIPPED, Phase 3). In-place, so source parent == target parent; both paths are
+  checked so filename-specific scopes still gate. C-4 (Phase 4) will add
+  descendant neutrality on top.
 - **Folder delete** → `delete` on the folder path, resolved as a synthetic
   `note.delete` via `src/core/folder-policy.ts` (`evaluateFolderDeletePermissions`
   — SHIPPED). A folder has no permission dimension of its own; `note` is the

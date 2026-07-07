@@ -1849,6 +1849,38 @@ describe('kado-rename handler', () => {
 		expect(router).toHaveBeenCalledOnce();
 	});
 
+	it('routes a folder rename without requiring expectedModified', async () => {
+		const router = vi.fn(async (req: CoreRequest) => {
+			expect(req).toMatchObject({kind: 'rename', operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'});
+			return {source: 'Projects/alt', target: 'Projects/neu', modified: 0};
+		});
+		const handler = getRenameHandler(makeDeps({router})); // default getFileMtime → undefined
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+		expect(getFirstText(result)).toContain('Projects/neu');
+	});
+
+	it('denies a folder rename when the gate chain rejects (via folder-policy synthetic note update)', async () => {
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const deps = makeDeps({router, gates: [makeDenyGate(makeCoreError({code: 'FORBIDDEN'}))]});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(router).not.toHaveBeenCalled();
+	});
+
 	it('returns VALIDATION_ERROR for a no-op rename (source === target)', async () => {
 		const handler = getRenameHandler(makeDeps());
 		const result = await handler(
