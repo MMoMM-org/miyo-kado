@@ -16,6 +16,8 @@ import {HeaderSection} from './HeaderSection';
 export class KadoSettingsTab extends PluginSettingTab {
 	plugin: KadoPlugin;
 	private activeTab = 'general';
+	/** Preserved across re-renders so clicking a tab doesn't reset the strip to the left. */
+	private tabStripScroll = 0;
 	private readonly headerSection: HeaderSection;
 	/** Persisted across re-renders so switching keys/tabs keeps the dry-run form. */
 	private readonly dryRunState: DryRunState = createDryRunState();
@@ -28,6 +30,10 @@ export class KadoSettingsTab extends PluginSettingTab {
 
 	display(): void {
 		const {containerEl} = this;
+		// Capture the current tab-strip scroll BEFORE emptying, so a re-render
+		// (tab click, onRedisplay) restores it instead of snapping back to the left.
+		const priorStrip = containerEl.querySelector('.kado-tab-strip');
+		if (priorStrip) this.tabStripScroll = (priorStrip as HTMLElement).scrollLeft;
 		containerEl.empty();
 		containerEl.classList.add('kado-settings');
 
@@ -73,8 +79,12 @@ export class KadoSettingsTab extends PluginSettingTab {
 		const contentEl = containerEl.createDiv({cls: 'kado-tab-content', attr: {role: 'tabpanel', id: 'kado-tab-content'}});
 		this.renderActiveTab(contentEl);
 
-		// Defer scroll button check to after render
-		window.setTimeout(updateScrollButtons, 50);
+		// Defer to after layout: restore the preserved scroll position, then sync
+		// the ‹ › button visibility to it.
+		window.setTimeout(() => {
+			tabStrip.scrollLeft = this.tabStripScroll;
+			updateScrollButtons();
+		}, 50);
 	}
 
 	private addTab(tabStrip: HTMLElement, id: string, label: string): void {
