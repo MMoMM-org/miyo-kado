@@ -89,12 +89,16 @@ Paths in the security scope use glob-style patterns:
 | Pattern | Matches | Example |
 |---------|---------|---------|
 | `**` | **Full vault** -- every file and folder | Grant an API key access to the entire vault |
-| `Calendar` | Everything inside `Calendar/` and its subfolders | Equivalent to `Calendar/**` |
+| `Calendar` | The `Calendar` folder itself **and** everything inside it | Equivalent to `Calendar` + `Calendar/**` |
+| `Calendar/**` | Only the **contents** of `Calendar/` (not the folder node itself) | Scope the files, leave the folder node under a broader rule |
 | `Atlas/202*` | Folders/files in `Atlas/` starting with `202` | `Atlas/202 Notes`, `Atlas/2024 Archive` |
+| `Atlas/Project.md` | A **single note/file** | Give one note a different permission than its siblings |
 
-The folder picker includes a `** (Full vault)` entry at the top for convenience. You can also type patterns manually in the text input.
+The folder picker includes a `** (Full vault)` entry at the top for convenience. You can also type patterns manually in the text input — including a **single file path** (a note-level scope) or a `folder/**` pattern.
 
 **Tip**: When you add a path using the folder picker, just select the folder name (e.g. "Calendar"). The plugin automatically matches all files inside that folder and its subfolders.
+
+**Note — bare folder vs `folder/**`.** A bare `Calendar` matches both the folder node *and* its contents (it auto-expands to also cover `Calendar/**`). `Calendar/**` matches only the *contents*, not the folder node. This distinction matters when you want a rule to apply to a folder's files but leave the folder node itself governed by a broader rule (e.g. so the folder can still be renamed under that broader rule). The **folder browse picker returns the bare form** — add `/**` by hand when you need the contents-only variant.
 
 ### Tags
 
