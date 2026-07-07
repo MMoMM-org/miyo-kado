@@ -111,22 +111,40 @@ Covers FR-2 mechanics, minus the neutrality invariant (Phase 4).
   > (the default, and the only state where rename is registered by default);
   > revisit if folder rename is enabled with auto-update off.
 
-## Phase 4 — RBAC permission-neutral invariant  · `pending`
+## Phase 4 — RBAC permission-neutral invariant  · `completed` (2026-07-07)
 Covers FR-4 / C-4 / ADR-4 — the policy core.
 
-- **T4.1** RED: pure-core tests for the neutral diff over
-  `[folder] ∪ descendants`: identical governing scope → allow; a descendant
-  crossing into a different rule (per-key AND global) → block with the boundary
-  named. Table-drive with whitelist and blacklist rule sets.
-- **T4.2** GREEN: implement the diff in `core/rename-policy.ts` consuming
-  `resolveScope` (`src/core/gates/scope-resolver.ts`) for source vs rewritten
-  target paths; compare governing pattern id + access level. Wire it into the
-  folder rename branch before execution.
-- **T4.3** Assert the config object is never mutated (spy / deep-freeze the
-  config in a test).
-- **T4.4** Verify: build + tsc(test) + full suite green.
-- **Exit:** boundary-crossing renames blocked with a clear message; neutral
-  renames pass untouched; RBAC config immutable.
+**Refinement (vs the draft):** the neutral diff compares the **effective resolved
+permissions** (`resolveScope` output) at source vs rewritten-target, not a
+"governing pattern id" — comparing the access *outcome* is the correct security
+question (two different rules that yield identical access are neutral and must
+not block). Landed in `folder-policy.ts` (not `rename-policy.ts`) beside the
+other folder policy.
+
+- **T4.1/T4.2** ✅ Pure `checkFolderRenameScopeNeutral(source, target, paths,
+  config, key)` in `src/core/folder-policy.ts`: for the folder and every
+  descendant path `p`, rewrites `p' = target + p.slice(source.length)` and
+  compares `resolveScope` for `p` vs `p'` under BOTH global security AND the key's
+  scope (`permissionsEqual` handles null-vs-object and all CRUD flags). First
+  mismatch → `VALIDATION_ERROR` (gate `folder-scope-neutrality`) naming `p → p'`
+  and which scope differs. Descendant enumeration is the obsidian helper
+  `src/obsidian/folder-tree.ts` (`collectFolderTreePaths`, `instanceof TFolder`
+  walk). Wired into the rename handler AFTER base permission, BEFORE routing.
+- **T4.1 tests** ✅ unit (whitelist leave-rule → block naming `global security`;
+  key-scope whitelist → block naming `the key's`; broad rule / blacklist →
+  allowed) + folder-tree walk tests + two handler integration tests (cross-
+  boundary blocked & router not called; neutral tree allowed & routed).
+- **T4.3** ✅ Immutability asserted both at unit level (`JSON.stringify` before/
+  after) and handler level (config unchanged after a blocked rename).
+- **T4.4** ✅ Verify: build clean; eslint clean; full suite **1636 passed**;
+  touched test files typecheck-clean under the mock alias.
+- **Exit:** ✅ boundary-crossing renames blocked with a clear, boundary-naming
+  message; neutral renames pass untouched; RBAC config never mutated.
+
+  > **Live-verify (Phase 5 / T5.1):** exercise a real vault where a key/global
+  > rule references the old folder name, confirm the rename blocks and the config
+  > file is byte-identical afterward; confirm the common (neutral) rename is
+  > frictionless.
 
 ## Phase 5 — Docs, live-verify, release wiring  · `pending`
 

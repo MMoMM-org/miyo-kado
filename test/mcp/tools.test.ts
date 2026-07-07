@@ -33,6 +33,7 @@ import type {
 	OpenNoteDescriptor,
 } from '../../src/types/canonical';
 import {createDefaultConfig} from '../../src/types/canonical';
+import {TFile, TFolder} from '../__mocks__/obsidian';
 import type {ConfigManager} from '../../src/core/config-manager';
 import type {App} from 'obsidian';
 
@@ -172,6 +173,12 @@ function makeDenyGate(error: CoreError): PermissionGate {
 
 function makeMockApp(openNotes: OpenNoteDescriptor[] = []): App {
 	return {
+		// Default vault: no folder resolves (getAbstractFileByPath → null), so the
+		// folder-rename RBAC neutrality check is skipped unless a test supplies a
+		// folder tree. Tests that need one override deps.app.
+		vault: {
+			getAbstractFileByPath: vi.fn(() => null),
+		},
 		workspace: {
 			activeLeaf: openNotes.find((n) => n.active) ?? null,
 			getLeavesOfType: vi.fn((_type: string) => {
@@ -1879,6 +1886,62 @@ describe('kado-rename handler', () => {
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('FORBIDDEN');
 		expect(router).not.toHaveBeenCalled();
+	});
+
+	// --- folder rename RBAC permission-neutral invariant (Phase 4) ---
+
+	function allPerms() {
+		return {
+			note: {create: true, read: true, update: true, delete: true},
+			frontmatter: {create: true, read: true, update: true, delete: true},
+			file: {create: true, read: true, update: true, delete: true},
+			dataviewInlineField: {create: true, read: true, update: true, delete: true},
+		};
+	}
+
+	function appWithFolderTree(source: string): App {
+		const root = new TFolder();
+		root.path = source;
+		const child = new TFile();
+		child.path = `${source}/note.md`;
+		root.children = [child];
+		return {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === source ? root : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
+	}
+
+	it('blocks a folder rename that would cross a permission boundary (block-not-migrate)', async () => {
+		// Whitelist only the SOURCE subtree → the target subtree matches nothing.
+		const config = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [{path: 'Projects/alt/**', permissions: allPerms()}]},
+			apiKeys: [{id: 'kado_test-key', listMode: 'blacklist', paths: []}],
+		} as never);
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const before = JSON.stringify(config.getConfig());
+		const handler = getRenameHandler(makeDeps({router, configManager: config, app: appWithFolderTree('Projects/alt')}));
+
+		const result = await handler({operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(router).not.toHaveBeenCalled();
+		// The permission config must be untouched (never migrated).
+		expect(JSON.stringify(config.getConfig())).toBe(before);
+	});
+
+	it('allows a folder rename that is permission-neutral (whole tree under one rule)', async () => {
+		const config = makeConfigManager({
+			security: {listMode: 'blacklist', paths: []}, // neutral everywhere
+			apiKeys: [{id: 'kado_test-key', listMode: 'blacklist', paths: []}],
+		} as never);
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const handler = getRenameHandler(makeDeps({router, configManager: config, app: appWithFolderTree('Projects/alt')}));
+
+		const result = await handler({operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
 	});
 
 	it('returns VALIDATION_ERROR for a no-op rename (source === target)', async () => {

@@ -20,7 +20,8 @@ import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequ
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
-import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions} from '../core/folder-policy';
+import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions, checkFolderRenameScopeNeutral} from '../core/folder-policy';
+import {collectFolderTreePaths} from '../obsidian/folder-tree';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {deriveHints} from './hints';
@@ -683,6 +684,21 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 		if (!perm.allowed) {
 			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-rename', request, error: perm.error}));
+		}
+
+		// RBAC permission-neutral invariant (spec 009 C-4): a folder rename that
+		// would move any descendant across a permission boundary is blocked, and
+		// the permission config is NEVER rewritten (fail-closed, block-not-migrate).
+		if (request.operation === 'folder') {
+			const key = config.apiKeys.find((k) => k.id === keyId);
+			const treePaths = collectFolderTreePaths(deps.app, request.source);
+			if (key && treePaths) {
+				const neutral = checkFolderRenameScopeNeutral(request.source, request.target, treePaths, config, key);
+				if (!neutral.allowed) {
+					await logDenied('kado-rename', deps, keyId, request, neutral.error.gate);
+					return mapError(neutral.error, deriveHints({tool: 'kado-rename', request, error: neutral.error}));
+				}
+			}
 		}
 
 		const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));

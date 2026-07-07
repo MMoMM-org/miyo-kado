@@ -77,7 +77,11 @@ Registered in `main.ts` deleteAdapters; routed by the existing
 `deleteAdapters[operation]` dispatch. No subtree gating: an empty folder has no
 descendants, so the single folder-path permission check is complete.
 
-### C-4 RBAC permission-neutral invariant (the core policy)
+### C-4 RBAC permission-neutral invariant (the core policy) — SHIPPED (Phase 4)
+`checkFolderRenameScopeNeutral` in `src/core/folder-policy.ts` (pure) + descendant
+walk `collectFolderTreePaths` in `src/obsidian/folder-tree.ts`; wired into the
+rename handler after base permission, before routing.
+
 A folder rename rewrites every descendant path `source/rel → target/rel`. Access
 in Kado is path-keyed (per-key scope + global security), so a rewrite can move
 content across a permission boundary. Policy — **fail-closed, never migrate:**
@@ -90,10 +94,14 @@ for each path p in [folder] ∪ descendants(folder):
         → VALIDATION_ERROR naming p → p' and the differing rule
 ```
 
-`≢` compares the governing pattern id AND its access level (`resolveScope`
-already picks the most-specific match — decision 2026-05-09). Identical governing
-scope on both sides → permitted. The common case (whole subtree under one rule)
-is neutral → allowed with zero friction; only a genuine boundary crossing blocks.
+`≢` compares the **effective resolved permissions** — `resolveScope` output
+(`DataTypePermissions` or `null` when excluded), all CRUD flags, for both scopes
+(`resolveScope` already picks the most-specific match — decision 2026-05-09).
+Comparing the access *outcome* (not the pattern identity) is deliberate: two
+different rules that yield identical access are neutral and must not block.
+Identical resolved permissions on both sides → permitted. The common case (whole
+subtree under one rule) is neutral → allowed with zero friction; only a genuine
+boundary crossing blocks.
 
 Kado never writes the RBAC config: the permission declaration is the single
 source of truth, and a data operation must not silently escalate or drop access.
