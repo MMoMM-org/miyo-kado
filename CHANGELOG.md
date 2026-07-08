@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/MMoMM-org/miyo-kado/compare/1.0.0...1.1.0) (2026-07-08)
+
+### Features
+
+* **folder-ops:** folder create/delete/rename via existing tools (spec 009) ([#96](https://github.com/MMoMM-org/miyo-kado/issues/96)) ([38e1453](https://github.com/MMoMM-org/miyo-kado/commit/38e14536229e48b3c8718b4ce0c595fbdf358c6b))
+
 ## [1.0.0](https://github.com/MMoMM-org/miyo-kado/compare/0.21.1...1.0.0) (2026-07-02)
 
 ### ⚠ BREAKING CHANGES
