@@ -104,12 +104,8 @@ Covers FR-2 mechanics, minus the neutrality invariant (Phase 4).
 
   > **Live-verify items (Phase 5 / T5.1):** (1) real-vault folder rename with
   > auto-update-links ON and OFF (descendant backlink rewrite; dialog/timeout);
-  > (2) **known timeout-path gap** — on the auto-update-links-OFF timeout branch
-  > the handler confirms success via `getFileMtime(target)`, which returns
-  > undefined for a *folder* (it is file-only), so a folder rename that actually
-  > succeeded could be reported as `TIMEOUT`. Harmless when auto-update is on
-  > (the default, and the only state where rename is registered by default);
-  > revisit if folder rename is enabled with auto-update off.
+  > (2) **timeout-path gap — FIXED in Phase 5** (the existence check now uses
+  > `getAbstractFileByPath`, not the file-only `getFileMtime`).
 
 ## Phase 4 — RBAC permission-neutral invariant  · `completed` (2026-07-07)
 Covers FR-4 / C-4 / ADR-4 — the policy core.
@@ -166,10 +162,13 @@ other folder policy.
   message names `…/guarded/sub → …/guarded-x/sub` + "the key's" scope); `data.json`
   byte-identical afterward (not migrated). A wording polish landed from that run
   (the message read "a different the key's permission rule").
-  **Still open** (low-risk, deferred): the auto-update-links-OFF folder timeout
-  path (`getFileMtime` is file-only → a folder rename that succeeds on the timeout
-  branch could misreport `TIMEOUT`; only reachable via the opt-in with
-  auto-update off — see `live-test-checklist.md`).
+  **Auto-update-links-OFF folder timeout gap — FIXED.** The timeout branch's "did
+  it move?" check now probes `deps.app.vault.getAbstractFileByPath` (matches files
+  AND folders) instead of the file-only `getFileMtime`, so a folder rename that
+  succeeded on the timeout path returns success with `linkUpdatePending` (and
+  `modified: 0`) rather than a misleading `TIMEOUT`. Regression test added
+  (folder rename, timeout, no mtime → linkUpdatePending). No open items remain in
+  T5.1.
 - **T5.2** ✅ Docs updated: `docs/api-reference.md` (kado-write implicit mkdir-p;
   kado-delete `folder` op + empty-only; kado-rename `folder` op, in-place-only,
   RBAC neutrality guard, examples), `docs/permissioning-for-pkm.md` (structural

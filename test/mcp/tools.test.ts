@@ -2026,12 +2026,18 @@ describe('kado-rename handler', () => {
 
 	it('on timeout, returns success with linkUpdatePending when the file actually moved', async () => {
 		// Obsidian moves the file immediately and only blocks on the link-update dialog,
-		// so by timeout the source is gone and the target exists.
+		// so by timeout the source is gone and the target exists. Existence is probed via
+		// the vault (getAbstractFileByPath), not getFileMtime.
 		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const app = {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === 'notes/b.md' ? {path: 'notes/b.md'} : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
 		const deps = makeDeps({
 			configManager: makeConfigManager({renameTimeoutMs: 20}),
 			getFileMtime: vi.fn((p: string) => (p === 'notes/b.md' ? 3000 : undefined)),
 			router: router as unknown as ToolDependencies['router'],
+			app,
 		});
 		const handler = getRenameHandler(deps);
 
@@ -2040,10 +2046,39 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBeFalsy();
-		const body = JSON.parse(getFirstText(result)) as {target: string; linkUpdatePending?: boolean; note?: string};
+		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean; note?: string};
 		expect(body.linkUpdatePending).toBe(true);
 		expect(body.target).toBe('notes/b.md');
+		expect(body.modified).toBe(3000);
 		expect(body.note).toContain('Do NOT retry');
+	});
+
+	it('on timeout, a FOLDER rename that already moved returns linkUpdatePending (not TIMEOUT) despite having no mtime', async () => {
+		// Regression for the folder timeout gap: getFileMtime is file-only → undefined for
+		// a folder, so the "did it move?" check must use getAbstractFileByPath, else a
+		// succeeded folder rename is misreported as TIMEOUT.
+		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const app = {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === 'Projects/neu' ? {path: 'Projects/neu'} : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
+		const deps = makeDeps({
+			configManager: makeConfigManager({renameTimeoutMs: 20}),
+			getFileMtime: vi.fn(() => undefined), // folders have no mtime
+			router: router as unknown as ToolDependencies['router'],
+			app,
+		});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean};
+		expect(body.linkUpdatePending).toBe(true);
+		expect(body.target).toBe('Projects/neu');
+		expect(body.modified).toBe(0); // folder → sentinel 0
 	});
 });
 

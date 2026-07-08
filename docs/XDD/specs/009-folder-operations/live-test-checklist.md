@@ -1,12 +1,17 @@
 # Live-Test Checklist — 009-folder-operations (Phase 5 / T5.1)
 
-> **Status (2026-07-07):** the create / delete / rename **mechanics** below are now
-> covered by an automated live suite — `test/live/folder-ops-live.test.ts`
-> (7/7 pass against a real Obsidian vault, two-layer MCP + on-disk). Run it with
-> `npm run test:live`. That run also surfaced and fixed a real bug (folder ops
-> ran optimistic concurrency → spurious CONFLICT on a file path; now skipped).
-> **Still manual** (need a bespoke config / vault-setting change): the RBAC
-> permission-neutral block section and the auto-update-links-**OFF** timeout path.
+> **Status (2026-07-08):** essentially complete.
+> - create / delete / rename **mechanics** — automated live suite
+>   `test/live/folder-ops-live.test.ts` (7/7 against a real vault, two-layer
+>   MCP + on-disk). That run found & fixed a bug (folder ops ran optimistic
+>   concurrency → spurious CONFLICT on a file path; now skipped).
+> - **RBAC permission-neutral block** — live-verified 2026-07-08 with a read-only
+>   second key over the fixture below (neutral rename allowed; boundary-crossing
+>   rename blocked with `VALIDATION_ERROR`; `data.json` byte-identical after).
+> - **auto-update-links-OFF folder timeout gap** — code-fixed (existence check
+>   uses `getAbstractFileByPath`, not file-only `getFileMtime`) + regression test.
+>   Optional: a manual pass with auto-update-links OFF + the opt-in to observe the
+>   `linkUpdatePending` result on a folder rename.
 
 Mocked tests assert call sequences and pure policy, **not** Obsidian's real
 `vault.createFolder` / `fileManager.trashFile` / `fileManager.renameFile`

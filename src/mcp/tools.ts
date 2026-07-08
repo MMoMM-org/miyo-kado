@@ -727,17 +727,23 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			const raced = await raceWithTimeout(work, timeoutMs);
 			if (raced === TIMED_OUT) {
 				work.catch(() => { /* late settle after timeout must not become an unhandled rejection */ });
-				// Obsidian moves the file IMMEDIATELY; the "update links?" dialog only gates the
-				// inbound-link rewrite (and the promise we were awaiting). So on timeout the rename
-				// has almost always already happened — check the vault and report success with
-				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved file
+				// Obsidian moves the file/folder IMMEDIATELY; the "update links?" dialog only gates
+				// the inbound-link rewrite (and the promise we were awaiting). So on timeout the
+				// rename has almost always already happened — check the vault and report success with
+				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved item
 				// (source still present / target absent) is a real TIMEOUT.
-				const targetMtime = deps.getFileMtime(request.target);
-				const sourceGone = deps.getFileMtime(request.source) === undefined;
-				if (targetMtime !== undefined && sourceGone) {
+				//
+				// Existence is probed via getAbstractFileByPath (matches files AND folders) — NOT
+				// getFileMtime, which is file-only and returns undefined for a folder, so a folder
+				// rename that actually succeeded would otherwise be misreported as TIMEOUT.
+				const targetMoved = deps.app.vault.getAbstractFileByPath(request.target) !== null;
+				const sourceGone = deps.app.vault.getAbstractFileByPath(request.source) === null;
+				if (targetMoved && sourceGone) {
+					// Folders have no mtime → 0; files report their post-move mtime.
+					const modified = deps.getFileMtime(request.target) ?? 0;
 					kadoLog('kado-rename allowed', {key: truncateKeyId(keyId), linkUpdatePending: true});
 					await logAllowed('kado-rename', deps, keyId, request, startMs);
-					return mapRenameResult({source: request.source, target: request.target, modified: targetMtime, linkUpdatePending: true});
+					return mapRenameResult({source: request.source, target: request.target, modified, linkUpdatePending: true});
 				}
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
 				await logDenied('kado-rename', deps, keyId, request, 'timeout');
