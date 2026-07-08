@@ -14,6 +14,7 @@ import {registerTools} from './mcp/tools';
 import {createDefaultGateChain} from './core/permission-chain';
 import {createOperationRouter} from './core/operation-router';
 import {createNoteAdapter} from './obsidian/note-adapter';
+import {ensureParentFolder} from './obsidian/ensure-parent-folder';
 import {createFrontmatterAdapter} from './obsidian/frontmatter-adapter';
 import {createFileAdapter} from './obsidian/file-adapter';
 import {createInlineFieldAdapter} from './obsidian/inline-field-adapter';
@@ -22,6 +23,7 @@ import {
 	createNoteDeleteAdapter,
 	createFileDeleteAdapter,
 	createFrontmatterDeleteAdapter,
+	createFolderDeleteAdapter,
 } from './obsidian/delete-adapter';
 import {createRenameAdapter} from './obsidian/rename-adapter';
 import {LinkGraphIndex} from './obsidian/link-graph-index';
@@ -91,6 +93,7 @@ export default class KadoPlugin extends Plugin {
 				note: createNoteDeleteAdapter(this.app),
 				file: createFileDeleteAdapter(this.app),
 				frontmatter: createFrontmatterDeleteAdapter(this.app),
+				folder: createFolderDeleteAdapter(this.app),
 			},
 			rename: createRenameAdapter(this.app),
 			graph: createGraphAdapter(linkGraphIndex),
@@ -108,14 +111,8 @@ export default class KadoPlugin extends Plugin {
 			write: (line: string) => {
 				const logPath = this.resolvedAuditLogPath;
 				writeChain = writeChain.then(async () => {
-					// Ensure the log directory exists before writing
-					const dir = logPath.substring(0, logPath.lastIndexOf('/'));
-					if (dir) {
-						const dirExists = await adapter.exists(dir);
-						if (!dirExists) {
-							await this.app.vault.createFolder(dir).catch(() => {/* already exists */});
-						}
-					}
+					// Ensure the log directory exists before writing (shared mkdir -p helper)
+					await ensureParentFolder(this.app, logPath);
 					// Append-only write (H5): use adapter.append when the file
 					// exists to avoid a per-call read-modify-write cycle. Fall
 					// back to write() for fresh-file creation or empty-string

@@ -10,6 +10,7 @@ import {MarkdownView, Notice, parseYaml} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget, NoteWritePartial} from '../types/canonical';
 import {extractInlineTags, normalizeTag} from '../core/tag-utils';
+import {ensureParentFolder} from './ensure-parent-folder';
 import {firstXChars, firstXWords, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
 
 /** Error thrown by vault adapters, wrapping a CoreError with its error code. */
@@ -300,6 +301,7 @@ async function readTags(app: App, file: Parameters<App['vault']['read']>[0], req
 async function createNote(app: App, request: CoreWriteRequest): Promise<CoreWriteResult> {
 	const existing = app.vault.getFileByPath(request.path);
 	if (existing) throw conflictError(request.path);
+	await ensureParentFolder(app, request.path);
 	const file = await app.vault.create(request.path, request.content as string);
 	return {path: request.path, created: file.stat.ctime, modified: file.stat.mtime};
 }

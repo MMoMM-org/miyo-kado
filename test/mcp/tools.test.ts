@@ -33,6 +33,7 @@ import type {
 	OpenNoteDescriptor,
 } from '../../src/types/canonical';
 import {createDefaultConfig} from '../../src/types/canonical';
+import {TFile, TFolder} from '../__mocks__/obsidian';
 import type {ConfigManager} from '../../src/core/config-manager';
 import type {App} from 'obsidian';
 
@@ -172,6 +173,12 @@ function makeDenyGate(error: CoreError): PermissionGate {
 
 function makeMockApp(openNotes: OpenNoteDescriptor[] = []): App {
 	return {
+		// Default vault: no folder resolves (getAbstractFileByPath → null), so the
+		// folder-rename RBAC neutrality check is skipped unless a test supplies a
+		// folder tree. Tests that need one override deps.app.
+		vault: {
+			getAbstractFileByPath: vi.fn(() => null),
+		},
 		workspace: {
 			activeLeaf: openNotes.find((n) => n.active) ?? null,
 			getLeavesOfType: vi.fn((_type: string) => {
@@ -449,6 +456,58 @@ describe('kado-write handler', () => {
 
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('INTERNAL_ERROR');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-delete handler — folder delete (spec 009, Phase 2)
+// ---------------------------------------------------------------------------
+
+describe('kado-delete handler — folder', () => {
+	function getDeleteHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		const reg = server.tools.find((t) => t.name === 'kado-delete')!;
+		return reg.handler;
+	}
+
+	it('routes a folder delete to the router without requiring expectedModified', async () => {
+		const router = vi.fn(async (req: CoreRequest) => {
+			expect(req).toMatchObject({kind: 'delete', operation: 'folder', path: 'Projects/Empty'});
+			return {path: 'Projects/Empty'};
+		});
+		const handler = getDeleteHandler(makeDeps({router}));
+
+		const result = await handler({operation: 'folder', path: 'Projects/Empty'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+		expect(getFirstText(result)).toContain('Projects/Empty');
+	});
+
+	it('does not run optimistic concurrency for a folder delete (path resolving to a real mtime must not CONFLICT)', async () => {
+		// Regression (live-found): getFileMtime returns a real mtime when the path is
+		// a FILE; with expectedModified defaulted to 0 the concurrency guard would
+		// spuriously CONFLICT before the adapter can return "not a folder".
+		const router = vi.fn(async () => ({path: 'allowed/x'}));
+		const handler = getDeleteHandler(makeDeps({router, getFileMtime: vi.fn(() => 9999)}));
+
+		const result = await handler({operation: 'folder', path: 'allowed/x'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+	});
+
+	it('denies a folder delete when the gate chain rejects (via folder-policy synthetic note delete)', async () => {
+		const denyError = makeCoreError({code: 'FORBIDDEN'});
+		const router = vi.fn(async () => ({path: 'Projects/Empty'}));
+		const handler = getDeleteHandler(makeDeps({router, gates: [makeDenyGate(denyError)]}));
+
+		const result = await handler({operation: 'folder', path: 'Projects/Empty'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(router).not.toHaveBeenCalled();
 	});
 });
 
@@ -1810,6 +1869,96 @@ describe('kado-rename handler', () => {
 		expect(router).toHaveBeenCalledOnce();
 	});
 
+	it('routes a folder rename without requiring expectedModified', async () => {
+		const router = vi.fn(async (req: CoreRequest) => {
+			expect(req).toMatchObject({kind: 'rename', operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'});
+			return {source: 'Projects/alt', target: 'Projects/neu', modified: 0};
+		});
+		// getFileMtime returns a real value → proves folder rename SKIPS optimistic
+		// concurrency (expectedModified defaults to 0, which would otherwise CONFLICT).
+		const handler = getRenameHandler(makeDeps({router, getFileMtime: vi.fn(() => 9999)}));
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+		expect(getFirstText(result)).toContain('Projects/neu');
+	});
+
+	it('denies a folder rename when the gate chain rejects (via folder-policy synthetic note update)', async () => {
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const deps = makeDeps({router, gates: [makeDenyGate(makeCoreError({code: 'FORBIDDEN'}))]});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(router).not.toHaveBeenCalled();
+	});
+
+	// --- folder rename RBAC permission-neutral invariant (Phase 4) ---
+
+	function allPerms() {
+		return {
+			note: {create: true, read: true, update: true, delete: true},
+			frontmatter: {create: true, read: true, update: true, delete: true},
+			file: {create: true, read: true, update: true, delete: true},
+			dataviewInlineField: {create: true, read: true, update: true, delete: true},
+		};
+	}
+
+	function appWithFolderTree(source: string): App {
+		const root = new TFolder();
+		root.path = source;
+		const child = new TFile();
+		child.path = `${source}/note.md`;
+		root.children = [child];
+		return {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === source ? root : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
+	}
+
+	it('blocks a folder rename that would cross a permission boundary (block-not-migrate)', async () => {
+		// Whitelist only the SOURCE subtree → the target subtree matches nothing.
+		const config = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [{path: 'Projects/alt/**', permissions: allPerms()}]},
+			apiKeys: [{id: 'kado_test-key', listMode: 'blacklist', paths: []}],
+		} as never);
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const before = JSON.stringify(config.getConfig());
+		const handler = getRenameHandler(makeDeps({router, configManager: config, app: appWithFolderTree('Projects/alt')}));
+
+		const result = await handler({operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(router).not.toHaveBeenCalled();
+		// The permission config must be untouched (never migrated).
+		expect(JSON.stringify(config.getConfig())).toBe(before);
+	});
+
+	it('allows a folder rename that is permission-neutral (whole tree under one rule)', async () => {
+		const config = makeConfigManager({
+			security: {listMode: 'blacklist', paths: []}, // neutral everywhere
+			apiKeys: [{id: 'kado_test-key', listMode: 'blacklist', paths: []}],
+		} as never);
+		const router = vi.fn(async () => ({source: 'Projects/alt', target: 'Projects/neu', modified: 0}));
+		const handler = getRenameHandler(makeDeps({router, configManager: config, app: appWithFolderTree('Projects/alt')}));
+
+		const result = await handler({operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'}, makeExtra());
+
+		expect(result.isError).toBeFalsy();
+		expect(router).toHaveBeenCalledOnce();
+	});
+
 	it('returns VALIDATION_ERROR for a no-op rename (source === target)', async () => {
 		const handler = getRenameHandler(makeDeps());
 		const result = await handler(
@@ -1877,12 +2026,18 @@ describe('kado-rename handler', () => {
 
 	it('on timeout, returns success with linkUpdatePending when the file actually moved', async () => {
 		// Obsidian moves the file immediately and only blocks on the link-update dialog,
-		// so by timeout the source is gone and the target exists.
+		// so by timeout the source is gone and the target exists. Existence is probed via
+		// the vault (getAbstractFileByPath), not getFileMtime.
 		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const app = {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === 'notes/b.md' ? {path: 'notes/b.md'} : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
 		const deps = makeDeps({
 			configManager: makeConfigManager({renameTimeoutMs: 20}),
 			getFileMtime: vi.fn((p: string) => (p === 'notes/b.md' ? 3000 : undefined)),
 			router: router as unknown as ToolDependencies['router'],
+			app,
 		});
 		const handler = getRenameHandler(deps);
 
@@ -1891,10 +2046,39 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBeFalsy();
-		const body = JSON.parse(getFirstText(result)) as {target: string; linkUpdatePending?: boolean; note?: string};
+		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean; note?: string};
 		expect(body.linkUpdatePending).toBe(true);
 		expect(body.target).toBe('notes/b.md');
+		expect(body.modified).toBe(3000);
 		expect(body.note).toContain('Do NOT retry');
+	});
+
+	it('on timeout, a FOLDER rename that already moved returns linkUpdatePending (not TIMEOUT) despite having no mtime', async () => {
+		// Regression for the folder timeout gap: getFileMtime is file-only → undefined for
+		// a folder, so the "did it move?" check must use getAbstractFileByPath, else a
+		// succeeded folder rename is misreported as TIMEOUT.
+		const router = vi.fn(() => new Promise<never>(() => { /* never resolves */ }));
+		const app = {
+			vault: {getAbstractFileByPath: vi.fn((p: string) => (p === 'Projects/neu' ? {path: 'Projects/neu'} : null))},
+			workspace: {getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
+		const deps = makeDeps({
+			configManager: makeConfigManager({renameTimeoutMs: 20}),
+			getFileMtime: vi.fn(() => undefined), // folders have no mtime
+			router: router as unknown as ToolDependencies['router'],
+			app,
+		});
+		const handler = getRenameHandler(deps);
+
+		const result = await handler(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			makeExtra(),
+		);
+		expect(result.isError).toBeFalsy();
+		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean};
+		expect(body.linkUpdatePending).toBe(true);
+		expect(body.target).toBe('Projects/neu');
+		expect(body.modified).toBe(0); // folder → sentinel 0
 	});
 });
 

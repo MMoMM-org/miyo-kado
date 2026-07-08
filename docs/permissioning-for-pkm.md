@@ -99,6 +99,8 @@ Read-only access to a folder is a different scope from read+write access to the 
 
 When the AI requests a forbidden resource, the answer is "denied" returned by the data layer — not "the AI politely declines because we asked it to". If you remove the AI and call the data layer directly with the same credentials, you should still get denied.
 
+This applies to **structural** operations too, not just reads and writes. Deleting a folder is gated the same way as deleting a note (and only ever removes an *empty* folder — never a recursive wipe). Renaming a folder is subject to a **permission-neutral guard**: because renaming `A/old` to `A/new` rewrites the path of every note underneath, Kado checks that no descendant would land under a *different* permission rule as a result — and if one would, the rename is refused rather than silently moving content across a boundary. Crucially, Kado never edits your permission rules to make a rename "fit": your access policy is the single source of truth, so a boundary-crossing rename is a decision you make explicitly by changing the config, not a side effect the AI can trigger.
+
 ### 5. Audit log
 
 Every allowed and denied request is recorded with: timestamp, identity, what was requested, what was returned. You should be able to look at this log a week later and answer "what did this AI actually touch last Thursday afternoon?"

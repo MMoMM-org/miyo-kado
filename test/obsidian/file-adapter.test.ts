@@ -30,6 +30,8 @@ interface MockVault {
 	readBinary: ReturnType<typeof vi.fn>;
 	createBinary: ReturnType<typeof vi.fn>;
 	modifyBinary: ReturnType<typeof vi.fn>;
+	createFolder: ReturnType<typeof vi.fn>;
+	adapter: {exists: ReturnType<typeof vi.fn>};
 }
 
 interface MockApp {
@@ -57,6 +59,10 @@ function makeVault(): MockVault {
 		readBinary: vi.fn(),
 		createBinary: vi.fn(),
 		modifyBinary: vi.fn(),
+		// Parent-folder existence defaults to true so existing create tests don't
+		// trigger folder creation; the mkdir -p tests set it to false explicitly.
+		createFolder: vi.fn(async () => undefined),
+		adapter: {exists: vi.fn(async () => true)},
 	};
 }
 
@@ -182,6 +188,34 @@ describe('createFileAdapter() — write() create', () => {
 			message: expect.stringContaining('assets/image.png'),
 		});
 		expect(vault.createBinary).not.toHaveBeenCalled();
+	});
+
+	it('creates the missing parent folder before writing the binary (implicit mkdir -p)', async () => {
+		const vault = makeVault();
+		vault.getFileByPath.mockReturnValue(null);
+		vault.adapter.exists.mockResolvedValue(false);
+		vault.createBinary.mockResolvedValue(makeTFile({path: 'assets/deep/image.png', stat: {ctime: 3000, mtime: 3000, size: 4}}));
+
+		const adapter = createFileAdapter(makeApp(vault) as never);
+		await adapter.write(makeWriteRequest({path: 'assets/deep/image.png', content: btoa('data')}));
+
+		expect(vault.createFolder).toHaveBeenCalledWith('assets/deep');
+		const folderOrder = vault.createFolder.mock.invocationCallOrder[0] as number;
+		const createOrder = vault.createBinary.mock.invocationCallOrder[0] as number;
+		expect(folderOrder).toBeLessThan(createOrder);
+	});
+
+	it('does not create a folder when the parent already exists', async () => {
+		const vault = makeVault();
+		vault.getFileByPath.mockReturnValue(null);
+		vault.adapter.exists.mockResolvedValue(true);
+		vault.createBinary.mockResolvedValue(makeTFile({stat: {ctime: 3000, mtime: 3000, size: 4}}));
+
+		const adapter = createFileAdapter(makeApp(vault) as never);
+		await adapter.write(makeWriteRequest({content: btoa('data')}));
+
+		expect(vault.createFolder).not.toHaveBeenCalled();
+		expect(vault.createBinary).toHaveBeenCalledOnce();
 	});
 });
 

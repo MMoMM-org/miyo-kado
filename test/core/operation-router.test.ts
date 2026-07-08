@@ -131,6 +131,7 @@ let searchAdapter: ReturnType<typeof makeSearchAdapter>;
 let noteDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let fileDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let frontmatterDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
+let folderDeleteAdapter: ReturnType<typeof makeDeleteAdapter>;
 let renameAdapter: ReturnType<typeof makeRenameAdapter>;
 let graphAdapter: ReturnType<typeof makeGraphAdapter>;
 
@@ -143,6 +144,7 @@ beforeEach(() => {
 	noteDeleteAdapter = makeDeleteAdapter();
 	fileDeleteAdapter = makeDeleteAdapter();
 	frontmatterDeleteAdapter = makeDeleteAdapter();
+	folderDeleteAdapter = makeDeleteAdapter();
 	renameAdapter = makeRenameAdapter();
 	graphAdapter = makeGraphAdapter();
 });
@@ -158,6 +160,7 @@ function makeRouter() {
 			note: noteDeleteAdapter,
 			file: fileDeleteAdapter,
 			frontmatter: frontmatterDeleteAdapter,
+			folder: folderDeleteAdapter,
 		},
 		rename: renameAdapter,
 		graph: graphAdapter,
@@ -401,6 +404,18 @@ describe('createOperationRouter() — delete routing', () => {
 		const result = await route(makeDeleteRequest('frontmatter', {keys: ['k1']}));
 
 		expect(frontmatterDeleteAdapter.delete).toHaveBeenCalledOnce();
+		expect(result).toBe(expected);
+	});
+
+	it('routes delete "folder" to folder delete adapter', async () => {
+		const expected = {path: 'Projects/Empty'};
+		folderDeleteAdapter.delete.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route(makeDeleteRequest('folder', {path: 'Projects/Empty'}));
+
+		expect(folderDeleteAdapter.delete).toHaveBeenCalledOnce();
+		expect(noteDeleteAdapter.delete).not.toHaveBeenCalled();
 		expect(result).toBe(expected);
 	});
 

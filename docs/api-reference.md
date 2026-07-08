@@ -510,6 +510,8 @@ Kado uses the `expectedModified` parameter to distinguish creates from updates a
 2. Call `kado-write` with `expectedModified` set to the `modified` value from step 1.
 3. If you receive a `CONFLICT` error, re-read and retry.
 
+**Implicit parent-folder creation (`mkdir -p`).** Creating a note or file at a path whose parent folders don't exist yet **creates them automatically** — writing `Projects/2026/Q1/plan.md` when `Projects/2026/Q1/` is absent just works. There is no separate "create folder" operation and no need to pre-create the directory. Folders only come into existence as parents of a written file; Kado does not create empty folders on their own. The folder creation happens within the path you are already permitted to write, so it grants no access the write itself did not already have.
+
 ### Response Format
 
 | Field | Type | Description |
@@ -617,16 +619,17 @@ Remove content from the Obsidian vault. Notes and files are moved to the user's 
 | `note` | Trash the markdown file via `fileManager.trashFile` |
 | `file` | Trash the binary file via `fileManager.trashFile` |
 | `frontmatter` | Remove specified keys from YAML frontmatter (requires `keys` array) |
+| `folder` | Trash an **empty** folder via `fileManager.trashFile`. A non-empty folder returns `VALIDATION_ERROR` (`"Folder not empty"`) — there is **no recursive delete**; remove the contents first. `expectedModified` is not required (a folder has no timestamp). |
 | `dataview-inline-field` | **Not supported** — returns `VALIDATION_ERROR`. Regex-based line removal is too risky for a destructive operation; use `kado-write` with the field removed instead. |
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | `"note" \| "file" \| "frontmatter" \| "dataview-inline-field"` | Yes | What to delete. `dataview-inline-field` is rejected with `VALIDATION_ERROR`. |
-| `path` | `string` | Yes | Vault-relative path |
-| `expectedModified` | `number` | **Yes (always)** | The `modified` timestamp from a prior read. CONFLICT if the file has changed since. |
-| `keys` | `string[]` | Conditional | Required and non-empty when `operation: "frontmatter"`. Array of frontmatter keys to remove. Ignored for `note` and `file`. |
+| `operation` | `"note" \| "file" \| "frontmatter" \| "folder" \| "dataview-inline-field"` | Yes | What to delete. `dataview-inline-field` is rejected with `VALIDATION_ERROR`. |
+| `path` | `string` | Yes | Vault-relative path (the folder path for `operation: "folder"`) |
+| `expectedModified` | `number` | Conditional | Required for `note`/`file`/`frontmatter` — the `modified` timestamp from a prior read (CONFLICT if the file changed since). **Not required for `folder`** (empty-only is the safety). |
+| `keys` | `string[]` | Conditional | Required and non-empty when `operation: "frontmatter"`. Array of frontmatter keys to remove. Ignored for `note`/`file`/`folder`. |
 
 ### Response Format
 
@@ -691,6 +694,37 @@ Remove content from the Obsidian vault. Notes and files are moved to the user's 
 {
   "path": "Projects/kado.md",
   "modified": 1743380200000
+}
+```
+
+**Delete an empty folder (no `expectedModified` needed):**
+
+```json
+// Request arguments
+{
+  "operation": "folder",
+  "path": "100 Inbox/archived-project"
+}
+
+// Response content
+{
+  "path": "100 Inbox/archived-project"
+}
+```
+
+**VALIDATION_ERROR — folder not empty (no recursive delete):**
+
+```json
+// Request arguments
+{
+  "operation": "folder",
+  "path": "100 Inbox/active-project"
+}
+
+// Response content
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Folder not empty: 100 Inbox/active-project (3 item(s) — delete its contents first)"
 }
 ```
 
@@ -785,6 +819,7 @@ For multiple renames this means one dialog per file — strongly prefer turning 
 |---|---|
 | `note` | Rename/move a markdown file. Both `source` and `target` must end in `.md`. |
 | `file` | Rename/move a non-markdown file. Neither `source` nor `target` may end in `.md`. |
+| `folder` | Rename a folder **in place** (same parent). A cross-parent move returns `VALIDATION_ERROR` — folder moves are not supported. `expectedModified` is not required. Inbound links to every descendant are updated automatically (same `fileManager.renameFile` path). Subject to the RBAC neutrality guard below. |
 
 ### Rename vs Move (inferred, no flag)
 
@@ -795,14 +830,20 @@ For multiple renames this means one dialog per file — strongly prefer turning 
 
 The split mirrors the trust boundary: renaming within a folder is a form of editing (so `update` suffices), while moving crosses folders, so it requires the right to remove the file from the source scope *and* create it in the target scope. An edit-only key cannot move notes into a folder it may not write to.
 
+For `operation: "folder"` the mode is always **rename** (in-place; a cross-parent target is rejected). Permission is `update` on the folder path (checked on both source and target). Because a folder has no permission dimension of its own, this is evaluated as `note.update` at the folder path.
+
+### Folder rename — RBAC permission-neutral guard
+
+Renaming a folder rewrites the path of **every** descendant (`A/old/note.md → A/new/note.md`), which could move content under a different permission rule. Kado enforces a **fail-closed, block-not-migrate** invariant: for the folder and every descendant it compares the effective resolved scope at the old path vs the new path — under both the global security scope and the acting key's scope. If any descendant's effective access would change, the rename is **blocked** with `VALIDATION_ERROR` naming the offending path and boundary. Kado **never rewrites your permission config** to accommodate a rename — the config is the single source of truth. The common case (the whole subtree governed by one rule) is neutral and renames with zero friction; only a rename that genuinely crosses a permission boundary is refused, at which point you adjust the config yourself and retry.
+
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | `"note" \| "file"` | Yes | What to move. Frontmatter/inline fields are not supported (they have no path). |
-| `source` | `string` | Yes | Current vault-relative path of the file to move. |
-| `target` | `string` | Yes | Desired vault-relative path. Must not already exist (CONFLICT otherwise). Must share `source`'s extension class. |
-| `expectedModified` | `number` | **Yes (always)** | The `modified` timestamp from a prior read of the **source** file. CONFLICT if the source has changed since. |
+| `operation` | `"note" \| "file" \| "folder"` | Yes | What to rename. Frontmatter/inline fields are not supported (they have no path). |
+| `source` | `string` | Yes | Current vault-relative path of the file or folder to rename. |
+| `target` | `string` | Yes | Desired vault-relative path. Must not already exist (CONFLICT otherwise). Must share `source`'s extension class (note/file); for `folder`, must share `source`'s parent. |
+| `expectedModified` | `number` | Conditional | Required for `note`/`file` — the `modified` timestamp from a prior read of the **source** (CONFLICT if it changed since). **Not required for `folder`.** |
 
 ### Response Format
 
@@ -856,6 +897,43 @@ The split mirrors the trust boundary: renaming within a folder is a form of edit
   "source": "100 Inbox/2026-budget.md",
   "target": "200 Notes/2026-budget.md",
   "modified": 1743379500000
+}
+```
+
+**Rename a folder in place (no `expectedModified`; descendants' backlinks follow):**
+
+```json
+// Request arguments
+{
+  "operation": "folder",
+  "source": "100 Inbox/Q1 drafts",
+  "target": "100 Inbox/Q1 archive"
+}
+
+// Response content
+{
+  "source": "100 Inbox/Q1 drafts",
+  "target": "100 Inbox/Q1 archive",
+  "modified": 0
+}
+```
+
+**VALIDATION_ERROR — folder move (different parent) is not supported:**
+
+```json
+// operation="folder" with a target in a different parent folder
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Cannot move folders — rename in place only (same parent required): 100 Inbox/Q1 drafts → 200 Notes/Q1 drafts"
+}
+```
+
+**VALIDATION_ERROR — folder rename blocked by the RBAC neutrality guard:**
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Rename blocked: \"100 Inbox/Q1 drafts/plan.md\" would become \"100 Inbox/Q1 final/plan.md\", changing its effective access under the global security permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically."
 }
 ```
 

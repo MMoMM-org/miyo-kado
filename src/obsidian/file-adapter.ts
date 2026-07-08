@@ -10,6 +10,7 @@ import type {App} from 'obsidian';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult} from '../types/canonical';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import {NoteAdapterError} from './note-adapter';
+import {ensureParentFolder} from './ensure-parent-folder';
 
 // ---------------------------------------------------------------------------
 // Base64 ↔ ArrayBuffer helpers
@@ -74,6 +75,7 @@ async function writeFile(app: App, request: CoreWriteRequest): Promise<CoreWrite
 	const existing = app.vault.getFileByPath(request.path);
 	if (existing) throw conflictError(request.path);
 
+	await ensureParentFolder(app, request.path);
 	const created = await app.vault.createBinary(request.path, buffer);
 	return {path: request.path, created: created.stat.ctime, modified: created.stat.mtime};
 }

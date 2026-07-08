@@ -20,6 +20,8 @@ import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequ
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
+import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions, checkFolderRenameScopeNeutral} from '../core/folder-policy';
+import {collectFolderTreePaths} from '../obsidian/folder-tree';
 import {validateConcurrency} from '../core/concurrency-guard';
 import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
 import {deriveHints} from './hints';
@@ -133,17 +135,17 @@ export const kadoWriteShape = {
 const kadoDeleteShape = {
 	// Accept all 4 DataType values at the SDK boundary; mapDeleteRequest rejects
 	// 'dataview-inline-field' with a canonical VALIDATION_ERROR the client can parse.
-	operation: z.enum(['note', 'frontmatter', 'file', 'dataview-inline-field']).describe('What to delete. Extension-strict: note/frontmatter require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = trash the markdown file. file = trash a non-markdown file. frontmatter = remove specific keys from a markdown file\'s YAML. dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
-	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file.'),
-	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read. CONFLICT if the file changed since.'),
-	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file.'),
+	operation: z.enum(['note', 'frontmatter', 'file', 'folder', 'dataview-inline-field']).describe('What to delete. Extension-strict: note/frontmatter require a .md path; file requires a non-.md path (mismatches return VALIDATION_ERROR). note = trash the markdown file. file = trash a non-markdown file. frontmatter = remove specific keys from a markdown file\'s YAML. folder = trash an EMPTY folder (VALIDATION_ERROR if it still contains anything; no recursive delete). dataview-inline-field is NOT supported and returns VALIDATION_ERROR.'),
+	path: z.string().describe('Vault-relative path. .md for note/frontmatter, non-.md for file, the folder path for folder.'),
+	expectedModified: z.number().optional().describe('The "modified" timestamp from a prior read. Required for note/file/frontmatter (CONFLICT if the file changed since); not needed for operation="folder".'),
+	keys: z.array(z.string()).optional().describe('Required for operation="frontmatter": non-empty array of frontmatter keys to remove. Ignored for note/file/folder.'),
 };
 
 const kadoRenameShape = {
-	operation: z.enum(['note', 'file']).describe('What to move. Extension-strict: note requires .md paths; file requires non-.md paths. Both source and target must share the same extension class — a rename can never change a file\'s type (mismatches return VALIDATION_ERROR).'),
-	source: z.string().describe('Current vault-relative path of the file to move, e.g. "100 Inbox/draft.md".'),
-	target: z.string().describe('Desired vault-relative path, e.g. "100 Inbox/final.md" (rename) or "200 Notes/final.md" (move). Must not already exist — returns CONFLICT otherwise.'),
-	expectedModified: z.number().describe('Required. The "modified" timestamp from a prior read of the SOURCE file. Returns CONFLICT if the source changed since.'),
+	operation: z.enum(['note', 'file', 'folder']).describe('What to move. note requires .md paths; file requires non-.md paths (both source and target must share the same extension class — a rename can never change a file\'s type). folder renames a folder IN PLACE only: source and target must share the same parent (e.g. "A/old" → "A/new"), moving a folder to a different parent returns VALIDATION_ERROR.'),
+	source: z.string().describe('Current vault-relative path of the file or folder to rename, e.g. "100 Inbox/draft.md" or "100 Inbox".'),
+	target: z.string().describe('Desired vault-relative path, e.g. "100 Inbox/final.md" (rename) or "200 Notes/final.md" (move). For folder: same parent as source. Must not already exist — returns CONFLICT otherwise.'),
+	expectedModified: z.number().optional().describe('The "modified" timestamp from a prior read of the SOURCE file. Required for note/file (CONFLICT if the source changed since); not needed for operation="folder".'),
 };
 
 export const kadoOpenNotesShape = {
@@ -366,6 +368,8 @@ function extractDataType(request: CoreRequest): DataType {
 	if (isCoreGraphRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
 	if (request.operation === 'tags') return 'note';
+	// Folder delete is authorized and audited as a note operation (folder-policy).
+	if (request.operation === 'folder') return 'note';
 	return request.operation;
 }
 
@@ -617,16 +621,28 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
 
-		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
+		// Folder delete has no per-folder permission dimension: authorize it as a
+		// synthetic note.delete at the folder path via the same gate chain (zero
+		// new gates). All other operations use the generic per-datatype chain.
+		const config = deps.configManager.getConfig();
+		const perm = request.operation === 'folder'
+			? evaluateFolderDeletePermissions(request, config, deps.gates)
+			: evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-delete', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-delete', request, error: perm.error}));
 		}
 
-		const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
-		if (!concurrency.allowed) {
-			kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
-			return mapError(concurrency.error, deriveHints({tool: 'kado-delete', request, error: concurrency.error}));
+		// Folder delete carries no expectedModified (empty-only is the safety), and
+		// getFileMtime would return a real mtime if the path happens to be a FILE —
+		// which would spuriously CONFLICT before the adapter can say "not a folder".
+		// So skip optimistic concurrency for folder ops entirely.
+		if (request.operation !== 'folder') {
+			const concurrency = validateConcurrency(request, deps.getFileMtime(request.path));
+			if (!concurrency.allowed) {
+				kadoLog('kado-delete error', {...debugFields(keyId, request), code: concurrency.error.code});
+				return mapError(concurrency.error, deriveHints({tool: 'kado-delete', request, error: concurrency.error}));
+			}
 		}
 
 		const startMs = performance.now();
@@ -664,16 +680,41 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
 
-		const {result: perm} = evaluateRenamePermissions(request, deps.configManager.getConfig(), deps.gates);
+		// Folder rename has no per-folder permission dimension: authorize it as
+		// synthetic note.update on source AND target via the same gate chain (zero
+		// new gates). Other operations use the note/file rename-vs-move policy.
+		const config = deps.configManager.getConfig();
+		const {result: perm} = request.operation === 'folder'
+			? evaluateFolderRenamePermissions(request, config, deps.gates)
+			: evaluateRenamePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-rename', request, error: perm.error}));
 		}
 
-		const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
-		if (!concurrency.allowed) {
-			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
-			return mapError(concurrency.error, deriveHints({tool: 'kado-rename', request, error: concurrency.error}));
+		// RBAC permission-neutral invariant (spec 009 C-4): a folder rename that
+		// would move any descendant across a permission boundary is blocked, and
+		// the permission config is NEVER rewritten (fail-closed, block-not-migrate).
+		if (request.operation === 'folder') {
+			const key = config.apiKeys.find((k) => k.id === keyId);
+			const treePaths = collectFolderTreePaths(deps.app, request.source);
+			if (key && treePaths) {
+				const neutral = checkFolderRenameScopeNeutral(request.source, request.target, treePaths, config, key);
+				if (!neutral.allowed) {
+					await logDenied('kado-rename', deps, keyId, request, neutral.error.gate);
+					return mapError(neutral.error, deriveHints({tool: 'kado-rename', request, error: neutral.error}));
+				}
+			}
+		}
+
+		// Folder rename carries no expectedModified (in-place + clobber checks are the
+		// safety); skip optimistic concurrency for folder ops for the same reason as delete.
+		if (request.operation !== 'folder') {
+			const concurrency = validateConcurrency(request, deps.getFileMtime(request.source));
+			if (!concurrency.allowed) {
+				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: concurrency.error.code});
+				return mapError(concurrency.error, deriveHints({tool: 'kado-rename', request, error: concurrency.error}));
+			}
 		}
 
 		const startMs = performance.now();
@@ -681,22 +722,28 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			// Guard against a hang: when Obsidian's auto-update-links is off, renameFile
 			// blocks on a confirmation modal that an MCP caller cannot answer. Bound the
 			// wait and report TIMEOUT instead of leaving the client hanging forever.
-			const timeoutMs = deps.configManager.getConfig().renameTimeoutMs;
+			const timeoutMs = config.renameTimeoutMs;
 			const work = deps.router(request);
 			const raced = await raceWithTimeout(work, timeoutMs);
 			if (raced === TIMED_OUT) {
 				work.catch(() => { /* late settle after timeout must not become an unhandled rejection */ });
-				// Obsidian moves the file IMMEDIATELY; the "update links?" dialog only gates the
-				// inbound-link rewrite (and the promise we were awaiting). So on timeout the rename
-				// has almost always already happened — check the vault and report success with
-				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved file
+				// Obsidian moves the file/folder IMMEDIATELY; the "update links?" dialog only gates
+				// the inbound-link rewrite (and the promise we were awaiting). So on timeout the
+				// rename has almost always already happened — check the vault and report success with
+				// linkUpdatePending instead of a misleading failure. Only a genuinely un-moved item
 				// (source still present / target absent) is a real TIMEOUT.
-				const targetMtime = deps.getFileMtime(request.target);
-				const sourceGone = deps.getFileMtime(request.source) === undefined;
-				if (targetMtime !== undefined && sourceGone) {
+				//
+				// Existence is probed via getAbstractFileByPath (matches files AND folders) — NOT
+				// getFileMtime, which is file-only and returns undefined for a folder, so a folder
+				// rename that actually succeeded would otherwise be misreported as TIMEOUT.
+				const targetMoved = deps.app.vault.getAbstractFileByPath(request.target) !== null;
+				const sourceGone = deps.app.vault.getAbstractFileByPath(request.source) === null;
+				if (targetMoved && sourceGone) {
+					// Folders have no mtime → 0; files report their post-move mtime.
+					const modified = deps.getFileMtime(request.target) ?? 0;
 					kadoLog('kado-rename allowed', {key: truncateKeyId(keyId), linkUpdatePending: true});
 					await logAllowed('kado-rename', deps, keyId, request, startMs);
-					return mapRenameResult({source: request.source, target: request.target, modified: targetMtime, linkUpdatePending: true});
+					return mapRenameResult({source: request.source, target: request.target, modified, linkUpdatePending: true});
 				}
 				kadoLog('kado-rename error', {key: truncateKeyId(keyId), code: 'TIMEOUT'});
 				await logDenied('kado-rename', deps, keyId, request, 'timeout');

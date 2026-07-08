@@ -48,8 +48,12 @@ export function evaluateRenamePermissions(
 	config: KadoConfig,
 	gates: PermissionGate[],
 ): {result: GateResult; mode: 'rename' | 'move'} {
-	const {apiKeyId, operation, source, target} = request;
+	const {apiKeyId, source, target} = request;
 	const mode = renameMode(request);
+	// note/file share a datatype with the write/delete gates; a 'folder' rename is
+	// authorized separately (evaluateFolderRenamePermissions) and never reaches
+	// here, but coerce defensively to 'note' so a direct call still gates sanely.
+	const operation = request.operation === 'folder' ? 'note' : request.operation;
 
 	if (mode === 'rename') {
 		// Synthetic write with expectedModified set → inferCrudAction = 'update'.

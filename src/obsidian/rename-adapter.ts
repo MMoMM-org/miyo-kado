@@ -13,6 +13,7 @@
  */
 
 import type {App} from 'obsidian';
+import {TFile, TFolder} from 'obsidian';
 import type {RenameAdapter} from '../core/operation-router';
 import {parentDir} from '../core/rename-policy';
 import type {CoreRenameRequest, CoreRenameResult, CoreError, CoreErrorCode} from '../types/canonical';
@@ -43,6 +44,37 @@ function validationError(message: string): RenameAdapterError {
 }
 
 // ---------------------------------------------------------------------------
+// Folder rename — in-place only (spec 009, Phase 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Renames a folder in place. In-place ONLY: the parent must not change, so
+ * `/test/alt → /test/neu` is allowed but `/test/alt → /neu/alt` (a move) is
+ * refused with VALIDATION_ERROR. `fileManager.renameFile` works on a TFolder and
+ * rewrites inbound links for every descendant; the same auto-update-links dialog
+ * guard as file rename applies at the tool layer. A folder has no mtime, so the
+ * result's `modified` is 0.
+ */
+async function renameFolder(app: App, request: CoreRenameRequest, folder: TFolder): Promise<CoreRenameResult> {
+	if (parentDir(request.source) !== parentDir(request.target)) {
+		throw validationError(`Cannot move folders — rename in place only (same parent required): ${request.source} → ${request.target}`);
+	}
+	const existing = app.vault.getAbstractFileByPath(request.target);
+	// A case-only rename resolves the target back to the source folder — allow it.
+	if (existing && existing !== folder) {
+		throw conflictError(request.target);
+	}
+	try {
+		await app.fileManager.renameFile(folder, request.target);
+	} catch (err) {
+		const now = app.vault.getAbstractFileByPath(request.target);
+		if (now && now !== folder) throw conflictError(request.target);
+		throw err;
+	}
+	return {source: request.source, target: request.target, modified: 0};
+}
+
+// ---------------------------------------------------------------------------
 // Rename/move adapter
 // ---------------------------------------------------------------------------
 
@@ -53,8 +85,17 @@ function validationError(message: string): RenameAdapterError {
 export function createRenameAdapter(app: App): RenameAdapter {
 	return {
 		async rename(request: CoreRenameRequest): Promise<CoreRenameResult> {
-			const file = app.vault.getFileByPath(request.source);
-			if (!file) throw notFoundError(request.source);
+			// Resolve as an abstract file so a folder source is visible (getFileByPath
+			// is file-only and would report NOT_FOUND for a folder).
+			const src = app.vault.getAbstractFileByPath(request.source);
+			if (!src) throw notFoundError(request.source);
+
+			if (src instanceof TFolder) {
+				return renameFolder(app, request, src);
+			}
+			// Only a file remains (a folder returned above; null threw NOT_FOUND).
+			if (!(src instanceof TFile)) throw notFoundError(request.source);
+			const file = src;
 
 			const existing = app.vault.getAbstractFileByPath(request.target);
 			// `existing === file` is a case-only rename on a case-insensitive
@@ -86,6 +127,7 @@ export function createRenameAdapter(app: App): RenameAdapter {
 				if (now && now !== file) throw conflictError(request.target);
 				throw err;
 			}
+			// src was narrowed to TFile above, so stat is available.
 			return {source: request.source, target: request.target, modified: file.stat.mtime};
 		},
 	};

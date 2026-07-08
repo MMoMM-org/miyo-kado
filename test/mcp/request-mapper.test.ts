@@ -697,6 +697,26 @@ describe('mapDeleteRequest()', () => {
 			.toThrow(/missing required field "expectedModified"/);
 	});
 
+	it('maps a folder delete request without requiring expectedModified', () => {
+		const result = mapDeleteRequest({operation: 'folder', path: 'Projects/Empty'}, KEY_ID) as CoreDeleteRequest;
+
+		expect(result).toMatchObject({
+			kind: 'delete',
+			operation: 'folder',
+			path: 'Projects/Empty',
+			expectedModified: 0,
+		});
+		expect(result.keys).toBeUndefined();
+	});
+
+	it('accepts a folder path that ends in .md (a folder named like a file)', () => {
+		// validateOperationExtension is a no-op for folder; the adapter resolves
+		// the real type at delete time, so the mapper must not reject on extension.
+		const result = mapDeleteRequest({operation: 'folder', path: 'weird.md'}, KEY_ID) as CoreDeleteRequest;
+		expect(result.operation).toBe('folder');
+		expect(result.path).toBe('weird.md');
+	});
+
 	it('rejects non-numeric expectedModified', () => {
 		expect(() => mapDeleteRequest(
 			makeDeleteArgs({expectedModified: 'not-a-number'}),
@@ -804,6 +824,26 @@ describe('mapRenameRequest()', () => {
 		expect(result.operation).toBe('file');
 		expect(result.source).toBe('x/img.png');
 		expect(result.target).toBe('y/img.png');
+	});
+
+	it('maps a folder rename request without requiring expectedModified', () => {
+		const result = mapRenameRequest(
+			{operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'},
+			KEY_ID,
+		) as CoreRenameRequest;
+
+		expect(result).toMatchObject({
+			kind: 'rename',
+			operation: 'folder',
+			source: 'Projects/alt',
+			target: 'Projects/neu',
+			expectedModified: 0,
+		});
+	});
+
+	it('rejects a folder rename where source === target', () => {
+		expect(() => mapRenameRequest({operation: 'folder', source: 'A/x', target: 'A/x'}, KEY_ID))
+			.toThrow(/source and target must differ/);
 	});
 
 	it('rejects operation="frontmatter" with VALIDATION_ERROR', () => {
