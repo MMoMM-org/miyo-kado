@@ -16,48 +16,44 @@ guard** (spec 009, C-4) against a real vault. It contains two subtrees:
   rule → the rename should be **BLOCKED** with `VALIDATION_ERROR`
   (gate `folder-scope-neutrality`), and Kado must **not** rewrite the config.
 
-## Second key to create (whitelist) — TWO rules
+## Second key to create (whitelist) — TWO rules, both bare folder picks
 
 The neutrality guard only fires when the **base permission passes** (the key can
 update both the source and target folder) **AND** a descendant would fall under a
-different rule. So you need TWO path entries — a broad one plus a more-specific
-one. **Both can be folders** (fully pickable in the browse modal — no file
-selection needed):
+different rule after the rename. The trick: put the differing rule on a
+**deeper** folder than the one you rename, so the renamed folder *node* stays
+writable while a descendant's scope changes. No `**` typing needed — both rules
+are plain folder picks:
 
-1. **Broad** — `allowed/rbac-demo/**` — **full CRUD**. Grants update on the folder
-   itself at both the old and new name, so the base permission passes.
-2. **More specific** — `allowed/rbac-demo/guarded/**` — **read-only**
-   (`update/create/delete = false`, `read = true`). Because it has more literal
-   characters, it wins over the broad rule for everything under `guarded/`.
+1. **Broad** — `allowed/**` — **full CRUD** (this key already has it).
+2. **Deeper, differing** — `allowed/rbac-demo/guarded/sub` — **read-only**
+   (`update/create/delete = false`, `read = true`). Pick the `guarded/sub` folder
+   in the browse modal; the bare path is fine.
 
-> ⚠️ **Rule 2 MUST be `allowed/rbac-demo/guarded/**` (with `/**`), not the bare
-> `allowed/rbac-demo/guarded`.** A bare folder path auto-expands and matches BOTH
-> the folder node itself AND its contents — so a bare read-only rule makes the
-> folder node read-only too, and the rename fails the *base* permission with a
-> plain `FORBIDDEN` (you can't update a read-only folder), never reaching the
-> neutrality check. `guarded/**` matches only the *contents*, so the folder node
-> stays writable via rule 1 (base passes) while its contents flip rule → the
-> neutrality guard fires. **The folder browse picker returns the bare path — add
-> `/**` by hand for this rule.**
->
-> ⚠️ Also do NOT give the key *only* rule 2. Then the rename **target**
-> (`allowed/rbac-demo/guarded-x`) is outside scope → plain `FORBIDDEN` again. The
-> block needs the broad rule 1 present so the base permission passes on both ends.
+You then rename the **parent** `guarded` (not `guarded/sub`):
 
-Global security already whitelists `allowed/**` with full CRUD, so the **global**
-scope is neutral on both sides — the difference lives only in *this key's* scope,
-so the block message names "the key's" rule.
+- The renamed node `allowed/rbac-demo/guarded` is not covered by the
+  `guarded/sub` rule, so it stays full under `allowed/**` → **base permission
+  passes**.
+- Its descendant `guarded/sub` (and `guarded/sub/deep.md`) *is* read-only at the
+  old path but would be full at `guarded-x/sub` → scope changes → **BLOCK**.
 
-(You could make rule 2 a single file — `allowed/rbac-demo/guarded/restricted.md`
-read-only — for a tighter illustration; that works too, but you'd type the path
-rather than pick it. Folder-granularity is the realistic, pickable case.)
+> ⚠️ Do NOT put the read-only rule on `guarded` itself. A bare folder path
+> auto-expands to match the folder *node* too, so a read-only `guarded` makes the
+> node read-only → the rename fails the *base* permission with a plain
+> `FORBIDDEN`, never reaching the neutrality check. Keep the differing rule on a
+> *descendant* (`guarded/sub`) so the renamed node stays writable.
+
+Global security whitelists `allowed/**` with full CRUD, so the **global** scope is
+neutral on both sides — the difference lives only in *this key's* scope, so the
+block message names "the key's" rule.
 
 ## Expected results
 
 | Call | Expected |
 |---|---|
 | `kado-rename operation=folder source="allowed/rbac-demo/neutral" target="allowed/rbac-demo/neutral-x"` | **ALLOWED** — whole subtree stays under `allowed/rbac-demo/**` |
-| `kado-rename operation=folder source="allowed/rbac-demo/guarded" target="allowed/rbac-demo/guarded-x"` | **BLOCKED** — `VALIDATION_ERROR`, message names the first descendant under `guarded/` (e.g. `…/guarded/public.md → …/guarded-x/public.md`) and "the key's" rule |
+| `kado-rename operation=folder source="allowed/rbac-demo/guarded" target="allowed/rbac-demo/guarded-x"` | **BLOCKED** — `VALIDATION_ERROR` (`folder-scope-neutrality`), message names `…/guarded/sub → …/guarded-x/sub` (or `…/sub/deep.md`) and "the key's" rule |
 
 After the blocked rename, confirm `guarded/` is untouched on disk and the plugin
 `data.json` is byte-identical (the config was not migrated).
