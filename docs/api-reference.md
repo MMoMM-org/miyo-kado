@@ -933,7 +933,7 @@ Renaming a folder rewrites the path of **every** descendant (`A/old/note.md → 
 ```json
 {
   "code": "VALIDATION_ERROR",
-  "message": "Rename blocked: \"100 Inbox/Q1 drafts/plan.md\" would become \"100 Inbox/Q1 final/plan.md\", which falls under a different global security permission rule — the rename would change access. Adjust the permission config to make it access-neutral, then retry. Kado does not change permissions automatically."
+  "message": "Rename blocked: \"100 Inbox/Q1 drafts/plan.md\" would become \"100 Inbox/Q1 final/plan.md\", changing its effective access under the global security permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically."
 }
 ```
 

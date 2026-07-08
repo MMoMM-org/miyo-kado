@@ -116,7 +116,7 @@ function neutralityError(from: string, to: string, which: string): GateResult {
 		error: {
 			code: 'VALIDATION_ERROR',
 			gate: 'folder-scope-neutrality',
-			message: `Rename blocked: "${from}" would become "${to}", which falls under a different ${which} permission rule — the rename would change access. Adjust the permission config to make it access-neutral, then retry. Kado does not change permissions automatically.`,
+			message: `Rename blocked: "${from}" would become "${to}", changing its effective access under the ${which} permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically.`,
 		},
 	};
 }

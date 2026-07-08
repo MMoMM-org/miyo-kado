@@ -158,9 +158,18 @@ other folder policy.
   produced a spurious `CONFLICT` before the adapter could return "not a folder"
   (mocked handler tests used `getFileMtime → undefined`, so it never surfaced).
   Fix: skip optimistic concurrency for `operation='folder'` in both handlers
-  (`src/mcp/tools.ts`) + regression unit tests. **Still to run manually** (need a
-  bespoke config / vault-setting change, see `live-test-checklist.md`): the RBAC
-  permission-neutral block, and the auto-update-links-OFF timeout path.
+  (`src/mcp/tools.ts`) + regression unit tests.
+  **RBAC permission-neutral block — live-verified 2026-07-08** with a read-only
+  second key (`allowed/**` full + `allowed/rbac-demo/guarded/sub` read-only,
+  fixture `test/MiYo-Kado/allowed/rbac-demo/`): `neutral → neutral-x` ALLOWED;
+  `guarded → guarded-x` BLOCKED (`VALIDATION_ERROR folder-scope-neutrality`,
+  message names `…/guarded/sub → …/guarded-x/sub` + "the key's" scope); `data.json`
+  byte-identical afterward (not migrated). A wording polish landed from that run
+  (the message read "a different the key's permission rule").
+  **Still open** (low-risk, deferred): the auto-update-links-OFF folder timeout
+  path (`getFileMtime` is file-only → a folder rename that succeeds on the timeout
+  branch could misreport `TIMEOUT`; only reachable via the opt-in with
+  auto-update off — see `live-test-checklist.md`).
 - **T5.2** ✅ Docs updated: `docs/api-reference.md` (kado-write implicit mkdir-p;
   kado-delete `folder` op + empty-only; kado-rename `folder` op, in-place-only,
   RBAC neutrality guard, examples), `docs/permissioning-for-pkm.md` (structural
