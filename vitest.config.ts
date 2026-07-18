@@ -10,6 +10,7 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'jsdom',
+		setupFiles: ['test/setup-globals.ts'],
 		include: ['test/**/*.test.ts'],
 		exclude: ['test/live/**'],
 		coverage: {

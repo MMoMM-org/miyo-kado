@@ -221,14 +221,14 @@ const TIMED_OUT = Symbol('timed-out');
  * rejection if it settles later (e.g. after the user dismisses a blocking modal).
  */
 async function raceWithTimeout(work: Promise<RouteResult>, timeoutMs: number): Promise<RouteResult | typeof TIMED_OUT> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	let timer: number | undefined;
 	const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
-		timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+		timer = window.setTimeout(() => resolve(TIMED_OUT), timeoutMs);
 	});
 	try {
 		return await Promise.race([work, timeout]);
 	} finally {
-		if (timer !== undefined) clearTimeout(timer);
+		if (timer !== undefined) window.clearTimeout(timer);
 	}
 }
 

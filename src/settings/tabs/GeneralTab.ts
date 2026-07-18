@@ -148,14 +148,15 @@ export function renderGeneralTab(
 			.setDesc('Obsidian updates internal links automatically. Renaming is enabled.');
 	} else {
 		// Auto-update-links is OFF: rename would hit Obsidian's blocking confirmation dialog.
-		const riskDesc = containerEl.ownerDocument.createDocumentFragment();
-		riskDesc.append('While auto-update-links is off, kado-rename is not exposed. Turn on to expose it anyway — renaming works, but each rename prompts a link-update dialog and inbound links update only when you answer it. ');
-		const riskLink = containerEl.ownerDocument.createElement('a');
-		riskLink.textContent = 'Details';
-		riskLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename';
-		riskLink.target = '_blank';
-		riskDesc.appendChild(riskLink);
-		riskDesc.append('.');
+		const riskDesc = createFragment((frag) => {
+			frag.append('While auto-update-links is off, kado-rename is not exposed. Turn on to expose it anyway — renaming works, but each rename prompts a link-update dialog and inbound links update only when you answer it. ');
+			frag.createEl('a', {
+				text: 'Details',
+				href: 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/api-reference.md#tool-kado-rename',
+				attr: {target: '_blank'},
+			});
+			frag.append('.');
+		});
 
 		new Setting(containerEl)
 			.setName('Enable rename when auto-update-links is off')
@@ -288,14 +289,15 @@ export function renderGeneralTab(
 	// ── Developer Section ──
 	new Setting(containerEl).setName('Developer').setHeading();
 
-	const debugDesc = containerEl.ownerDocument.createDocumentFragment();
-	debugDesc.append('Emit debug messages to the developer console (off by default). Requires the developer tools "Verbose" log level — see ');
-	const debugDocLink = containerEl.ownerDocument.createElement('a');
-	debugDocLink.textContent = 'Setup guide';
-	debugDocLink.href = 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/debug-logging.md';
-	debugDocLink.target = '_blank';
-	debugDesc.appendChild(debugDocLink);
-	debugDesc.append('.');
+	const debugDesc = createFragment((frag) => {
+		frag.append('Emit debug messages to the developer console (off by default). Requires the developer tools "Verbose" log level — see ');
+		frag.createEl('a', {
+			text: 'Setup guide',
+			href: 'https://github.com/MMoMM-org/miyo-kado/blob/master/docs/debug-logging.md',
+			attr: {target: '_blank'},
+		});
+		frag.append('.');
+	});
 
 	new Setting(containerEl)
 		.setName('Debug logging')
@@ -310,11 +312,12 @@ export function renderGeneralTab(
 	// ── Backup & Restore Section ──
 	new Setting(containerEl).setName('Backup & restore').setHeading();
 
-	const exportDesc = containerEl.ownerDocument.createDocumentFragment();
-	exportDesc.append('Download the whole configuration as a JSON file. ');
-	const warn = containerEl.ownerDocument.createElement('strong');
-	warn.textContent = 'The file contains your API key secrets — store it securely and never share it.';
-	exportDesc.appendChild(warn);
+	const exportDesc = createFragment((frag) => {
+		frag.append('Download the whole configuration as a JSON file. ');
+		frag.createEl('strong', {
+			text: 'The file contains your API key secrets — store it securely and never share it.',
+		});
+	});
 
 	new Setting(containerEl)
 		.setName('Export configuration')
@@ -333,7 +336,7 @@ export function renderGeneralTab(
 		.addButton(btn => btn
 			.setButtonText('Import config')
 			.onClick(() => {
-				pickJsonFile(containerEl, (text) => {
+				pickJsonFile((text) => {
 					let raw: unknown;
 					try {
 						raw = JSON.parse(text);
@@ -374,9 +377,7 @@ function downloadJson(host: HTMLElement, filename: string, contents: string): vo
 	const doc = host.ownerDocument;
 	const blob = new Blob([contents], {type: 'application/json'});
 	const url = URL.createObjectURL(blob);
-	const anchor = doc.createElement('a');
-	anchor.href = url;
-	anchor.download = filename;
+	const anchor = createEl('a', {href: url, attr: {download: filename}});
 	doc.body.appendChild(anchor);
 	anchor.click();
 	anchor.remove();
@@ -384,11 +385,8 @@ function downloadJson(host: HTMLElement, filename: string, contents: string): vo
 }
 
 /** Opens a native file picker for a single JSON file and passes its text to `onRead`. */
-function pickJsonFile(host: HTMLElement, onRead: (text: string) => void): void {
-	const doc = host.ownerDocument;
-	const input = doc.createElement('input');
-	input.type = 'file';
-	input.accept = 'application/json,.json';
+function pickJsonFile(onRead: (text: string) => void): void {
+	const input = createEl('input', {attr: {type: 'file', accept: 'application/json,.json'}});
 	input.addEventListener('change', () => {
 		const file = input.files?.[0];
 		if (!file) return;
