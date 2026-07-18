@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/MMoMM-org/miyo-kado/compare/1.1.0...1.2.0) (2026-07-18)
+
+### Features
+
+* **graph:** add kado-graph-audit tool for vault-wide orphans + dead links ([#98](https://github.com/MMoMM-org/miyo-kado/issues/98)) ([#99](https://github.com/MMoMM-org/miyo-kado/issues/99)) ([b9f3c15](https://github.com/MMoMM-org/miyo-kado/commit/b9f3c158c0083aed1a63d2b7b3f51c1a241161d1))
+
 ## [1.1.0](https://github.com/MMoMM-org/miyo-kado/compare/1.0.0...1.1.0) (2026-07-08)
 
 ### Features
