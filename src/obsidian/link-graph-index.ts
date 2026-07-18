@@ -26,6 +26,13 @@ export interface DanglingTarget {
 	count: number;
 }
 
+/** A vault-wide unresolved (broken) link: its source note, the target text, and count. */
+export interface VaultDanglingLink {
+	source: string;
+	target: string;
+	count: number;
+}
+
 export class LinkGraphIndex implements GraphAdjacency {
 	private readonly forward = new Map<string, Set<string>>();
 	private readonly reverse = new Map<string, Set<string>>();
@@ -77,5 +84,27 @@ export class LinkGraphIndex implements GraphAdjacency {
 		const counts = this.unresolved.get(path);
 		if (!counts) return [];
 		return Array.from(counts.entries()).map(([target, count]) => ({target, count}));
+	}
+
+	/**
+	 * Every note path that participates in the RESOLVED link graph — as a source
+	 * with at least one outgoing resolved link, or as a resolved target of one.
+	 * A note absent from this set has no resolved links in or out (an orphan
+	 * candidate). Unresolved (dangling) links do not count as participation.
+	 */
+	linkedPaths(): Set<string> {
+		const paths = new Set<string>();
+		for (const source of this.forward.keys()) paths.add(source);
+		for (const target of this.reverse.keys()) paths.add(target);
+		return paths;
+	}
+
+	/** Every unresolved (broken) link across the whole vault, with source and count. */
+	allDangling(): VaultDanglingLink[] {
+		const links: VaultDanglingLink[] = [];
+		for (const [source, counts] of this.unresolved.entries()) {
+			for (const [target, count] of counts.entries()) links.push({source, target, count});
+		}
+		return links;
 	}
 }

@@ -14,6 +14,7 @@ import {
 	mapDeleteResult,
 	mapRenameResult,
 	mapGraphResult,
+	mapGraphAuditResult,
 	mapError,
 	mapOpenNotesResult,
 } from '../../src/mcp/response-mapper';
@@ -470,6 +471,46 @@ describe('mapGraphResult()', () => {
 		const result = mapGraphResult({source: 'a.md', operation: 'backlinks', nodes: []}, [{do: 'kado-read', why: 'x'}]);
 		const body = JSON.parse(readText(result)) as {_hints?: unknown[]};
 		expect(body._hints).toHaveLength(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapGraphAuditResult
+// ---------------------------------------------------------------------------
+
+describe('mapGraphAuditResult()', () => {
+	it('serializes the audit page with a fixed operation=audit-graph', () => {
+		const result = mapGraphAuditResult({
+			orphans: [{path: 'a.md'}],
+			deadLinks: [{source: 'b.md', target: 'Missing', count: 2}],
+			total: {orphans: 1, deadLinks: 1},
+			cursor: null,
+			truncated: false,
+		});
+		const body = JSON.parse(readText(result)) as {
+			operation: string;
+			orphans: Array<{path: string}>;
+			deadLinks: Array<{source: string; target: string; count: number}>;
+			total: {orphans: number; deadLinks: number};
+			cursor: string | null;
+			truncated: boolean;
+		};
+
+		expect(body.operation).toBe('audit-graph');
+		expect(body.orphans).toEqual([{path: 'a.md'}]);
+		expect(body.deadLinks).toEqual([{source: 'b.md', target: 'Missing', count: 2}]);
+		expect(body.total).toEqual({orphans: 1, deadLinks: 1});
+		expect(body.cursor).toBeNull();
+		expect(body.truncated).toBe(false);
+	});
+
+	it('preserves a non-null cursor and truncated flag', () => {
+		const result = mapGraphAuditResult({
+			orphans: [], deadLinks: [], total: {orphans: 5, deadLinks: 0}, cursor: 'Mg==', truncated: true,
+		});
+		const body = JSON.parse(readText(result)) as {cursor: string | null; truncated: boolean};
+		expect(body.cursor).toBe('Mg==');
+		expect(body.truncated).toBe(true);
 	});
 });
 

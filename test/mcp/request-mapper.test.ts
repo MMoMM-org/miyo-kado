@@ -17,6 +17,7 @@ import {
 	mapRenameRequest,
 	mapOpenNotesRequest,
 	mapGraphRequest,
+	mapGraphAuditRequest,
 	parseHeadingTarget,
 } from '../../src/mcp/request-mapper';
 import {kadoOpenNotesShape} from '../../src/mcp/tools';
@@ -1624,5 +1625,40 @@ describe('mapGraphRequest()', () => {
 	it('rejects a non-positive or non-integer limit', () => {
 		expect(() => mapGraphRequest({operation: 'backlinks', path: 'a.md', limit: 0}, KEY)).toThrow();
 		expect(() => mapGraphRequest({operation: 'backlinks', path: 'a.md', limit: 1.5}, KEY)).toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// mapGraphAuditRequest
+// ---------------------------------------------------------------------------
+
+describe('mapGraphAuditRequest()', () => {
+	const KEY = 'kado_test-key';
+
+	it('maps an empty (pathless) request to both axes implied', () => {
+		const req = mapGraphAuditRequest({}, KEY);
+		expect(req).toEqual({kind: 'graph-audit', apiKeyId: KEY});
+	});
+
+	it('accepts a valid include, limit and cursor', () => {
+		const req = mapGraphAuditRequest({include: ['orphans', 'deadLinks'], limit: 100, cursor: 'MTA='}, KEY);
+		expect(req).toMatchObject({include: ['orphans', 'deadLinks'], limit: 100, cursor: 'MTA='});
+	});
+
+	it('rejects an empty include array', () => {
+		expect(() => mapGraphAuditRequest({include: []}, KEY)).toThrow();
+	});
+
+	it('rejects an unknown include axis', () => {
+		expect(() => mapGraphAuditRequest({include: ['unparented']}, KEY)).toThrow();
+	});
+
+	it('rejects a non-positive or non-integer limit', () => {
+		expect(() => mapGraphAuditRequest({limit: 0}, KEY)).toThrow();
+		expect(() => mapGraphAuditRequest({limit: 2.5}, KEY)).toThrow();
+	});
+
+	it('rejects a non-string cursor', () => {
+		expect(() => mapGraphAuditRequest({cursor: 42}, KEY)).toThrow();
 	});
 });

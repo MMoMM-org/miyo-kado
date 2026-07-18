@@ -42,6 +42,26 @@ describe('LinkGraphIndex', () => {
 		expect(dangling).toContainEqual({target: 'Other', count: 1});
 	});
 
+	it('linkedPaths() is the union of resolved-link sources and targets', () => {
+		const idx = new LinkGraphIndex(makeCache(
+			{'a.md': {'b.md': 1}, 'c.md': {'b.md': 1}},
+			{'d.md': {'Ghost': 1}}, // d only dangles → NOT linked
+		));
+		idx.buildFull();
+		const linked = idx.linkedPaths();
+		expect([...linked].sort()).toEqual(['a.md', 'b.md', 'c.md']);
+		expect(linked.has('d.md')).toBe(false);
+	});
+
+	it('allDangling() flattens every unresolved link across the vault', () => {
+		const idx = new LinkGraphIndex(makeCache({}, {'a.md': {'Missing': 2}, 'b.md': {'Ghost': 1}}));
+		idx.buildFull();
+		const all = idx.allDangling();
+		expect(all).toContainEqual({source: 'a.md', target: 'Missing', count: 2});
+		expect(all).toContainEqual({source: 'b.md', target: 'Ghost', count: 1});
+		expect(all).toHaveLength(2);
+	});
+
 	it('rebuilds from the current cache on buildFull', () => {
 		const cache = makeCache({'a.md': {'b.md': 1}});
 		const idx = new LinkGraphIndex(cache);

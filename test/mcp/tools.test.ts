@@ -219,10 +219,10 @@ function getFirstText(result: {content: {type: string; text?: string}[]}): strin
 // ---------------------------------------------------------------------------
 
 describe('registerTools()', () => {
-	it('registers exactly 7 tools on the server', () => {
+	it('registers exactly 8 tools on the server', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
-		expect(server.tools).toHaveLength(7);
+		expect(server.tools).toHaveLength(8);
 	});
 
 	it('registers a tool named kado-graph', () => {
@@ -243,11 +243,11 @@ describe('registerTools()', () => {
 		expect(server.tools.map((t) => t.name)).toContain('kado-rename');
 	});
 
-	it('does NOT register kado-rename when renameToolEnabled is false (6 tools)', () => {
+	it('does NOT register kado-rename when renameToolEnabled is false (7 tools)', () => {
 		const server = makeMockServer();
 		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps({renameToolEnabled: false}));
 		expect(server.tools.map((t) => t.name)).not.toContain('kado-rename');
-		expect(server.tools).toHaveLength(6);
+		expect(server.tools).toHaveLength(7);
 	});
 
 	it('registers a tool named kado-read', () => {
@@ -2355,6 +2355,127 @@ describe('kado-graph handler', () => {
 		const handler = getGraphHandler(makeDeps());
 
 		const result = await handler({operation: 'backlinks', path: 'notes/a.png'}, makeExtra());
+
+		expect(result.isError).toBe(true);
+		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// kado-graph-audit handler
+// ---------------------------------------------------------------------------
+
+describe('kado-graph-audit handler', () => {
+	function getAuditHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === 'kado-graph-audit')!.handler;
+	}
+
+	function scopedConfig(): Partial<KadoConfig> {
+		const paths = [{path: 'allowed/**', permissions: makeReadPermissions()}];
+		return {
+			security: makeSecurityConfig({listMode: 'whitelist', paths}),
+			apiKeys: [makeApiKey('kado_test-key', {paths})],
+		};
+	}
+
+	function parseAudit(result: {content: {type: string; text?: string}[]}) {
+		return JSON.parse(getFirstText(result)) as {
+			operation: string;
+			orphans: Array<{path: string}>;
+			deadLinks: Array<{source: string; target: string; count: number}>;
+			total: {orphans: number; deadLinks: number};
+			cursor: string | null;
+			truncated: boolean;
+		};
+	}
+
+	function auditDeps(router: ToolDependencies['router']) {
+		return makeDeps({router, configManager: makeConfigManager(scopedConfig())});
+	}
+
+	it('registers a tool named kado-graph-audit', () => {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], makeDeps());
+		expect(server.tools.map((t) => t.name)).toContain('kado-graph-audit');
+	});
+
+	it('returns orphans + deadLinks with post-ACL totals', async () => {
+		const router = vi.fn(async () => ({
+			orphans: [{path: 'allowed/o.md'}, {path: 'secret/x.md'}],
+			deadLinks: [
+				{source: 'allowed/a.md', target: 'Missing', count: 2},
+				{source: 'secret/y.md', target: 'Ghost', count: 1},
+			],
+		}));
+		const handler = getAuditHandler(auditDeps(router));
+
+		const result = await handler({}, makeExtra());
+		const body = parseAudit(result);
+
+		expect(result.isError).toBeFalsy();
+		expect(body.operation).toBe('audit-graph');
+		// secret/* dropped: orphan by its own path, dead link by its source path.
+		expect(body.orphans).toEqual([{path: 'allowed/o.md'}]);
+		expect(body.deadLinks).toEqual([{source: 'allowed/a.md', target: 'Missing', count: 2}]);
+		expect(body.total).toEqual({orphans: 1, deadLinks: 1});
+		expect(body.cursor).toBeNull();
+		expect(body.truncated).toBe(false);
+	});
+
+	it('paginates the combined stream (orphans first) with limit + cursor', async () => {
+		const router = vi.fn(async () => ({
+			orphans: [{path: 'allowed/a.md'}, {path: 'allowed/b.md'}],
+			deadLinks: [{source: 'allowed/c.md', target: 'X', count: 1}],
+		}));
+		const handler = getAuditHandler(auditDeps(router));
+
+		const page1 = parseAudit(await handler({limit: 2}, makeExtra()));
+		expect(page1.orphans).toEqual([{path: 'allowed/a.md'}, {path: 'allowed/b.md'}]);
+		expect(page1.deadLinks).toEqual([]);
+		expect(page1.total).toEqual({orphans: 2, deadLinks: 1});
+		expect(page1.truncated).toBe(true);
+		expect(page1.cursor).not.toBeNull();
+
+		const page2 = parseAudit(await handler({limit: 2, cursor: page1.cursor!}, makeExtra()));
+		expect(page2.orphans).toEqual([]);
+		expect(page2.deadLinks).toEqual([{source: 'allowed/c.md', target: 'X', count: 1}]);
+		expect(page2.cursor).toBeNull();
+		expect(page2.truncated).toBe(false);
+	});
+
+	it('passes include through to the router request', async () => {
+		const router = vi.fn(async () => ({orphans: [], deadLinks: []}));
+		const handler = getAuditHandler(auditDeps(router));
+
+		await handler({include: ['deadLinks']}, makeExtra());
+
+		expect(router).toHaveBeenCalledWith(expect.objectContaining({kind: 'graph-audit', include: ['deadLinks']}));
+	});
+
+	it('returns isError when auth is absent', async () => {
+		const handler = getAuditHandler(auditDeps(vi.fn(async () => ({orphans: [], deadLinks: []}))));
+		const extraWithoutAuth = {...makeExtra(), authInfo: undefined};
+
+		const result = await handler({}, extraWithoutAuth);
+
+		expect(result.isError).toBe(true);
+	});
+
+	it('denies an unknown key (authenticate gate)', async () => {
+		// Default config has no kado_test-key, so the authenticate gate rejects.
+		const handler = getAuditHandler(makeDeps({router: vi.fn(async () => ({orphans: [], deadLinks: []}))}));
+
+		const result = await handler({}, makeExtra());
+
+		expect(result.isError).toBe(true);
+	});
+
+	it('returns VALIDATION_ERROR for an unknown include axis', async () => {
+		const handler = getAuditHandler(auditDeps(vi.fn(async () => ({orphans: [], deadLinks: []}))));
+
+		const result = await handler({include: ['unparented']}, makeExtra());
 
 		expect(result.isError).toBe(true);
 		expect(getFirstText(result)).toContain('VALIDATION_ERROR');

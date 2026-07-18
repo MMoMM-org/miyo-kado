@@ -96,7 +96,7 @@ export default class KadoPlugin extends Plugin {
 				folder: createFolderDeleteAdapter(this.app),
 			},
 			rename: createRenameAdapter(this.app),
-			graph: createGraphAdapter(linkGraphIndex),
+			graph: createGraphAdapter(linkGraphIndex, () => this.app.vault.getMarkdownFiles().map((f) => f.path)),
 		};
 
 		const router = createOperationRouter(registry);

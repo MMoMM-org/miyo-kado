@@ -4,7 +4,7 @@
 
 # MiYo Kado -- Obsidian MCP Gateway
 
-Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through seven tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, and `kado-graph`.
+Security-first [Model Context Protocol](https://modelcontextprotocol.io/) server plugin for Obsidian. Gives AI assistants controlled, granular access to your vault through eight tools: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, `kado-graph`, and `kado-graph-audit`.
 
 > Part of the **MiYo** family. The plugin is referred to as **MiYo Kado** in the Obsidian community-plugin index and in the settings UI; "Kado" alone is used as a short form throughout this README and the source.
 
@@ -34,6 +34,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Folder operations** -- folders piggyback on the existing tools, no separate directory API: `kado-write` **auto-creates missing parent folders** (`mkdir -p`), `kado-delete` with `operation="folder"` trashes an **empty** folder (non-empty is refused — no recursive delete), and `kado-rename` with `operation="folder"` renames a folder **in place** (same parent). A folder rename is **permission-neutral**: if moving the subtree under the new name would change any descendant's effective access, the rename is refused rather than silently crossing a permission boundary — and Kado never rewrites your permission rules to make it fit
 - **Seven search operations** -- byName, byTag, byContent, byFrontmatter, listDir, listTags, listNotes. `byContent` is full-text ranked: it matches notes containing any query term, scores them by term coverage and proximity, and returns relevance `snippets` (with line numbers), best-first
 - **Link-graph navigation** -- `kado-graph` traverses the vault's link structure: `backlinks`, `outgoing`, `neighbors` (1-hop), `related` (2-hop, with the `via` neighbour), and `dangling` (unresolved link targets). Resolved nodes outside the key's scope are silently omitted, so a traversal can never disclose a path the key cannot read
+- **Vault-wide link audit** -- `kado-graph-audit` returns all orphans (notes with no resolved links in or out) and all dead wikilinks across the whole vault in a single call, ACL-filtered and paginated -- the whole-vault counterpart to `kado-graph`, answered from Obsidian's in-memory link index without per-note reads
 - **Self-guiding responses** -- tool responses may carry an optional, additive `_hints` array suggesting the sensible next step (re-read after a `CONFLICT`, fetch the next page when a cursor is present, continue a truncated read). Purely advisory and safe to ignore
 - **Optimistic concurrency** -- timestamp-based conflict detection on writes
 - **Rate limiting** -- configurable per-IP throttle (default 20 requests per 5 s; tunable live, `0` disables)

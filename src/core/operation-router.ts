@@ -15,12 +15,14 @@ import type {
 	CoreDeleteRequest,
 	CoreRenameRequest,
 	CoreGraphRequest,
+	CoreGraphAuditRequest,
 	CoreFileResult,
 	CoreWriteResult,
 	CoreSearchResult,
 	CoreDeleteResult,
 	CoreRenameResult,
 	CoreGraphResult,
+	CoreGraphAuditResult,
 	CoreError,
 	DataType,
 	DeleteDataType,
@@ -33,6 +35,7 @@ import {
 	isCoreDeleteRequest,
 	isCoreRenameRequest,
 	isCoreGraphRequest,
+	isCoreGraphAuditRequest,
 } from '../types/canonical';
 
 // ============================================================
@@ -63,6 +66,8 @@ export interface RenameAdapter {
 /** Adapter that navigates the link graph (backlinks, outgoing, neighbors, related, dangling). */
 export interface GraphAdapter {
 	graph(request: CoreGraphRequest): Promise<CoreGraphResult | CoreError>;
+	/** Vault-wide audit: all orphans + all dead wikilinks (pre-ACL, pre-pagination). */
+	audit(request: CoreGraphAuditRequest): Promise<CoreGraphAuditResult | CoreError>;
 }
 
 /** Registry of all adapters keyed by data type, plus search, delete, and rename adapters. */
@@ -85,7 +90,7 @@ export interface AdapterRegistry {
 // ============================================================
 
 /** Union of every value an adapter route can return — shared with the MCP tool layer. */
-export type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreGraphResult | CoreError;
+export type RouteResult = CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreGraphResult | CoreGraphAuditResult | CoreError;
 
 function validationError(message: string): CoreError {
 	return {code: 'VALIDATION_ERROR', message};
@@ -143,6 +148,11 @@ export function createOperationRouter(
 		// Graph navigation — discriminated by `kind: 'graph'`
 		if (isCoreGraphRequest(request)) {
 			return adapters.graph.graph(request);
+		}
+
+		// Vault-wide graph audit — discriminated by `kind: 'graph-audit'`
+		if (isCoreGraphAuditRequest(request)) {
+			return adapters.graph.audit(request);
 		}
 
 		if (isCoreWriteRequest(request)) {

@@ -295,8 +295,58 @@ export interface CoreGraphResult {
 	nodes: CoreGraphNode[];
 }
 
+/** Which axis (or axes) a vault-wide graph audit should compute. */
+export type GraphAuditAxis = 'orphans' | 'deadLinks';
+
+/** A note fully disconnected from the resolved link graph (no resolved links in or out). */
+export interface CoreGraphAuditOrphan {
+	/** Vault path of the orphaned note. */
+	path: string;
+}
+
+/** A single unresolved (dead) wikilink somewhere in the vault. */
+export interface CoreGraphAuditDeadLink {
+	/** Vault path of the note that contains the unresolved link. */
+	source: string;
+	/** Raw unresolved link target text as authored — NOT a resolved path. */
+	target: string;
+	/** Occurrences of this target in the source note. */
+	count: number;
+}
+
+/**
+ * Vault-wide link-graph audit request (pathless).
+ *
+ * Unlike CoreGraphRequest, this has no single source note, so permission is
+ * authenticate-only and disclosure is enforced by per-node ACL filtering in the
+ * tool layer (orphans by their own path, dead links by their source path).
+ * Answered from Obsidian's in-memory link maps — no per-note disk reads.
+ */
+export interface CoreGraphAuditRequest {
+	kind: 'graph-audit';
+	apiKeyId: string;
+	/** Which axes to compute; omit for both. */
+	include?: GraphAuditAxis[];
+	/** Max COMBINED items per page (orphans + deadLinks); omit for all in one page. */
+	limit?: number;
+	/** Opaque pagination cursor from a prior page's response. */
+	cursor?: string;
+	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
+	resolvedKey?: ApiKeyConfig;
+}
+
+/**
+ * Full vault-wide audit view produced by the graph adapter — pre-ACL and
+ * pre-pagination. The tool layer scope-filters and paginates this before it
+ * reaches the caller.
+ */
+export interface CoreGraphAuditResult {
+	orphans: CoreGraphAuditOrphan[];
+	deadLinks: CoreGraphAuditDeadLink[];
+}
+
 /** Union of all core request types flowing through the permission chain. */
-export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest | CoreGraphRequest;
+export type CoreRequest = CoreReadRequest | CoreWriteRequest | CoreSearchRequest | CoreDeleteRequest | CoreRenameRequest | CoreGraphRequest | CoreGraphAuditRequest;
 
 // ============================================================
 // Open Notes Requests and Results
@@ -703,6 +753,14 @@ export function isCoreRenameRequest(req: CoreRequest): req is CoreRenameRequest 
  */
 export function isCoreGraphRequest(req: CoreRequest): req is CoreGraphRequest {
 	return 'kind' in req && req.kind === 'graph';
+}
+
+/**
+ * Returns true when `req` is a CoreGraphAuditRequest.
+ * Discriminated by the explicit `kind: 'graph-audit'` marker.
+ */
+export function isCoreGraphAuditRequest(req: CoreRequest): req is CoreGraphAuditRequest {
+	return 'kind' in req && req.kind === 'graph-audit';
 }
 
 /**
