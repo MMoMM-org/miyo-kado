@@ -47,10 +47,10 @@ export class KadoSettingsTab extends PluginSettingTab {
 		const tabBar = containerEl.createDiv({cls: 'kado-tab-bar'});
 
 		const scrollLeft = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-left', attr: {'aria-label': 'Scroll tabs left'}});
-		scrollLeft.createEl('span', {text: '\u2039', attr: {'aria-hidden': 'true'}});
+		scrollLeft.createSpan({text: '\u2039', attr: {'aria-hidden': 'true'}});
 		const tabStrip = tabBar.createDiv({cls: 'kado-tab-strip', attr: {role: 'tablist'}});
 		const scrollRight = tabBar.createEl('button', {cls: 'kado-tab-scroll kado-tab-scroll-right', attr: {'aria-label': 'Scroll tabs right'}});
-		scrollRight.createEl('span', {text: '\u203a', attr: {'aria-hidden': 'true'}});
+		scrollRight.createSpan({text: '\u203a', attr: {'aria-hidden': 'true'}});
 
 		const updateScrollButtons = (): void => {
 			scrollLeft.toggleClass('kado-hidden', tabStrip.scrollLeft <= 0);

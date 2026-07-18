@@ -23,6 +23,13 @@ export default tseslint.config(
 	},
 	...tseslint.configs.recommendedTypeChecked,
 	...obsidianmd.configs.recommended,
+	{
+		rules: {
+			// Targets the unreleased Obsidian 1.13+ declarative settings API (getSettingDefinitions).
+			// Re-enable once 1.13 ships and we adopt the declarative settings surface.
+			'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",

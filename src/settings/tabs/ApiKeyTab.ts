@@ -241,7 +241,7 @@ function renderKeyPathEntry(
 	removeBtn.addEventListener('click', onRemove);
 
 	// Read-only path label (user picks from global, doesn't type)
-	row.createEl('span', {
+	row.createSpan({
 		cls: 'kado-path-input',
 		text: keyPath.path || '(empty path)',
 	});
