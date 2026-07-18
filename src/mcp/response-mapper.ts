@@ -14,6 +14,8 @@ import type {
 	CoreDeleteResult,
 	CoreRenameResult,
 	CoreGraphResult,
+	CoreGraphAuditOrphan,
+	CoreGraphAuditDeadLink,
 	CoreError,
 	CoreOpenNotesResult,
 } from '../types/canonical';
@@ -99,6 +101,34 @@ export function mapGraphResult(result: CoreGraphResult, hints?: Hint[]): CallToo
 		source: result.source,
 		operation: result.operation,
 		nodes: result.nodes,
+	}, hints));
+}
+
+/** A single page of a vault-wide graph audit, ready for serialization. */
+export interface GraphAuditPage {
+	orphans: CoreGraphAuditOrphan[];
+	deadLinks: CoreGraphAuditDeadLink[];
+	/** Full post-ACL counts across the whole vault (before pagination). */
+	total: {orphans: number; deadLinks: number};
+	/** Opaque continuation for the next page, or null when complete. */
+	cursor: string | null;
+	/** True iff a page boundary was hit (equivalent to cursor !== null). */
+	truncated: boolean;
+}
+
+/**
+ * Serializes a graph-audit page into a JSON CallToolResult. `operation` is fixed
+ * as `audit-graph` so the payload is self-describing alongside the per-note
+ * kado-graph responses.
+ */
+export function mapGraphAuditResult(page: GraphAuditPage, hints?: Hint[]): CallToolResult {
+	return textResult(withHints({
+		operation: 'audit-graph',
+		orphans: page.orphans,
+		deadLinks: page.deadLinks,
+		total: page.total,
+		cursor: page.cursor,
+		truncated: page.truncated,
 	}, hints));
 }
 

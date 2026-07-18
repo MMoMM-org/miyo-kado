@@ -17,7 +17,9 @@ import type {
 	CoreOpenNotesRequest,
 	CoreRenameRequest,
 	CoreGraphRequest,
+	CoreGraphAuditRequest,
 	GraphOperation,
+	GraphAuditAxis,
 	OpenNotesScope,
 	DeleteDataType,
 	RenameDataType,
@@ -419,6 +421,52 @@ export function mapGraphRequest(args: Args, keyId: string): CoreGraphRequest {
 			throw new Error('mapGraphRequest: limit must be a positive integer');
 		}
 		result.limit = rawLimit;
+	}
+
+	return result;
+}
+
+const GRAPH_AUDIT_AXES = new Set<string>(['orphans', 'deadLinks']);
+
+/**
+ * Maps raw MCP tool arguments into a CoreGraphAuditRequest (vault-wide, pathless).
+ *
+ * `include`, when supplied, is a non-empty array of `orphans` | `deadLinks`.
+ * `limit` (max combined items per page) must be a positive integer. `cursor`,
+ * when supplied, must be a string (validated opaquely; a malformed cursor decodes
+ * to offset 0 downstream).
+ * @throws Error if include/limit/cursor are malformed.
+ */
+export function mapGraphAuditRequest(args: Args, keyId: string): CoreGraphAuditRequest {
+	const result: CoreGraphAuditRequest = {kind: 'graph-audit', apiKeyId: keyId};
+
+	const rawInclude = args['include'];
+	if (rawInclude !== undefined) {
+		if (!Array.isArray(rawInclude) || rawInclude.length === 0) {
+			throw new Error('mapGraphAuditRequest: include must be a non-empty array of orphans|deadLinks');
+		}
+		for (const axis of rawInclude) {
+			if (typeof axis !== 'string' || !GRAPH_AUDIT_AXES.has(axis)) {
+				throw new Error(`mapGraphAuditRequest: include entries must be one of orphans|deadLinks (got '${String(axis)}')`);
+			}
+		}
+		result.include = rawInclude as GraphAuditAxis[];
+	}
+
+	const rawLimit = args['limit'];
+	if (rawLimit !== undefined) {
+		if (typeof rawLimit !== 'number' || !Number.isInteger(rawLimit) || rawLimit <= 0) {
+			throw new Error('mapGraphAuditRequest: limit must be a positive integer');
+		}
+		result.limit = rawLimit;
+	}
+
+	const rawCursor = args['cursor'];
+	if (rawCursor !== undefined) {
+		if (typeof rawCursor !== 'string') {
+			throw new Error('mapGraphAuditRequest: cursor must be a string');
+		}
+		result.cursor = rawCursor;
 	}
 
 	return result;

@@ -1,6 +1,6 @@
 # Kado API Reference
 
-Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Seven tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, and `kado-graph`.
+Kado exposes an MCP (Model Context Protocol) server over Streamable HTTP transport. Clients send JSON-RPC requests to a single endpoint and authenticate with Bearer tokens. Eight tools are available: `kado-read`, `kado-write`, `kado-delete`, `kado-rename`, `kado-search`, `kado-open-notes`, `kado-graph`, and `kado-graph-audit`.
 
 > **Optional `_hints`.** Any tool response (success or error) may include an additive `_hints` array — next-step suggestions for the calling agent, e.g. `{ "do": "kado-read", "with": { "operation": "note", "path": "…" }, "why": "…" }`. Hints are derived purely from the current request and result (no server-side state), are advisory, and can be safely ignored. They never change the rest of the response shape.
 
@@ -1848,6 +1848,76 @@ Navigate the vault's link graph from a source note (`.md`). Read-only. Built fro
     { "path": "Notes/strategy.md", "relation": "related", "via": ["Projects/q3-plan.md"] }
   ]
 }
+```
+
+---
+
+## Tool: kado-graph-audit
+
+Vault-wide link-graph audit in a **single call** — the whole-vault counterpart to `kado-graph`. Read-only. Returns every orphan and every dead wikilink across the vault at once, answered from Obsidian's in-memory link maps (no per-note disk reads). Same index-lag characteristic as `kado-graph` / `kado-search`.
+
+Use this instead of fanning out per-note `kado-graph dangling` calls when auditing the whole vault (e.g. a knowledge-garden health check).
+
+### What it returns
+
+| Axis | Definition |
+|---|---|
+| `orphans` | Notes with **no resolved links in or out** — fully disconnected from the resolved graph. A note whose only links are unresolved (dangling) still counts as an orphan. |
+| `deadLinks` | Every **unresolved (broken) wikilink** across the vault: `{ source, target, count }`, where `target` is the raw unresolved link text (not a path) and `count` mirrors the per-note `kado-graph dangling` count. |
+
+> Terminology: an **orphan** has no links at all. A note that has links but no `up::` parent (sometimes called *unparented*) is **not** an orphan and is out of scope for this tool.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `include` | `("orphans" \| "deadLinks")[]` | No | Which axes to compute. Non-empty. Omit for both. |
+| `limit` | `integer` | No | Max **combined** items per page (orphans + deadLinks). Omit to return everything in one page. |
+| `cursor` | `string` | No | Opaque pagination cursor from a previous response. Pass it back to fetch the next page. |
+
+### Response Format
+
+| Field | Type | Description |
+|---|---|---|
+| `operation` | `"audit-graph"` | Fixed discriminator |
+| `orphans` | `{ path: string }[]` | Orphaned notes (may be empty) |
+| `deadLinks` | `{ source: string, target: string, count: number }[]` | Dead wikilinks (may be empty) |
+| `total` | `{ orphans: number, deadLinks: number }` | Full **post-ACL** counts across the whole vault, before pagination |
+| `cursor` | `string \| null` | Continuation for the next page, or `null` when complete |
+| `truncated` | `boolean` | `true` iff a page boundary was hit (equivalent to `cursor !== null`) |
+
+### Pagination
+
+Results form a single deterministic stream — **all orphans first, then all dead links**, each sorted (orphans by path; dead links by source then target). `limit` caps combined items per page; a page fills `orphans` before `deadLinks`. Pass the returned `cursor` back to continue; concatenate pages until `cursor` is `null`. Omit `limit` to get everything in one page (the common case on normal vaults).
+
+### Permissions & Disclosure Guard
+
+Pathless, so there is no single source note to gate on: `kado-graph-audit` requires only a **valid, enabled key** (authenticate gate). Disclosure is enforced by per-node ACL filtering — **orphans** are filtered by their own path, **dead links** by their `source` path (the `target` is unresolved text, so it rides on source visibility, consistent with `kado-graph dangling`). `total` reflects post-ACL counts: the audit reports only what the key can see, and out-of-scope nodes are silently omitted. Audited as a note read.
+
+### Examples
+
+```json
+// Whole-vault audit in one call
+{}
+
+// Response content
+{
+  "operation": "audit-graph",
+  "orphans": [
+    { "path": "Inbox/loose-note.md" }
+  ],
+  "deadLinks": [
+    { "source": "Projects/roadmap.md", "target": "Missing Spec", "count": 2 }
+  ],
+  "total": { "orphans": 1, "deadLinks": 1 },
+  "cursor": null,
+  "truncated": false
+}
+```
+
+```json
+// Only dead links, first page of 500
+{ "include": ["deadLinks"], "limit": 500 }
 ```
 
 ---

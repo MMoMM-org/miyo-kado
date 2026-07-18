@@ -7,7 +7,7 @@
 import {describe, it, expect} from 'vitest';
 import {createGraphAdapter} from '../../src/obsidian/graph-adapter';
 import {LinkGraphIndex} from '../../src/obsidian/link-graph-index';
-import type {CoreGraphRequest, CoreGraphResult} from '../../src/types/canonical';
+import type {CoreGraphRequest, CoreGraphResult, CoreGraphAuditRequest, CoreGraphAuditResult} from '../../src/types/canonical';
 
 function makeIndex(
 	resolvedLinks: Record<string, Record<string, number>>,
@@ -23,7 +23,18 @@ function req(overrides: Partial<CoreGraphRequest>): CoreGraphRequest {
 }
 
 async function run(idx: LinkGraphIndex, request: CoreGraphRequest): Promise<CoreGraphResult> {
-	const result = await createGraphAdapter(idx).graph(request);
+	const result = await createGraphAdapter(idx, () => []).graph(request);
+	if ('code' in result) throw new Error(`unexpected error: ${result.code}`);
+	return result;
+}
+
+async function runAudit(
+	idx: LinkGraphIndex,
+	notePaths: readonly string[],
+	overrides: Partial<CoreGraphAuditRequest> = {},
+): Promise<CoreGraphAuditResult> {
+	const request: CoreGraphAuditRequest = {kind: 'graph-audit', apiKeyId: 'k', ...overrides};
+	const result = await createGraphAdapter(idx, () => notePaths).audit(request);
 	if ('code' in result) throw new Error(`unexpected error: ${result.code}`);
 	return result;
 }
@@ -65,5 +76,50 @@ describe('GraphAdapter', () => {
 		const idx = makeIndex({'b.md': {'a.md': 1}, 'c.md': {'a.md': 1}, 'd.md': {'a.md': 1}});
 		const result = await run(idx, req({operation: 'backlinks', path: 'a.md', limit: 2}));
 		expect(result.nodes).toHaveLength(2);
+	});
+});
+
+describe('GraphAdapter — audit (vault-wide)', () => {
+	it('reports orphans: notes with no resolved links in or out, sorted', async () => {
+		// a → b resolves; c and d are disconnected. e only has a dangling link (still orphan).
+		const idx = makeIndex({'a.md': {'b.md': 1}}, {'e.md': {'Ghost': 1}});
+		const result = await runAudit(idx, ['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+		expect(result.orphans).toEqual([{path: 'c.md'}, {path: 'd.md'}, {path: 'e.md'}]);
+	});
+
+	it('reports every dead wikilink vault-wide with source, target and count, sorted', async () => {
+		const idx = makeIndex({}, {'b.md': {'Missing': 2}, 'a.md': {'Ghost': 1, 'Absent': 3}});
+		const result = await runAudit(idx, ['a.md', 'b.md']);
+		expect(result.deadLinks).toEqual([
+			{source: 'a.md', target: 'Absent', count: 3},
+			{source: 'a.md', target: 'Ghost', count: 1},
+			{source: 'b.md', target: 'Missing', count: 2},
+		]);
+	});
+
+	it('a note linked only by an incoming resolved link is not an orphan', async () => {
+		const idx = makeIndex({'a.md': {'b.md': 1}});
+		const result = await runAudit(idx, ['a.md', 'b.md']);
+		expect(result.orphans).toEqual([]); // both a (outgoing) and b (incoming) are connected
+	});
+
+	it('include=["orphans"] computes only orphans, leaving deadLinks empty', async () => {
+		const idx = makeIndex({'a.md': {'b.md': 1}}, {'a.md': {'Missing': 1}});
+		const result = await runAudit(idx, ['a.md', 'b.md', 'z.md'], {include: ['orphans']});
+		expect(result.orphans).toEqual([{path: 'z.md'}]);
+		expect(result.deadLinks).toEqual([]);
+	});
+
+	it('include=["deadLinks"] computes only dead links, leaving orphans empty', async () => {
+		const idx = makeIndex({}, {'a.md': {'Missing': 1}});
+		const result = await runAudit(idx, ['a.md', 'z.md'], {include: ['deadLinks']});
+		expect(result.orphans).toEqual([]);
+		expect(result.deadLinks).toEqual([{source: 'a.md', target: 'Missing', count: 1}]);
+	});
+
+	it('returns empty arrays for an empty vault', async () => {
+		const idx = makeIndex({});
+		const result = await runAudit(idx, []);
+		expect(result).toEqual({orphans: [], deadLinks: []});
 	});
 });

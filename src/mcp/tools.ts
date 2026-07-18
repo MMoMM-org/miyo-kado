@@ -17,16 +17,17 @@ import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protoco
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
 import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest} from '../types/canonical';
-import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest} from '../types/canonical';
+import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest, isCoreGraphAuditRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
 import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions, checkFolderRenameScopeNeutral} from '../core/folder-policy';
 import {collectFolderTreePaths} from '../obsidian/folder-tree';
 import {validateConcurrency} from '../core/concurrency-guard';
-import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapError, mapOpenNotesResult} from './response-mapper';
+import {mapFileResult, mapWriteResult, mapSearchResult, mapDeleteResult, mapRenameResult, mapGraphResult, mapGraphAuditResult, mapError, mapOpenNotesResult} from './response-mapper';
+import type {GraphAuditPage} from './response-mapper';
 import {deriveHints} from './hints';
 import {evaluateGraphPermissions} from '../core/graph-policy';
-import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest, mapGraphRequest} from './request-mapper';
+import {mapReadRequest, mapWriteRequest, mapSearchRequest, mapDeleteRequest, mapRenameRequest, mapOpenNotesRequest, mapGraphRequest, mapGraphAuditRequest} from './request-mapper';
 import type {
 	CoreFileResult,
 	CoreWriteResult,
@@ -34,6 +35,7 @@ import type {
 	CoreDeleteResult,
 	CoreRenameResult,
 	CoreGraphResult,
+	CoreGraphAuditResult,
 	CoreSearchItem,
 	KadoConfig,
 	ApiKeyConfig,
@@ -159,6 +161,21 @@ export const kadoGraphShape = {
 	path: z.string().describe('Source note path (.md). Backlinks/outgoing/neighbors/related resolve links to paths; dangling lists this note\'s unresolved link targets.'),
 	limit: z.number().int().positive().optional().describe('Max nodes to return. Omit for all.'),
 };
+
+export const kadoGraphAuditShape = {
+	include: z.array(z.enum(['orphans', 'deadLinks'])).nonempty().optional().describe('Which axes to compute. Omit for both.'),
+	limit: z.number().int().positive().optional().describe('Max COMBINED items per page (orphans + deadLinks). Omit to return everything in one page.'),
+	cursor: z.string().optional().describe('Opaque pagination cursor from a previous response. Pass it back to fetch the next page.'),
+};
+
+export const KADO_GRAPH_AUDIT_TOOL_DESCRIPTION =
+	'Vault-wide link-graph audit in a single call — the whole-vault counterpart to kado-graph. Returns ' +
+	'orphans (notes with no resolved links in OR out — fully disconnected) and ' +
+	'deadLinks (every unresolved/broken wikilink across the vault: { source, target, count }, where target is the raw unresolved link text, not a path). ' +
+	'Returns { operation: "audit-graph", orphans: [{ path }], deadLinks: [{ source, target, count }], total: { orphans, deadLinks }, cursor, truncated }. ' +
+	'Use "include" to compute just one axis. Results are paginated by "limit"/"cursor" (orphans first, then deadLinks); omit "limit" for everything in one page. ' +
+	'Scoped to this key: orphans are filtered by their own path, dead links by their source path; "total" reflects post-ACL counts. ' +
+	'Answered from Obsidian\'s in-memory link index (no per-note disk reads), which can briefly lag the disk after external bulk changes.';
 
 export const KADO_GRAPH_TOOL_DESCRIPTION =
 	'Navigate the Obsidian link graph from a source note (.md). Operations: ' +
@@ -364,8 +381,9 @@ function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, 
 
 function extractDataType(request: CoreRequest): DataType {
 	if (isCoreSearchRequest(request)) return 'note';
-	// Graph navigation reads the link structure of notes — audited as a note read.
-	if (isCoreGraphRequest(request)) return 'note';
+	// Graph navigation and the vault-wide graph audit read the link structure of
+	// notes — audited as a note read.
+	if (isCoreGraphRequest(request) || isCoreGraphAuditRequest(request)) return 'note';
 	// 'tags' read operation is audited as a note read (it reads the note body).
 	if (request.operation === 'tags') return 'note';
 	// Folder delete is authorized and audited as a note operation (folder-policy).
@@ -380,7 +398,7 @@ function truncateKeyId(keyId: string): string {
 function debugFields(keyId: string, request: CoreRequest): Record<string, unknown> {
 	const fields: Record<string, unknown> = {
 		key: truncateKeyId(keyId),
-		operation: String(request.operation ?? ''),
+		operation: String(('operation' in request ? request.operation : undefined) ?? ''),
 	};
 	if ('path' in request && request.path !== undefined) fields.path = request.path;
 	if ('query' in request && request.query !== undefined) fields.query = request.query;
@@ -433,7 +451,7 @@ async function logAllowed(
 	try {
 		const path = 'path' in coreReq ? (coreReq.path as string) : undefined;
 		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
-		const operation = String(coreReq.operation ?? '');
+		const operation = String(('operation' in coreReq ? coreReq.operation : 'graph-audit') ?? '');
 		const dataType = extractDataType(coreReq);
 		// Partial note write: body is touched, record the mode for auditors.
 		// Frontmatter write: body is preserved byte-identical, so bodyTouched=false.
@@ -482,7 +500,7 @@ async function logDenied(
 	try {
 		const path = 'path' in coreReq ? (coreReq.path as string) : undefined;
 		const query = 'query' in coreReq ? (coreReq.query as string) : undefined;
-		const operation = String(coreReq.operation ?? '');
+		const operation = String(('operation' in coreReq ? coreReq.operation : 'graph-audit') ?? '');
 		const dataType = extractDataType(coreReq);
 		await auditLogger.log(createAuditEntry({apiKeyId: truncateKeyId(keyId), operation, dataType, path, query, decision: 'denied', gate}));
 	} catch {
@@ -511,6 +529,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
 	}
 	registerOpenNotesTool(server, deps);
 	registerGraphTool(server, deps);
+	registerGraphAuditTool(server, deps);
 }
 
 // ============================================================
@@ -855,6 +874,92 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		} catch (err: unknown) {
 			// M7: static message to avoid leaking internal details; raw error logged below
 			kadoLog('kado-open-notes error', {key: truncateKeyId(keyId), code: 'INTERNAL_ERROR', err: String(err)});
+			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
+		}
+	});
+}
+
+/** Base64-encodes a combined-stream offset for the audit pagination cursor. */
+function encodeAuditOffset(offset: number): string {
+	return btoa(String(offset));
+}
+
+/** Decodes an audit cursor to a combined-stream offset; malformed cursors read as 0. */
+function decodeAuditOffset(cursor: string): number {
+	const parsed = parseInt(atob(cursor), 10);
+	return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
+}
+
+/**
+ * Paginates the post-ACL audit result over a single deterministic stream — all
+ * orphans first, then all dead links. `limit` caps combined items per page;
+ * omit for everything in one page. Returns the page plus full (pre-pagination)
+ * totals and the next cursor.
+ */
+function paginateAudit(
+	orphans: CoreGraphAuditResult['orphans'],
+	deadLinks: CoreGraphAuditResult['deadLinks'],
+	cursor: string | undefined,
+	limit: number | undefined,
+): GraphAuditPage {
+	const total = {orphans: orphans.length, deadLinks: deadLinks.length};
+	const combined = orphans.length + deadLinks.length;
+	const offset = cursor ? Math.min(decodeAuditOffset(cursor), combined) : 0;
+	const end = limit === undefined ? combined : Math.min(offset + limit, combined);
+
+	// Map the [offset, end) window in the concatenated [orphans..., deadLinks...]
+	// stream back onto each array.
+	const pageOrphans = orphans.slice(Math.min(offset, orphans.length), Math.min(end, orphans.length));
+	const pageDead = deadLinks.slice(Math.max(0, offset - orphans.length), Math.max(0, end - orphans.length));
+
+	const nextCursor = end < combined ? encodeAuditOffset(end) : null;
+	return {orphans: pageOrphans, deadLinks: pageDead, total, cursor: nextCursor, truncated: nextCursor !== null};
+}
+
+function registerGraphAuditTool(server: McpServer, deps: ToolDependencies): void {
+	server.registerTool('kado-graph-audit', {description: KADO_GRAPH_AUDIT_TOOL_DESCRIPTION, inputSchema: kadoGraphAuditShape}, async (args, extra: Extra): Promise<CallToolResult> => {
+		const keyId = extractKeyId(extra);
+		if (!keyId) return missingAuthError();
+
+		let request;
+		try {
+			request = mapGraphAuditRequest(args as Record<string, unknown>, keyId);
+		} catch (err: unknown) {
+			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
+		}
+
+		const config = deps.configManager.getConfig();
+
+		// Pathless tool: no single source note to gate on. Require a valid, enabled
+		// key (authenticate gate, like kado-open-notes); per-node ACL filtering below
+		// enforces disclosure. An authenticated key only ever sees paths within its scope.
+		const authResult = authenticateGate.evaluate(request, config);
+		if (!authResult.allowed) {
+			await logDenied('kado-graph-audit', deps, keyId, request, authResult.error.gate);
+			return mapError(authResult.error);
+		}
+		const key = config.apiKeys.find((k) => k.id === keyId)!;
+
+		const startMs = performance.now();
+		try {
+			const result = await deps.router(request);
+			if (isCoreError(result)) {
+				kadoLog('kado-graph-audit error', {...debugFields(keyId, request), code: result.code});
+				return mapError(result);
+			}
+			const audit = result as CoreGraphAuditResult;
+
+			// Disclosure guard: an orphan is a real note path — filter by its own path.
+			// A dead link rides on its SOURCE note's visibility (the target is unresolved
+			// text, not a path); include it only if the source is permitted.
+			const orphans = audit.orphans.filter((o) => isPathPermittedForKey(o.path, key, config));
+			const deadLinks = audit.deadLinks.filter((d) => isPathPermittedForKey(d.source, key, config));
+
+			const page = paginateAudit(orphans, deadLinks, request.cursor, request.limit);
+			await logAllowed('kado-graph-audit', deps, keyId, request, startMs);
+			return mapGraphAuditResult(page);
+		} catch (err: unknown) {
+			kadoLog('kado-graph-audit error', {...debugFields(keyId, request), code: 'INTERNAL_ERROR', err: String(err)});
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
 		}
 	});

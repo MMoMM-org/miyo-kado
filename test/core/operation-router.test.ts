@@ -116,6 +116,7 @@ function makeRenameAdapter() {
 function makeGraphAdapter() {
 	return {
 		graph: vi.fn(),
+		audit: vi.fn(),
 	};
 }
 
@@ -494,6 +495,18 @@ describe('createOperationRouter() — graph routing', () => {
 		expect(noteAdapter.read).not.toHaveBeenCalled();
 		expect(searchAdapter.search).not.toHaveBeenCalled();
 		expect(renameAdapter.rename).not.toHaveBeenCalled();
+	});
+
+	it('routes a graph-audit request to the graph adapter audit() method', async () => {
+		const expected = {orphans: [{path: 'x.md'}], deadLinks: []};
+		graphAdapter.audit.mockResolvedValue(expected);
+
+		const route = makeRouter();
+		const result = await route({kind: 'graph-audit', apiKeyId: 'kado_test-key'});
+
+		expect(graphAdapter.audit).toHaveBeenCalledOnce();
+		expect(graphAdapter.graph).not.toHaveBeenCalled();
+		expect(result).toBe(expected);
 	});
 });
 
