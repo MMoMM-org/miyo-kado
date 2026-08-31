@@ -1,0 +1,45 @@
+# Keeps dependency updates flowing as PRs instead of letting security alerts
+# pile up unattended. Before this file existed the repo had security alerts
+# enabled but no update PRs at all, so transitive advisories accumulated (36 of
+# them) until someone bumped the lockfile by hand.
+#
+# Grouping keeps the PR volume low: everything Kado actually ships is reviewed
+# individually, the dev toolchain arrives as one batch.
+version: 2
+
+updates:
+    - package-ecosystem: "npm"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 5
+      commit-message:
+          prefix: "chore(deps)"
+          prefix-development: "chore(deps-dev)"
+      groups:
+          # Build, test and release tooling — never part of main.js, so a single
+          # batched PR per week is enough.
+          dev-toolchain:
+              dependency-type: "development"
+              update-types:
+                  - "minor"
+                  - "patch"
+      ignore:
+          # Pinned on purpose: the bundler version is part of the reproducible
+          # plugin build, bumped deliberately rather than automatically.
+          - dependency-name: "esbuild"
+            update-types: ["version-update:semver-major"]
+
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 3
+      commit-message:
+          prefix: "chore(ci)"
+      groups:
+          github-actions:
+              patterns:
+                  - "*"

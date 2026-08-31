@@ -34,7 +34,7 @@
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
 		"jsdom": "^26.1.0",
-		"semantic-release": "^24.2.3",
+		"semantic-release": "^25.0.9",
 		"stylelint": "^17.12.0",
 		"stylelint-no-unsupported-browser-features": "^8.1.1",
 		"tslib": "2.4.0",
@@ -43,7 +43,7 @@
 		"vitest": "^3.2.1"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0",
+		"@modelcontextprotocol/sdk": "^1.30.0",
 		"cors": "^2.8.6",
 		"express": "^5.2.1",
 		"zod": "^4.3.6"
@@ -52,11 +52,21 @@
 		"obsidian": ">=1.5.7"
 	},
 	"overrides": {
-		"hono": "^4.12.18",
-		"fast-uri": "^3.1.2",
+		"hono": "^4.13.5",
+		"fast-uri": "^3.1.5",
 		"qs": "^6.15.2",
 		"ws": "^8.20.1",
 		"express-rate-limit": "^8.5.2",
-		"ip-address": "^10.2.0"
+		"ip-address": "^10.3.1",
+		"body-parser": "^2.3.0",
+		"@hono/node-server": "^1.19.15",
+		"js-yaml": "^4.3.1",
+		"vite": {
+			".": "^7.3.6",
+			"esbuild": "^0.28.2"
+		},
+		"brace-expansion@1": "^1.1.18",
+		"brace-expansion@2": "^2.1.4",
+		"picomatch@4": "^4.0.7"
 	}
 }
