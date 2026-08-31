@@ -543,7 +543,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 
 		let request;
 		try {
-			request = mapReadRequest(args as Record<string, unknown>, keyId);
+			request = mapReadRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
@@ -571,7 +571,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-read error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				const error: CoreError = {code: code, message: asError.message ?? String(err)};
 				return mapError(error, deriveHints({tool: 'kado-read', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
@@ -586,7 +586,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 
 		let request;
 		try {
-			request = mapWriteRequest(args as Record<string, unknown>, keyId);
+			request = mapWriteRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
@@ -620,7 +620,7 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-write error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				const error: CoreError = {code: code, message: asError.message ?? String(err)};
 				return mapError(error, deriveHints({tool: 'kado-write', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
@@ -635,7 +635,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 
 		let request;
 		try {
-			request = mapDeleteRequest(args as Record<string, unknown>, keyId);
+			request = mapDeleteRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
@@ -679,7 +679,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-delete error', {...debugFields(keyId, request), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				const error: CoreError = {code: code, message: asError.message ?? String(err)};
 				return mapError(error, deriveHints({tool: 'kado-delete', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
@@ -694,7 +694,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 
 		let request;
 		try {
-			request = mapRenameRequest(args as Record<string, unknown>, keyId);
+			request = mapRenameRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
@@ -784,7 +784,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			const code = (asError.code === 'CONFLICT' || asError.code === 'NOT_FOUND' || asError.code === 'VALIDATION_ERROR') ? asError.code : 'INTERNAL_ERROR';
 			kadoLog('kado-rename error', {key: truncateKeyId(keyId), code, err: String(err)});
 			if (code !== 'INTERNAL_ERROR') {
-				const error: CoreError = {code: code as CoreError['code'], message: asError.message ?? String(err)};
+				const error: CoreError = {code: code, message: asError.message ?? String(err)};
 				return mapError(error, deriveHints({tool: 'kado-rename', request, error}));
 			}
 			return mapError({code: 'INTERNAL_ERROR', message: 'An unexpected error occurred'});
@@ -797,7 +797,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		const keyId = extractKeyId(extra);
 		if (!keyId) return missingAuthError();
 
-		const request = mapSearchRequest(args as Record<string, unknown>, keyId);
+		const request = mapSearchRequest(args, keyId);
 		const config = deps.configManager.getConfig();
 
 		// Inject scope info so the adapter can pre-filter
@@ -849,7 +849,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 
 		// M6: run authenticate gate the same way as other tools
 		const authResult = authenticateGate.evaluate(
-			{apiKeyId: keyId, operation: 'note', path: ''} as CoreRequest,
+			{apiKeyId: keyId, operation: 'note', path: ''},
 			config,
 		);
 		if (!authResult.allowed) return mapError(authResult.error);
@@ -857,7 +857,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		// key is guaranteed to exist and be enabled after auth gate
 		const key = config.apiKeys.find((k) => k.id === keyId)!;
 
-		const req = mapOpenNotesRequest(args as Record<string, unknown>, keyId);
+		const req = mapOpenNotesRequest(args, keyId);
 		const gate = gateOpenNoteScope(req.scope, config.security, key);
 		if (gate.kind === 'deny') {
 			await logDenied('kado-open-notes', deps, keyId, req, 'feature-gate');
@@ -923,7 +923,7 @@ function registerGraphAuditTool(server: McpServer, deps: ToolDependencies): void
 
 		let request;
 		try {
-			request = mapGraphAuditRequest(args as Record<string, unknown>, keyId);
+			request = mapGraphAuditRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
@@ -972,7 +972,7 @@ function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
 
 		let request;
 		try {
-			request = mapGraphRequest(args as Record<string, unknown>, keyId);
+			request = mapGraphRequest(args, keyId);
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}

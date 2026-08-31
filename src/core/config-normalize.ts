@@ -72,7 +72,7 @@ export function normalizeConfig(stored: unknown): KadoConfig {
 		...defaults,
 		...partial,
 		server: {...defaults.server, ...(partial.server ?? {})},
-		audit: mergedAudit as typeof defaults.audit,
+		audit: mergedAudit,
 		security: mergedSecurity,
 		apiKeys: keys,
 		debugLogging: partial.debugLogging ?? defaults.debugLogging,

@@ -178,7 +178,7 @@ export function mapWriteRequest(args: Args, keyId: string): CoreWriteRequest {
 				const shown = typeof mode === 'string' ? mode : typeof mode;
 				throw new Error(`mapWriteRequest: mode must be "merge" or "replace" (got '${shown}')`);
 			}
-			result.mode = mode as FrontmatterWriteMode;
+			result.mode = mode;
 		} else if (operation === 'note') {
 			// Partial note writes carry a markdown fragment — reject non-string content
 			// at the boundary so the client gets VALIDATION_ERROR, not a downstream crash.
