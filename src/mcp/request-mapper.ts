@@ -23,7 +23,6 @@ import type {
 	OpenNotesScope,
 	DeleteDataType,
 	RenameDataType,
-	FrontmatterWriteMode,
 	SearchFilter,
 } from '../types/canonical';
 import {validatePath, normalizePath} from '../core/gates/path-access';

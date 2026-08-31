@@ -13,14 +13,10 @@ import express from 'express';
 import cors from 'cors';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {createAuthMiddleware} from './auth';
 import type {ConfigManager} from '../core/config-manager';
 import type {ServerConfig} from '../types/canonical';
 import {kadoLog, kadoError} from '../core/logger';
-
-/** Express request augmented with SDK-compatible auth info for MCP transport. */
-type McpRequest = express.Request & {auth?: AuthInfo};
 
 // -----------------------------------------------------------------------
 // Rate limiting (L5) — in-memory, per-IP, no external dependency
