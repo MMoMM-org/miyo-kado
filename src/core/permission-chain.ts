@@ -47,7 +47,7 @@ function enrichWithResolvedKey(request: CoreRequest, config: KadoConfig): CoreRe
 	if (!request.apiKeyId) return request;
 	const resolvedKey = config.apiKeys.find((k) => k.id === request.apiKeyId);
 	if (!resolvedKey) return request;
-	return {...request, resolvedKey} as CoreRequest;
+	return {...request, resolvedKey};
 }
 
 /**

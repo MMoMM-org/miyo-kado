@@ -25,7 +25,7 @@ function getFile(app: App, path: string): TFile | null {
 
 function readFrontmatter(app: App, file: TFile): Record<string, unknown> {
 	const cache = app.metadataCache.getFileCache(file);
-	return (cache?.frontmatter as Record<string, unknown> | undefined) ?? {};
+	return (cache?.frontmatter) ?? {};
 }
 
 function buildFileResult(path: string, content: Record<string, unknown>, file: TFile): CoreFileResult {

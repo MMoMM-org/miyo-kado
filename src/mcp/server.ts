@@ -319,7 +319,7 @@ export class KadoMcpServer {
 			});
 
 			await mcpServer.connect(transport);
-			await transport.handleRequest(req as unknown as McpRequest, res, body);
+			await transport.handleRequest(req, res, body);
 		} catch (err: unknown) {
 			kadoError('Route error', {error: String(err)});
 			if (!res.headersSent) {
