@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/MMoMM-org/miyo-kado/compare/1.2.0...1.2.1) (2026-08-31)
+
+### Bug Fixes
+
+* **deps:** release patched dependency bundle ([f3b4c1d](https://github.com/MMoMM-org/miyo-kado/commit/f3b4c1dfb5fbe34b9ed5578efe738e95f5f342bf)), closes [#102](https://github.com/MMoMM-org/miyo-kado/issues/102)
+
 ## [1.2.0](https://github.com/MMoMM-org/miyo-kado/compare/1.1.0...1.2.0) (2026-07-18)
 
 ### Features
