@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/MMoMM-org/miyo-kado/compare/1.2.1...1.3.0) (2026-09-14)
+
+### Features
+
+* **mcp:** separate rate-limit bucket for the MCP handshake ([#118](https://github.com/MMoMM-org/miyo-kado/issues/118)) ([f42d6d7](https://github.com/MMoMM-org/miyo-kado/commit/f42d6d7acb26e5cfe5238de3455985d109e9d074))
+
 ## [1.2.1](https://github.com/MMoMM-org/miyo-kado/compare/1.2.0...1.2.1) (2026-08-31)
 
 ### Bug Fixes
