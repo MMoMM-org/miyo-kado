@@ -46,7 +46,7 @@
 		"@modelcontextprotocol/sdk": "^1.30.0",
 		"cors": "^2.8.6",
 		"express": "^5.2.1",
-		"zod": "^4.3.6"
+		"zod": "^4.5.4"
 	},
 	"peerDependencies": {
 		"obsidian": ">=1.5.7"
