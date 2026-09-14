@@ -41,15 +41,42 @@ interface RateLimitEntry {
 	resetAt: number;
 }
 
-/** In-memory rate-limit state keyed by IP. Exported for testing. */
+/** In-memory rate-limit state for ordinary requests, keyed by IP. Exported for testing. */
 export const requestCounts = new Map<string, RateLimitEntry>();
+
+/**
+ * Rate-limit state for MCP handshakes (`initialize`), keyed by IP and counted
+ * separately from `requestCounts`. Exported for testing.
+ */
+export const handshakeCounts = new Map<string, RateLimitEntry>();
+
+/**
+ * Per-IP budget for handshakes. A client gets exactly one attempt to connect:
+ * the Claude Code runtime opens its MCP connections once at session start and
+ * never retries, so a throttled handshake costs that session every Kado tool
+ * for its whole lifetime, where a throttled tool call costs it a few seconds.
+ * Giving handshakes their own bucket means a burst of tool calls from one
+ * session can no longer lock the next session out. Deliberately generous —
+ * handshakes are rare — but still bounded, so the pre-auth endpoint is not a
+ * free-for-all. Applied as a floor: a higher configured limit wins.
+ */
+export const HANDSHAKE_MAX_REQUESTS = 30;
 
 const MAX_TRACKED_IPS = 10_000;
 
+/** True when the request is an MCP `initialize` call (the handshake). */
+function isHandshakeRequest(req: express.Request): boolean {
+	if (req.method !== 'POST') return false;
+	const body = req.body as {method?: unknown} | undefined;
+	return body?.method === 'initialize';
+}
+
 function evictStaleEntries(now: number): void {
-	if (requestCounts.size < MAX_TRACKED_IPS) return;
-	for (const [ip, entry] of requestCounts) {
-		if (now > entry.resetAt) requestCounts.delete(ip);
+	for (const counts of [requestCounts, handshakeCounts]) {
+		if (counts.size < MAX_TRACKED_IPS) continue;
+		for (const [ip, entry] of counts) {
+			if (now > entry.resetAt) counts.delete(ip);
+		}
 	}
 }
 
@@ -59,8 +86,10 @@ function evictStaleEntries(now: number): void {
  * sporadic traffic do not accumulate stale state.
  */
 function evictExpiredEntries(now: number): void {
-	for (const [ip, entry] of requestCounts) {
-		if (now > entry.resetAt) requestCounts.delete(ip);
+	for (const counts of [requestCounts, handshakeCounts]) {
+		for (const [ip, entry] of counts) {
+			if (now > entry.resetAt) counts.delete(ip);
+		}
 	}
 }
 
@@ -69,6 +98,9 @@ function evictExpiredEntries(now: number): void {
  * so the limit and window track live config changes (no restart). When `max <= 0`
  * the throttle is disabled: no counting and no RateLimit-* headers — the absence
  * of the headers is the conventional "no limit" signal.
+ *
+ * MCP handshakes are counted in their own bucket against HANDSHAKE_MAX_REQUESTS
+ * so tool-call traffic cannot exhaust a client's one chance to connect.
  */
 function createRateLimitMiddleware(
 	getParams: () => RateLimitParams,
@@ -81,26 +113,42 @@ function createRateLimitMiddleware(
 		}
 		const windowMs = Math.max(1000, rawWindowMs);
 
+		const handshake = isHandshakeRequest(req);
+		const counts = handshake ? handshakeCounts : requestCounts;
+		const limit = handshake ? Math.max(max, HANDSHAKE_MAX_REQUESTS) : max;
+
 		const ip = req.ip ?? 'unknown';
 		const now = Date.now();
 		evictStaleEntries(now);
-		const entry = requestCounts.get(ip) ?? {count: 0, resetAt: now + windowMs};
+		const entry = counts.get(ip) ?? {count: 0, resetAt: now + windowMs};
 		if (now > entry.resetAt) {
 			entry.count = 0;
 			entry.resetAt = now + windowMs;
 		}
 		entry.count++;
-		requestCounts.set(ip, entry);
+		counts.set(ip, entry);
 
 		// Always set rate-limit headers so clients can throttle proactively
-		const remaining = Math.max(0, max - entry.count);
+		const remaining = Math.max(0, limit - entry.count);
 		const resetSeconds = Math.ceil((entry.resetAt - now) / 1000);
-		res.setHeader('RateLimit-Limit', max);
+		res.setHeader('RateLimit-Limit', limit);
 		res.setHeader('RateLimit-Remaining', remaining);
 		res.setHeader('RateLimit-Reset', resetSeconds);
 
-		if (entry.count > max) {
+		if (entry.count > limit) {
 			res.setHeader('Retry-After', resetSeconds);
+			// Pushbacks are otherwise invisible: the audit log only records gate
+			// decisions, and this middleware short-circuits before the tool layer.
+			kadoLog('Rate limit exceeded', {
+				ip,
+				bucket: handshake ? 'handshake' : 'default',
+				method: req.method,
+				path: req.path,
+				count: entry.count,
+				max: limit,
+				windowMs,
+				retryAfterSeconds: resetSeconds,
+			});
 			res.status(429).json({error: 'Too many requests'});
 			return;
 		}
