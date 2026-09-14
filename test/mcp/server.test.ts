@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {KadoMcpServer, MAX_CONCURRENT, requestCounts} from '../../src/mcp/server';
+import {KadoMcpServer, MAX_CONCURRENT, requestCounts, handshakeCounts, HANDSHAKE_MAX_REQUESTS} from '../../src/mcp/server';
 import {setDebugLogging} from '../../src/core/logger';
 import {ConfigManager} from '../../src/core/config-manager';
 import type {ServerConfig} from '../../src/types/canonical';
@@ -491,8 +491,12 @@ describe('KadoMcpServer — auth middleware applied', () => {
 // ---------------------------------------------------------------------------
 
 describe('KadoMcpServer — rate limiting', () => {
-	/** POST a dummy MCP request and resolve with the status code + response headers. */
-	function postMcp(port: number): Promise<{statusCode: number; headers: http.IncomingHttpHeaders}> {
+	/**
+	 * POST a dummy MCP request and resolve with the status code + response headers.
+	 * Defaults to an ordinary tool call; pass 'initialize' to exercise the
+	 * separate handshake bucket.
+	 */
+	function postMcp(port: number, rpcMethod = 'tools/list'): Promise<{statusCode: number; headers: http.IncomingHttpHeaders}> {
 		return new Promise((resolve, reject) => {
 			const req = http.request(
 				{host: '127.0.0.1', port, method: 'POST', path: '/mcp', headers: {'Content-Type': 'application/json'}},
@@ -502,7 +506,7 @@ describe('KadoMcpServer — rate limiting', () => {
 				},
 			);
 			req.on('error', reject);
-			req.write(JSON.stringify({jsonrpc: '2.0', method: 'initialize', id: 1}));
+			req.write(JSON.stringify({jsonrpc: '2.0', method: rpcMethod, id: 1}));
 			req.end();
 		});
 	}
@@ -598,6 +602,7 @@ describe('KadoMcpServer — rate limiting', () => {
 			const line = debugSpy.mock.calls.map((c) => String(c[0])).find((c) => c.includes('Rate limit exceeded'));
 			expect(line).toBeDefined();
 			expect(line).toContain('"ip":"127.0.0.1"');
+			expect(line).toContain('"bucket":"default"');
 			expect(line).toContain('"method":"POST"');
 			expect(line).toContain('"max":20');
 		} finally {
@@ -623,6 +628,128 @@ describe('KadoMcpServer — rate limiting', () => {
 		} finally {
 			debugSpy.mockRestore();
 			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('lets a handshake through when the tool-call bucket is exhausted', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		// Tool-call bucket way over the limit — a session's handshake must survive it.
+		requestCounts.set('127.0.0.1', {count: 10_000, resetAt: Date.now() + 60_000});
+
+		try {
+			const {statusCode} = await postMcp(port, 'initialize');
+			expect(statusCode).not.toBe(429); // falls through to auth -> 401
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('counts a handshake in the handshake bucket, not the tool-call bucket', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		try {
+			await postMcp(port, 'initialize');
+			expect(handshakeCounts.get('127.0.0.1')?.count).toBe(1);
+			expect(requestCounts.has('127.0.0.1')).toBe(false);
+		} finally {
+			requestCounts.delete('127.0.0.1');
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('still throttles handshakes once their own budget is exhausted', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+
+		handshakeCounts.set('127.0.0.1', {count: HANDSHAKE_MAX_REQUESTS, resetAt: Date.now() + 60_000});
+
+		try {
+			const {statusCode, headers} = await postMcp(port, 'initialize');
+			expect(statusCode).toBe(429);
+			// Retry-After is set on handshake pushbacks too, so a retrying client can back off.
+			expect(headers['retry-after']).toBeDefined();
+		} finally {
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('advertises the handshake budget as the limit on a handshake response', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 20;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		try {
+			const {headers} = await postMcp(port, 'initialize');
+			expect(headers['ratelimit-limit']).toBe(String(HANDSHAKE_MAX_REQUESTS));
+		} finally {
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('keeps the higher configured limit for handshakes when it exceeds the floor', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 500;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port, {rateLimitMaxRequests: 500}));
+
+		try {
+			const {headers} = await postMcp(port, 'initialize');
+			expect(headers['ratelimit-limit']).toBe('500');
+		} finally {
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('does not count handshakes at all when throttling is disabled', async () => {
+		const port = await getFreePort();
+		const cm = makeConfigManager();
+		cm.getConfig().server.rateLimitMaxRequests = 0;
+		const server = makeKadoMcpServer(cm);
+		await server.start(makeServerConfig(port));
+
+		try {
+			const {statusCode} = await postMcp(port, 'initialize');
+			expect(statusCode).not.toBe(429);
+			expect(handshakeCounts.has('127.0.0.1')).toBe(false);
+		} finally {
+			handshakeCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('names the handshake bucket in the pushback debug log', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+		const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+		setDebugLogging(true);
+
+		handshakeCounts.set('127.0.0.1', {count: HANDSHAKE_MAX_REQUESTS, resetAt: Date.now() + 60_000});
+
+		try {
+			await postMcp(port, 'initialize');
+			const line = debugSpy.mock.calls.map((c) => String(c[0])).find((c) => c.includes('Rate limit exceeded'));
+			expect(line).toContain('"bucket":"handshake"');
+		} finally {
+			setDebugLogging(false);
+			debugSpy.mockRestore();
+			handshakeCounts.delete('127.0.0.1');
 			await server.stop();
 		}
 	});
@@ -653,10 +780,35 @@ describe('KadoMcpServer — rate limiting', () => {
 describe('KadoMcpServer — periodic rate-limit eviction (L8)', () => {
 	beforeEach(() => {
 		requestCounts.clear();
+		handshakeCounts.clear();
 	});
 
 	afterEach(() => {
 		requestCounts.clear();
+		handshakeCounts.clear();
+	});
+
+	it('evicts expired handshake entries on the periodic tick too', async () => {
+		vi.useFakeTimers();
+		try {
+			const port = await getFreePort();
+			const server = makeKadoMcpServer();
+			await server.start(makeServerConfig(port));
+
+			try {
+				handshakeCounts.set('1.2.3.4', {count: 5, resetAt: Date.now() - 1_000});
+				handshakeCounts.set('5.6.7.8', {count: 2, resetAt: Date.now() + 120_000});
+
+				await vi.advanceTimersByTimeAsync(60_000);
+
+				expect(handshakeCounts.has('1.2.3.4')).toBe(false);
+				expect(handshakeCounts.has('5.6.7.8')).toBe(true);
+			} finally {
+				await server.stop();
+			}
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('removes expired entries on the periodic tick even when map is small', async () => {

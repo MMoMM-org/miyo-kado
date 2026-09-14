@@ -49,6 +49,8 @@ Per-IP, fixed-window rate limiting. Every response includes rate-limit headers (
 | `RateLimit-Reset` | Seconds until the window resets |
 | `Retry-After` | Seconds to wait (only on 429) |
 
+**The MCP handshake has its own budget.** An `initialize` request is counted in a separate per-IP bucket with a floor of **30 requests per window** (a higher configured cap wins). The runtime opens its MCP connections once at session start and does not retry them, so a throttled handshake costs that session every Kado tool for its whole lifetime — where a throttled tool call costs it a few seconds. The separate bucket means a burst of `kado-read`s cannot lock out the next session's connect. Handshakes are still bounded, so the pre-auth endpoint is not unlimited.
+
 **Limits:** configurable in the General settings tab — **default 20 requests per 5-second window per IP**. Both the request cap and the window length can be tuned, and changes apply live (no server restart). Set the request cap to **`0` to disable throttling entirely**; when disabled the server skips counting and omits all `RateLimit-*` headers. The `RateLimit-Reset` / `Retry-After` values scale with the configured window.
 
 **Exceeded response** (HTTP 429):
@@ -60,10 +62,12 @@ Per-IP, fixed-window rate limiting. Every response includes rate-limit headers (
 Pushbacks are not written to the audit log — that log records gate decisions, and the throttle rejects a request before it reaches the permission chain. With **debug logging** enabled (General settings tab) each 429 emits a console line instead:
 
 ```
-[Kado] Rate limit exceeded {"ip":"127.0.0.1","method":"POST","path":"/mcp","count":21,"max":20,"windowMs":5000,"retryAfterSeconds":3}
+[Kado] Rate limit exceeded {"ip":"127.0.0.1","bucket":"default","method":"POST","path":"/mcp","count":21,"max":20,"windowMs":5000,"retryAfterSeconds":3}
 ```
 
-Set the DevTools console filter to **Verbose** to see it. A burst of these right after a client starts up usually means several MCP clients sharing one source IP completed their handshakes at the same moment — raise the cap or the window.
+`bucket` is `handshake` for a rejected `initialize` and `default` for everything else.
+
+Set the DevTools console filter to **Verbose** to see it. A burst of these right after a client starts up usually means several MCP clients sharing one source IP sent their traffic at the same moment — note that the limiter keys on IP alone, so separate API keys pointing at the same server share a bucket.
 
 ---
 
