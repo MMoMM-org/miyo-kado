@@ -101,6 +101,17 @@ function createRateLimitMiddleware(
 
 		if (entry.count > max) {
 			res.setHeader('Retry-After', resetSeconds);
+			// Pushbacks are otherwise invisible: the audit log only records gate
+			// decisions, and this middleware short-circuits before the tool layer.
+			kadoLog('Rate limit exceeded', {
+				ip,
+				method: req.method,
+				path: req.path,
+				count: entry.count,
+				max,
+				windowMs,
+				retryAfterSeconds: resetSeconds,
+			});
 			res.status(429).json({error: 'Too many requests'});
 			return;
 		}

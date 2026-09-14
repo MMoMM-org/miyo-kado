@@ -57,6 +57,14 @@ Per-IP, fixed-window rate limiting. Every response includes rate-limit headers (
 {"error": "Too many requests"}
 ```
 
+Pushbacks are not written to the audit log — that log records gate decisions, and the throttle rejects a request before it reaches the permission chain. With **debug logging** enabled (General settings tab) each 429 emits a console line instead:
+
+```
+[Kado] Rate limit exceeded {"ip":"127.0.0.1","method":"POST","path":"/mcp","count":21,"max":20,"windowMs":5000,"retryAfterSeconds":3}
+```
+
+Set the DevTools console filter to **Verbose** to see it. A burst of these right after a client starts up usually means several MCP clients sharing one source IP completed their handshakes at the same moment — raise the cap or the window.
+
 ---
 
 ## Concurrency

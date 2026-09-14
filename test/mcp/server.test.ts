@@ -8,6 +8,7 @@
 
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {KadoMcpServer, MAX_CONCURRENT, requestCounts} from '../../src/mcp/server';
+import {setDebugLogging} from '../../src/core/logger';
 import {ConfigManager} from '../../src/core/config-manager';
 import type {ServerConfig} from '../../src/types/canonical';
 import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -578,6 +579,49 @@ describe('KadoMcpServer — rate limiting', () => {
 			expect(headers['ratelimit-limit']).toBeUndefined();
 			expect(headers['ratelimit-remaining']).toBeUndefined();
 		} finally {
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('logs a debug line naming the client when a request is pushed back', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+		const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+		setDebugLogging(true);
+
+		requestCounts.set('127.0.0.1', {count: 20, resetAt: Date.now() + 60_000});
+
+		try {
+			await postMcp(port);
+			const line = debugSpy.mock.calls.map((c) => String(c[0])).find((c) => c.includes('Rate limit exceeded'));
+			expect(line).toBeDefined();
+			expect(line).toContain('"ip":"127.0.0.1"');
+			expect(line).toContain('"method":"POST"');
+			expect(line).toContain('"max":20');
+		} finally {
+			setDebugLogging(false);
+			debugSpy.mockRestore();
+			requestCounts.delete('127.0.0.1');
+			await server.stop();
+		}
+	});
+
+	it('stays silent on pushback when debug logging is off', async () => {
+		const port = await getFreePort();
+		const server = makeKadoMcpServer();
+		await server.start(makeServerConfig(port));
+		const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+
+		requestCounts.set('127.0.0.1', {count: 20, resetAt: Date.now() + 60_000});
+
+		try {
+			const {statusCode} = await postMcp(port);
+			expect(statusCode).toBe(429);
+			expect(debugSpy).not.toHaveBeenCalled();
+		} finally {
+			debugSpy.mockRestore();
 			requestCounts.delete('127.0.0.1');
 			await server.stop();
 		}
