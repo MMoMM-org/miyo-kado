@@ -3125,3 +3125,87 @@ describe('SearchAdapter — listNotes', () => {
 		expect(result.items).toHaveLength(0);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// readablePath — read-permission predicate injected by the tools layer.
+// Glob scope alone is insufficient (a matching entry may disable read), so
+// every file-level result must also pass readablePath when it is set.
+// ---------------------------------------------------------------------------
+
+describe('SearchAdapter — readablePath', () => {
+	const notPrivate = (p: string): boolean => !p.startsWith('Private/');
+
+	it('byContent never reads or returns unreadable notes', async () => {
+		const pub = makeTFile({path: 'Public/a.md'});
+		const priv = makeTFile({path: 'Private/test.md'});
+		const app = makeApp({
+			markdownFiles: [pub, priv],
+			readFile: new Map([[pub, 'secret word'], [priv, 'secret word']]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byContent', query: 'secret', scopePatterns: ['**'], readablePath: notPrivate,
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['Public/a.md']);
+		expect(app.vault.read).not.toHaveBeenCalledWith(priv);
+	});
+
+	it('listTags skips unreadable notes even without scopePatterns (blacklist/blacklist)', async () => {
+		const pub = makeTFile({path: 'Public/a.md'});
+		const priv = makeTFile({path: 'Private/test.md'});
+		const app = makeApp({
+			markdownFiles: [pub, priv],
+			cacheMap: new Map([[pub, {tags: [{tag: '#ok'}]}], [priv, {tags: [{tag: '#hidden'}]}]]),
+		});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listTags', allowedTags: ['*'], readablePath: notPrivate, filter: {path: 'Private'},
+		})));
+
+		expect(result.items).toEqual([]);
+	});
+
+	it('byName drops unreadable files even without scopePatterns', async () => {
+		const pub = makeTFile({path: 'Public/report.md'});
+		const priv = makeTFile({path: 'Private/report.md'});
+		const app = makeApp({markdownFiles: [pub, priv]});
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'byName', query: 'report', readablePath: notPrivate,
+		})));
+
+		expect(result.items.map((i) => i.path)).toEqual(['Public/report.md']);
+		expect(result.total).toBe(1);
+	});
+
+	it('listNotes omits unreadable notes and never enriches them', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const result = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listNotes', path: 'Atlas', fields: ['tags'], readablePath: (p) => p !== 'Atlas/note-b.md',
+		})));
+
+		expect(result.items.map((i) => i.path).sort()).toEqual(['Atlas/Public/pub.md', 'Atlas/note-a.md']);
+	});
+
+	it('listDir omits unreadable files and excludes them from childCount', async () => {
+		const {vaultRoot, cacheByPath} = buildNotesTree();
+		const app = makeAppWithTree(vaultRoot, undefined, cacheByPath);
+		const adapter = createSearchAdapter(app as never);
+
+		const all = expectOk(await adapter.search(makeSearchRequest({operation: 'listDir', path: 'Atlas'})));
+		const hidden = expectOk(await adapter.search(makeSearchRequest({
+			operation: 'listDir', path: 'Atlas', readablePath: (p) => p !== 'Atlas/Public/pub.md',
+		})));
+
+		expect(hidden.items.map((i) => i.path)).not.toContain('Atlas/Public/pub.md');
+		const countOf = (r: CoreSearchResult) => r.items.find((i) => i.path === 'Atlas/Public')?.childCount;
+		expect(countOf(hidden)).toBe((countOf(all) ?? 0) - 1);
+	});
+});

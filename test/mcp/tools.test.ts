@@ -126,6 +126,12 @@ function makeReadPermissions() {
 	};
 }
 
+/** All CRUD disabled — a blacklist entry that blocks the path (flags mean the same in both modes). */
+function makeNoPermissions() {
+	const none = {create: false, read: false, update: false, delete: false};
+	return {note: none, frontmatter: none, file: none, dataviewInlineField: none};
+}
+
 function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig {
 	return {
 		listMode: 'whitelist',
@@ -704,7 +710,7 @@ describe('filterResultsByScope()', () => {
 		const config = makeFullConfig({
 			security: makeSecurityConfig({
 				listMode: 'blacklist',
-				paths: [{path: 'private/**', permissions: makeReadPermissions()}],
+				paths: [{path: 'private/**', permissions: makeNoPermissions()}],
 			}),
 			apiKeys: [makeApiKey('key-1', {listMode: 'blacklist', paths: []})],
 		});
@@ -722,7 +728,7 @@ describe('filterResultsByScope()', () => {
 			apiKeys: [
 				makeApiKey('key-1', {
 					listMode: 'blacklist',
-					paths: [{path: 'restricted/**', permissions: makeReadPermissions()}],
+					paths: [{path: 'restricted/**', permissions: makeNoPermissions()}],
 				}),
 			],
 		});
@@ -750,12 +756,12 @@ describe('filterResultsByScope() — folder items', () => {
 			...createDefaultConfig(),
 			security: makeSecurityConfig({
 				listMode: globalListMode,
-				paths: globalPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+				paths: globalPaths.map((p) => ({path: p, permissions: globalListMode === 'blacklist' ? makeNoPermissions() : makeReadPermissions()})),
 			}),
 			apiKeys: [
 				makeApiKey('key-1', {
 					listMode: keyListMode,
-					paths: keyPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+					paths: keyPaths.map((p) => ({path: p, permissions: keyListMode === 'blacklist' ? makeNoPermissions() : makeReadPermissions()})),
 				}),
 			],
 		};
@@ -799,7 +805,7 @@ describe('filterResultsByScope() — folder items', () => {
 	});
 
 	// T4.2-case-4: file items unchanged (regression)
-	it('keeps file items using existing isPathInScope logic — whitelist allows, blacklist blocks', () => {
+	it('keeps file items by read permission — whitelist allows, read-blocking blacklist blocks', () => {
 		const whitelistConfig = makeConfig('whitelist', ['Atlas/**'], 'whitelist', ['Atlas/**']);
 		const fileInScope = makeFileItem('Atlas/note.md');
 		const fileOutOfScope = makeFileItem('Other/note.md');
@@ -917,12 +923,12 @@ describe('computeScopePatterns()', () => {
 			...createDefaultConfig(),
 			security: makeSecurityConfig({
 				listMode: globalListMode,
-				paths: globalPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+				paths: globalPaths.map((p) => ({path: p, permissions: globalListMode === 'blacklist' ? makeNoPermissions() : makeReadPermissions()})),
 			}),
 			apiKeys: [
 				makeApiKey('key-1', {
 					listMode: keyListMode,
-					paths: keyPaths.map((p) => ({path: p, permissions: makeReadPermissions()})),
+					paths: keyPaths.map((p) => ({path: p, permissions: keyListMode === 'blacklist' ? makeNoPermissions() : makeReadPermissions()})),
 				}),
 			],
 		};
@@ -2526,5 +2532,99 @@ describe('kado-read tags return scope', () => {
 		await handler({operation: 'tags', path: 'notes/a.md'}, makeExtra());
 
 		expect(router).toHaveBeenCalledWith(expect.objectContaining({tagsReturnScope: 'all'}));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Result disclosure follows READ permission, not glob membership
+//   key: `**` (read) + `Private/**` (read disabled) — the narrower entry wins,
+//   so nothing under Private/ may surface through search, graph or audit.
+// ---------------------------------------------------------------------------
+
+describe('result disclosure requires read permission', () => {
+	function deniedSubtreeConfig(): Partial<KadoConfig> {
+		return {
+			security: makeSecurityConfig({paths: [{path: '**', permissions: makeReadPermissions()}]}),
+			apiKeys: [makeApiKey('kado_test-key', {
+				paths: [
+					{path: '**', permissions: makeReadPermissions()},
+					{path: 'Private/**', permissions: makeNoPermissions()},
+				],
+			})],
+		};
+	}
+
+	function getHandler(name: string, deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === name)!.handler;
+	}
+
+	function realDeps(router: ToolDependencies['router'], config: Partial<KadoConfig> = deniedSubtreeConfig()): ToolDependencies {
+		return makeDeps({router, configManager: makeConfigManager(config), gates: createDefaultGateChain()});
+	}
+
+	it('kado-search hands the adapter a readablePath predicate that rejects denied paths', async () => {
+		const router = vi.fn(async () => ({items: [], total: 0}));
+		const handler = getHandler('kado-search', realDeps(router));
+
+		await handler({operation: 'byContent', query: 'secret'}, makeExtra());
+
+		const routed = (router.mock.calls as unknown as [CoreSearchRequest][])[0]![0];
+		expect(routed.readablePath).toBeTypeOf('function');
+		expect(routed.readablePath!('Private/test.md')).toBe(false);
+		expect(routed.readablePath!('Public/a.md')).toBe(true);
+	});
+
+	it('kado-graph drops denied resolved nodes and strips denied paths from via', async () => {
+		const router = vi.fn(async () => ({
+			source: 'Public/a.md',
+			operation: 'related' as const,
+			nodes: [
+				{path: 'Public/c.md', relation: 'related' as const, via: ['Private/p.md', 'Public/b.md']},
+				{path: 'Public/d.md', relation: 'related' as const, via: ['Private/p.md']},
+				{path: 'Private/q.md', relation: 'related' as const, via: ['Public/b.md']},
+			],
+		}));
+		const handler = getHandler('kado-graph', realDeps(router));
+
+		const result = await handler({operation: 'related', path: 'Public/a.md'}, makeExtra());
+		const body = JSON.parse(getFirstText(result)) as {nodes: Array<{path: string; via?: string[]}>};
+
+		expect(body.nodes).toEqual([{path: 'Public/c.md', relation: 'related', via: ['Public/b.md']}]);
+		expect(getFirstText(result)).not.toContain('Private/');
+	});
+
+	it('kado-graph-audit omits orphans and dead links from denied notes', async () => {
+		const router = vi.fn(async () => ({
+			orphans: [{path: 'Public/o.md'}, {path: 'Private/o.md'}],
+			deadLinks: [
+				{source: 'Public/a.md', target: 'Missing', count: 1},
+				{source: 'Private/a.md', target: 'Secret Target', count: 1},
+			],
+		}));
+		const handler = getHandler('kado-graph-audit', realDeps(router));
+
+		const result = await handler({}, makeExtra());
+
+		expect(getFirstText(result)).not.toContain('Private/');
+		expect(getFirstText(result)).not.toContain('Secret Target');
+	});
+
+	it('kado-graph-audit returns nothing to a key whose scope disables every CRUD flag', async () => {
+		const router = vi.fn(async () => ({
+			orphans: [{path: 'Notes/o.md'}],
+			deadLinks: [{source: 'Notes/a.md', target: 'Missing', count: 1}],
+		}));
+		const config: Partial<KadoConfig> = {
+			security: makeSecurityConfig({paths: [{path: '**', permissions: makeReadPermissions()}]}),
+			apiKeys: [makeApiKey('kado_test-key', {paths: [{path: '**', permissions: makeNoPermissions()}]})],
+		};
+		const handler = getHandler('kado-graph-audit', realDeps(router, config));
+
+		const body = JSON.parse(getFirstText(await handler({}, makeExtra()))) as {orphans: unknown[]; deadLinks: unknown[]};
+
+		expect(body.orphans).toEqual([]);
+		expect(body.deadLinks).toEqual([]);
 	});
 });

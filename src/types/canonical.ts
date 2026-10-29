@@ -172,6 +172,12 @@ export interface CoreSearchRequest {
 	scopePatterns?: string[];
 	/** Permitted tag patterns for tag-based operations (set by tools layer from key config). */
 	allowedTags?: string[];
+	/**
+	 * Read-permission predicate for file-level results (set by tools layer via
+	 * canReadPath). Glob scope alone is insufficient: a matching entry may still
+	 * disable read. When set, every returned or content-read file must pass it.
+	 */
+	readablePath?: (path: string) => boolean;
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
 }

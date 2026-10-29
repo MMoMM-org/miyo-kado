@@ -1,6 +1,6 @@
 # ADR-004: Pathless / Vault-Wide Tool Authorization
 
-*Status:* Accepted
+*Status:* Accepted (amended 2026-10-29: the per-node predicate requires read permission, see "Amendment")
 *Date:* 2026-10-01 (records the design shipped in Kado 1.2.0, 2026-07-18, #98/#99)
 
 ## Context and Problem Statement
@@ -19,7 +19,7 @@ A pathless tool runs `authenticateGate.evaluate(request, config)` directly: a va
 
 ### 2. Enforce disclosure per result node, in the tool layer
 
-After the Core returns the unfiltered vault-wide result, the MCP tool layer drops every node the key may not see, using `isPathPermittedForKey(path, key, config)` (global AND key path scope). This is the same predicate used by `kado-graph` and `kado-open-notes`. Each node is filtered by the path it **discloses**:
+After the Core returns the unfiltered vault-wide result, the MCP tool layer drops every node the key may not see, using `isPathPermittedForKey(path, key, config)`, which delegates to `canReadPath` (read permission resolved like the gates: global ∩ key, most specific entry wins; `note.read` for markdown, `file.read` otherwise). This is the same predicate used by `kado-graph`, `kado-open-notes` and `kado-search`. Each node is filtered by the path it **discloses**:
 
 - **Orphans** are real note paths, so each is filtered by its own path.
 - **Dead links** are filtered by their `source` path. The `target` is unresolved link *text*, not a path, so it rides on the source note's visibility. This is the same rule as `kado-graph`'s `dangling` exemption (ADR-002) and the `listNotes` source-note boundary ([decisions.md 2026-06-04]).
@@ -32,7 +32,7 @@ Out-of-scope nodes are **silently omitted**: no error, no count, no existence si
 
 ### Invariant
 
-> A pathless tool's response contains only nodes whose disclosing path lies within the calling key's global AND key path scope. Every count and cursor it returns is derived from the filtered set.
+> A pathless tool's response contains only nodes whose disclosing path the calling key may read (global AND key scope, read flag of the most specific entry). Every count and cursor it returns is derived from the filtered set.
 
 ## Options Considered
 
@@ -56,10 +56,23 @@ No new gates and no new config. It reuses the existing scope predicate and the p
 - **No count leaks** — post-ACL totals mean an allowed-only key can't infer how much lies outside its scope.
 
 ### Negative / Risks
-- **Path scope, not datatype permission.** `isPathPermittedForKey` checks path *scope* only, not the per-path `DataTypePermissions`. A key whose rule matches a path but grants no `note.read` there (e.g. frontmatter-only) still sees that path's orphans, and the dead-link target text from those notes' bodies. `kado-graph` doesn't have this gap, because it gates `note.read` on the source first (ADR-002 §1). The exposure is limited to paths already inside the key's scope. Tightening the per-node filter to also require `note.read` is a candidate follow-up.
+- ~~**Path scope, not datatype permission.**~~ Resolved by the 2026-10-29 amendment below.
 - **Unfiltered work in the Core** — the adapter computes the full vault-wide result before the tool layer filters it. The cost scales with vault size, not key scope. This is acceptable because the data comes from Obsidian's in-memory link maps, with no per-note disk reads.
 - **Union-type friction** — the pathless `CoreGraphAuditRequest` has no `operation`. Code that assumed every `CoreRequest` has one (`extractDataType`, `debugFields`, audit logging) now guards with `'operation' in request`. The request is audited as a note read.
 - **Index lag inherited** — the same characteristic as `kado-graph` and `kado-search`.
+
+## Amendment (2026-10-29): read permission, not glob membership
+
+The original predicate only asked whether a path *matched* a scope pattern. It ignored the CRUD flags of the matching entry. With a key `**` (read) + `Private/**` (read disabled), the per-path gates correctly denied `Private/…`, but the result filters still treated it as in scope. The same pattern-only check also fed `kado-search` (`computeScopePatterns`) and `kado-graph`. In blacklist mode it over-filtered: an entry that only blocks `delete` hid the path entirely.
+
+**Decision:** `canReadPath(path, config, key)` (`src/core/gates/datatype-permission.ts`) is the single result-disclosure predicate. It resolves permissions exactly like the gates (`resolveScope`, global ∩ key, most specific entry wins) and checks `note.read` for markdown and `file.read` for other files. `isPathPermittedForKey` delegates to it. Consequences:
+
+- `kado-graph-audit` and `kado-open-notes` return nothing from paths the key cannot read, including keys whose scope matches a path but disables every CRUD flag.
+- `kado-graph` additionally filters the `via` hops of `related` nodes and drops a node when no readable hop remains.
+- `kado-search` passes the predicate to the adapter as `CoreSearchRequest.readablePath`. Every file-level result (and `byContent` file read, `listTags` count, `listDir` `childCount`) must pass it before pagination.
+- Folder items stay pattern-based (`isFolderInScope`): folders carry no read flag of their own.
+
+Option 4 above is unchanged in shape (authenticate, filter each node, post-ACL totals). Only the predicate got stricter.
 
 ## References
 

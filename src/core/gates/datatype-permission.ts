@@ -140,6 +140,19 @@ export function resolveTagsReturnScope(
 }
 
 /**
+ * Returns true when `key` may read the item at `path`: note.read for markdown,
+ * file.read for any other file, resolved exactly like the gates (global ∩ key,
+ * most specific entry wins). Single source of truth for result disclosure in
+ * search, graph, graph-audit and open-notes — a glob match alone is not enough,
+ * because a matching entry may still disable read.
+ */
+export function canReadPath(path: string, config: KadoConfig, key: KadoConfig['apiKeys'][number]): boolean {
+	const effective = resolveEffectivePermissions(path, config, key.id, key);
+	if (effective === null) return false;
+	return path.toLowerCase().endsWith('.md') ? effective.note.read : effective.file.read;
+}
+
+/**
  * Evaluates a tags read: granted by note.read (full scope) OR frontmatter.read
  * (frontmatter-only scope). Denies only when both permissions are missing.
  */

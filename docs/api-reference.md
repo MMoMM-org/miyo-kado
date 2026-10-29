@@ -1168,12 +1168,12 @@ Each item in `items`:
 
 ### Scope Filtering
 
-Search results are filtered to only include items within the calling key's permitted path scope. Both the global security scope and the key-specific scope are applied:
+Search results only include files the calling key may **read**. Permissions are resolved like a direct read: the global security scope and the key-specific scope are intersected, and within each the most specific matching path entry decides. Markdown files need `note.read`, other files `file.read`. A path that matches a broad pattern (e.g. `**`) but whose more specific entry disables read (e.g. `Private/**`) is excluded. `byContent` never reads such files, and `listTags` never counts their tags.
 
-- **Whitelist mode**: only items matching at least one permitted path pattern are returned.
-- **Blacklist mode**: items matching any blocked path pattern are excluded.
+- **Whitelist mode**: unlisted paths are excluded.
+- **Blacklist mode**: unlisted paths are allowed; a listed entry applies its own CRUD flags (an entry that only blocks `delete` stays searchable).
 
-For `listDir`, both files and folders are scope-filtered. Folders appear if they could contain in-scope items; files appear only if they directly match a scope pattern. Use `**` as the scope pattern for full vault access.
+For `listDir`, folders appear if they could contain in-scope items. Files and folder `childCount` follow the read rule above. Use `**` as the scope pattern for full vault access.
 
 For `listTags` and `byTag`, results also respect the key's allowed tags (the intersection of global and key-level tag lists).
 

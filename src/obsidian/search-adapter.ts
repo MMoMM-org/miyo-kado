@@ -20,6 +20,9 @@ const BATCH_SIZE = 20;
 
 type SearchResult = CoreSearchResult | CoreError;
 
+/** Read-permission predicate for a file path (see CoreSearchRequest.readablePath). */
+type ReadablePath = (path: string) => boolean;
+
 function encodeOffset(offset: number): string {
 	return btoa(String(offset));
 }
@@ -204,7 +207,7 @@ function mapFolderToItem(folder: TFolder, childCount: number): CoreSearchItem {
  * Hidden children (dot-prefixed) are always excluded.
  * When scope is provided, folders and files outside scope are excluded.
  */
-function visibleChildCount(folder: TFolder, scope?: string[]): number {
+function visibleChildCount(folder: TFolder, scope?: string[], readable?: ReadablePath): number {
 	let count = 0;
 	for (const child of folder.children) {
 		if (child.name.startsWith('.')) continue;
@@ -213,6 +216,7 @@ function visibleChildCount(folder: TFolder, scope?: string[]): number {
 			count++;
 		} else if (child instanceof TFile) {
 			if (scope && !pathMatchesPatterns(child.path, scope)) continue;
+			if (readable && !readable(child.path)) continue;
 			count++;
 		}
 	}
@@ -231,16 +235,18 @@ function walk(
 	maxDepth: number | undefined,
 	scope: string[] | undefined,
 	out: CoreSearchItem[],
+	readable?: ReadablePath,
 ): void {
 	for (const child of folder.children) {
 		if (child.name.startsWith('.')) continue;
 		if (child instanceof TFolder) {
 			if (scope && !folderInScope(child.path, scope)) continue;
-			out.push(mapFolderToItem(child, visibleChildCount(child, scope)));
+			out.push(mapFolderToItem(child, visibleChildCount(child, scope, readable)));
 			const shouldRecurse = maxDepth === undefined || currentDepth + 1 < maxDepth;
-			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, scope, out);
+			if (shouldRecurse) walk(child, currentDepth + 1, maxDepth, scope, out, readable);
 		} else if (child instanceof TFile) {
 			if (scope && !pathMatchesPatterns(child.path, scope)) continue;
+			if (readable && !readable(child.path)) continue;
 			out.push({
 				path: child.path,
 				name: child.name,
@@ -277,7 +283,7 @@ function listDir(app: App, request: CoreSearchRequest): CoreSearchItem[] | CoreE
 		};
 	}
 	const items: CoreSearchItem[] = [];
-	walk(resolved.folder, 0, request.depth, request.scopePatterns, items);
+	walk(resolved.folder, 0, request.depth, request.scopePatterns, items, request.readablePath);
 	items.sort(compareListDirItems);
 	return items;
 }
@@ -331,7 +337,7 @@ function listNotes(app: App, request: CoreSearchRequest): CoreSearchItem[] | Cor
 	}
 
 	const walked: CoreSearchItem[] = [];
-	walk(resolved.folder, 0, request.depth, request.scopePatterns, walked);
+	walk(resolved.folder, 0, request.depth, request.scopePatterns, walked, request.readablePath);
 
 	const fields = new Set(request.fields ?? []);
 	const wantLinks = fields.has('links');
@@ -427,9 +433,10 @@ async function byContent(app: App, request: CoreSearchRequest): Promise<CoreSear
 	const query = request.query ?? '';
 	const prefix = request.filter?.path ?? '';
 	const allFiles = app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
-	const files = request.scopePatterns !== undefined
-		? allFiles.filter((f) => fileInScope(f, request.scopePatterns!))
-		: allFiles;
+	const readable = request.readablePath;
+	const files = allFiles.filter((f) =>
+		(request.scopePatterns === undefined || fileInScope(f, request.scopePatterns))
+		&& (readable === undefined || readable(f.path)));
 	const results: CoreSearchItem[] = [];
 	for (let i = 0; i < files.length; i += BATCH_SIZE) {
 		const batch = files.slice(i, i + BATCH_SIZE);
@@ -567,7 +574,7 @@ function enforceTagPermissions(filterTags: string[], allowedTags: string[] | und
  * - allowedTags: only include tags the key has permission for
  * - filter: universal cross-operation filters (path prefix, tag filter, frontmatter filter)
  */
-function listTags(app: App, scopePatterns?: string[], allowedTags?: string[], filter?: SearchFilter): CoreSearchItem[] {
+function listTags(app: App, scopePatterns?: string[], allowedTags?: string[], filter?: SearchFilter, readable?: ReadablePath): CoreSearchItem[] {
 	if (allowedTags !== undefined && allowedTags.length === 0) return [];
 
 	const parsedFm = filter?.frontmatter ? parseFrontmatterFilter(filter.frontmatter) : undefined;
@@ -582,6 +589,7 @@ function listTags(app: App, scopePatterns?: string[], allowedTags?: string[], fi
 			if (scopePatterns.length === 0 || !fileInScope(file, scopePatterns)) continue;
 		}
 		if (filter?.path && !file.path.startsWith(filter.path)) continue;
+		if (readable && !readable(file.path)) continue;
 		const cache = app.metadataCache.getFileCache(file);
 		if (parsedFm && !matchesFrontmatterFilter(cache?.frontmatter, parsedFm)) continue;
 		const tags = getFileTags(cache);
@@ -697,7 +705,7 @@ export function createSearchAdapter(app: App): SearchAdapter {
 					items = byName(app, request);
 					break;
 				case 'listTags':
-					items = listTags(app, request.scopePatterns, request.allowedTags, request.filter);
+					items = listTags(app, request.scopePatterns, request.allowedTags, request.filter, request.readablePath);
 					break;
 				case 'byContent':
 					items = await byContent(app, request);
@@ -735,10 +743,14 @@ export function createSearchAdapter(app: App): SearchAdapter {
 				}
 			}
 
-			// Apply scope filtering before pagination so total and cursor are accurate.
+			// Apply scope + read filtering before pagination so total and cursor are accurate.
 			// listTags is already pre-filtered at the file level inside listTags().
-			if (request.scopePatterns !== undefined && request.operation !== 'listTags') {
-				items = filterItemsByScope(items, request.scopePatterns);
+			if (request.operation !== 'listTags') {
+				if (request.scopePatterns !== undefined) {
+					items = filterItemsByScope(items, request.scopePatterns);
+				}
+				const readable = request.readablePath;
+				if (readable) items = items.filter((item) => item.type === 'folder' || readable(item.path));
 			}
 
 			return paginate(items, request.cursor, limit);

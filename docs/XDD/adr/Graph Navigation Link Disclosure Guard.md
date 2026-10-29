@@ -22,7 +22,7 @@ The Core must therefore decide (a) what permission authorizes a graph traversal 
 
 ### 2. Scope-filter resolved result nodes; never filter dangling
 
-After traversal, the tool layer (`registerGraphTool` in `src/mcp/tools.ts`) **drops every resolved result node the key cannot read**, using the same `isPathPermittedForKey` predicate as `kado-open-notes`' ACL filter (global AND key path scope). Out-of-scope neighbours are **silently omitted** — no error, no count, no existence signal — the same privacy invariant as open-notes' silent ACL filtering ([decisions.md 2026-04-20]).
+After traversal, the tool layer (`registerGraphTool` in `src/mcp/tools.ts`) **drops every resolved result node the key cannot read**, using the same `isPathPermittedForKey` predicate as `kado-open-notes`' ACL filter (read permission via `canReadPath`, global AND key scope; see ADR-004 amendment 2026-10-29). The `via` hops of `related` nodes are filtered the same way, and a node whose hops are all unreadable is dropped. Out-of-scope neighbours are **silently omitted** — no error, no count, no existence signal — the same privacy invariant as open-notes' silent ACL filtering ([decisions.md 2026-04-20]).
 
 `dangling` targets are the **exception**: they are the source note's own unresolved link *text* (raw strings, not paths, that resolve to nothing), identical in nature to `listNotes` raw outlinks. The key can already read that text via `operation='note'`, so dangling targets are returned unfiltered.
 

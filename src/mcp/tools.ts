@@ -43,13 +43,13 @@ import type {
 } from '../types/canonical';
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
-import {matchGlob, dirCouldContainMatches} from '../core/glob-match';
+import {dirCouldContainMatches} from '../core/glob-match';
 import {matchTag} from '../core/tag-utils';
 import {kadoLog} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
 import {authenticateGate} from '../core/gates/authenticate';
-import {resolveTagsReturnScope} from '../core/gates/datatype-permission';
+import {resolveTagsReturnScope, canReadPath} from '../core/gates/datatype-permission';
 import type {RouteResult} from '../core/operation-router';
 
 // ============================================================
@@ -259,15 +259,13 @@ function missingAuthError(): CallToolResult {
 }
 
 /**
- * Returns true when a file path is permitted by both the global scope and the key scope.
- * Shared predicate used by filterResultsByScope and filterDescriptorsByAcl to avoid
- * duplicating glob-matching logic — any future change to whitelist/blacklist semantics
- * applies to both.
+ * Returns true when the key may READ the file at `path` (global ∩ key, most
+ * specific entry wins — see canReadPath). Shared result-disclosure predicate for
+ * search, graph, graph-audit and open-notes. A glob match alone is not enough: a
+ * matching entry may still disable read.
  */
 export function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
-	const inGlobal = isPathInScope(path, config.security.listMode, config.security.paths.map((p) => p.path));
-	const inKey = isPathInScope(path, key.listMode, key.paths.map((p) => p.path));
-	return inGlobal && inKey;
+	return canReadPath(path, config, key);
 }
 
 /** Filters search result items to only include paths within the key's permitted scope. */
@@ -297,15 +295,6 @@ function isFolderInScope(folderPath: string, listMode: string, patterns: string[
 	return listMode === 'whitelist' ? couldMatchChild : !couldMatchChild;
 }
 
-/**
- * Returns true when path is permitted by a whitelist/blacklist scope.
- * Whitelist: path must match at least one listed pattern.
- * Blacklist: path must NOT match any listed pattern.
- */
-function isPathInScope(path: string, listMode: string, patterns: string[]): boolean {
-	const matched = patterns.some((p) => matchGlob(p, path));
-	return listMode === 'whitelist' ? matched : !matched;
-}
 
 /**
  * Returns the intersection of global and key path patterns that a file must match.
@@ -809,6 +798,8 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		// Inject scope info so the adapter can pre-filter
 		request.scopePatterns = computeScopePatterns(keyId, config);
 		request.allowedTags = computeAllowedTags(keyId, config);
+		const searchKey = config.apiKeys.find((k) => k.id === keyId);
+		request.readablePath = searchKey ? (path) => canReadPath(path, config, searchKey) : () => false;
 
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
@@ -1004,9 +995,17 @@ function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
 			// raw unresolved strings, not paths — so they are not path-filtered.
 			const graphResult = result as CoreGraphResult;
 			const key = config.apiKeys.find((k) => k.id === keyId);
-			const nodes = key
-				? graphResult.nodes.filter((n) => n.relation === 'dangling' || isPathPermittedForKey(n.path, key, config))
-				: [];
+			// A related node's `via` names the 1-hop notes it was reached through —
+			// filter those too, and drop the node when no readable hop remains
+			// (otherwise it reveals a link path through a hidden note).
+			const readable = (p: string): boolean => key !== undefined && isPathPermittedForKey(p, key, config);
+			const nodes = graphResult.nodes.flatMap((n) => {
+				if (n.relation === 'dangling') return key ? [n] : [];
+				if (!readable(n.path)) return [];
+				if (n.via === undefined) return [n];
+				const via = n.via.filter(readable);
+				return via.length > 0 ? [{...n, via}] : [];
+			});
 			await logAllowed('kado-graph', deps, keyId, request, startMs);
 			return mapGraphResult({...graphResult, nodes});
 		} catch (err: unknown) {

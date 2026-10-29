@@ -9,7 +9,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {dataTypePermissionGate, resolveTagsReturnScope} from '../../../src/core/gates/datatype-permission';
+import {dataTypePermissionGate, resolveTagsReturnScope, canReadPath} from '../../../src/core/gates/datatype-permission';
 import type {
 	ApiKeyConfig,
 	CoreDeleteRequest,
@@ -717,5 +717,74 @@ describe('dataTypePermissionGate.evaluate() — partial note write action infere
 			expect(result.error.code).toBe('FORBIDDEN');
 			expect(result.error.gate).toBe('datatype-permission');
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// canReadPath — result-disclosure predicate (search / graph / audit / open-notes)
+// ---------------------------------------------------------------------------
+
+describe('canReadPath()', () => {
+	const noRead = (): DataTypePermissions => ({
+		...makeAllTruePermissions(),
+		note: {create: true, read: false, update: true, delete: true},
+		file: {create: true, read: false, update: true, delete: true},
+	});
+
+	function whitelistWithDeniedSubtree(): KadoConfig {
+		const key = makeApiKey('kado_k', {
+			paths: [makePathPermission('**'), makePathPermission('Private/**', noRead())],
+		});
+		return makeConfig(makeSecurityConfig({paths: [makePathPermission('**')]}), [key]);
+	}
+
+	it('denies a path whose most specific key entry disables read even though a broader pattern matches', () => {
+		const config = whitelistWithDeniedSubtree();
+		expect(canReadPath('Private/test.md', config, config.apiKeys[0]!)).toBe(false);
+		expect(canReadPath('Public/a.md', config, config.apiKeys[0]!)).toBe(true);
+	});
+
+	it('denies a path whose global entry disables read', () => {
+		const security = makeSecurityConfig({paths: [makePathPermission('**'), makePathPermission('Private/**', noRead())]});
+		const config = makeConfig(security, [makeApiKey('kado_k', {paths: [makePathPermission('**')]})]);
+		expect(canReadPath('Private/test.md', config, config.apiKeys[0]!)).toBe(false);
+	});
+
+	it('uses note.read for markdown and file.read for other files', () => {
+		const perms: DataTypePermissions = {
+			...makeAllFalsePermissions(),
+			file: {create: false, read: true, update: false, delete: false},
+		};
+		const config = makeConfig(makeSecurityConfig({paths: [makePathPermission('**')]}), [
+			makeApiKey('kado_k', {paths: [makePathPermission('**', perms)]}),
+		]);
+		expect(canReadPath('a/image.png', config, config.apiKeys[0]!)).toBe(true);
+		expect(canReadPath('a/note.md', config, config.apiKeys[0]!)).toBe(false);
+	});
+
+	it('denies a path with all CRUD disabled', () => {
+		const config = makeConfig(makeSecurityConfig({paths: [makePathPermission('**')]}), [
+			makeApiKey('kado_k', {paths: [makePathPermission('**', makeAllFalsePermissions())]}),
+		]);
+		expect(canReadPath('a/note.md', config, config.apiKeys[0]!)).toBe(false);
+	});
+
+	it('keeps a blacklisted path readable when its entry only blocks delete', () => {
+		const onlyNoDelete: DataTypePermissions = {
+			...makeAllTruePermissions(),
+			note: {create: true, read: true, update: true, delete: false},
+		};
+		const config = makeConfig(makeSecurityConfig({listMode: 'blacklist'}), [
+			makeApiKey('kado_k', {listMode: 'blacklist', paths: [makePathPermission('Archive/**', onlyNoDelete)]}),
+		]);
+		expect(canReadPath('Archive/old.md', config, config.apiKeys[0]!)).toBe(true);
+	});
+
+	it('denies a blacklisted path whose entry blocks read', () => {
+		const config = makeConfig(makeSecurityConfig({listMode: 'blacklist', paths: [makePathPermission('Private/**', noRead())]}), [
+			makeApiKey('kado_k', {listMode: 'blacklist'}),
+		]);
+		expect(canReadPath('Private/test.md', config, config.apiKeys[0]!)).toBe(false);
+		expect(canReadPath('Other/test.md', config, config.apiKeys[0]!)).toBe(true);
 	});
 });
