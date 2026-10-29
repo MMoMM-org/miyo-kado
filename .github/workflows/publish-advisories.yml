@@ -3,8 +3,11 @@
 # checks the date and flips each listed advisory from draft to published.
 #
 # Configuration (repository settings → Secrets and variables → Actions):
-#   secret   ADVISORY_PUBLISH_TOKEN  classic PAT with `repository_advisories:write`
-#                                    (GITHUB_TOKEN cannot update advisories)
+#   secret   ADVISORY_PUBLISH_TOKEN  fine-grained PAT, this repository only, with
+#                                    "Repository security advisories: Read and write"
+#                                    (GITHUB_TOKEN cannot update advisories; a classic
+#                                    PAT would need the full `repo` scope, and
+#                                    `security_events` is code/secret scanning only)
 #   secret   ADVISORY_IDS            space-separated GHSA IDs to publish
 #   variable ADVISORY_PUBLISH_DATE   YYYY-MM-DD (UTC); publishing starts that day
 #
