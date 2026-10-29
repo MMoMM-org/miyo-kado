@@ -90,11 +90,21 @@ export function createRenameAdapter(app: App): RenameAdapter {
 			const src = app.vault.getAbstractFileByPath(request.source);
 			if (!src) throw notFoundError(request.source);
 
+			// The tool layer picked the permission policy from the DECLARED operation
+			// (folder → whole-subtree gate, note/file → single-path gate). Refuse a
+			// mismatch with the real object, or a folder could be renamed under the
+			// weaker single-path check and escape subtree deny rules.
 			if (src instanceof TFolder) {
+				if (request.operation !== 'folder') {
+					throw validationError(`Source is a folder — use operation="folder": ${request.source}`);
+				}
 				return renameFolder(app, request, src);
 			}
 			// Only a file remains (a folder returned above; null threw NOT_FOUND).
 			if (!(src instanceof TFile)) throw notFoundError(request.source);
+			if (request.operation === 'folder') {
+				throw validationError(`Source is a file, not a folder — use operation="note" or "file": ${request.source}`);
+			}
 			const file = src;
 
 			const existing = app.vault.getAbstractFileByPath(request.target);

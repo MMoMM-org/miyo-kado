@@ -258,4 +258,40 @@ describe('createRenameAdapter() — folder rename (in-place)', () => {
 			.rejects
 			.toMatchObject({code: 'NOT_FOUND'});
 	});
+
+	// The permission policy is chosen from the declared operation; the folder
+	// policy gates the whole subtree, the file policy only the single path. A
+	// folder renamed under operation=note|file would bypass subtree deny rules.
+	it.each(['note', 'file'] as const)('refuses a folder source declared as operation=%s with VALIDATION_ERROR', async (operation) => {
+		const folder = makeTFolder('Rename/old');
+		const renameFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({
+			getAbstractFileByPath: vi.fn((p: string) => (p === 'Rename/old' ? folder : null)),
+			renameFile,
+		});
+		const adapter = createRenameAdapter(app as never);
+
+		await expect(adapter.rename({...folderRequest('Rename/old', 'Rename/new'), operation}))
+			.rejects
+			.toMatchObject({code: 'VALIDATION_ERROR', message: expect.stringContaining('operation="folder"')});
+		expect(renameFile).not.toHaveBeenCalled();
+	});
+
+	it('refuses a file source declared as operation=folder with VALIDATION_ERROR', async () => {
+		const file = new TFile();
+		file.path = 'Projects/note.md';
+		file.name = 'note.md';
+		file.stat = {ctime: 1000, mtime: 2000, size: 512};
+		const renameFile = vi.fn().mockResolvedValue(undefined);
+		const app = makeApp({
+			getAbstractFileByPath: vi.fn((p: string) => (p === 'Projects/note.md' ? file : p === 'Projects' ? makeTFolder('Projects') : null)),
+			renameFile,
+		});
+		const adapter = createRenameAdapter(app as never);
+
+		await expect(adapter.rename(folderRequest('Projects/note.md', 'Projects/other.md')))
+			.rejects
+			.toMatchObject({code: 'VALIDATION_ERROR', message: expect.stringContaining('is a file')});
+		expect(renameFile).not.toHaveBeenCalled();
+	});
 });
