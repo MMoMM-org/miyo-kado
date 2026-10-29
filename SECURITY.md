@@ -12,6 +12,8 @@ I aim to respond within 7 days. Coordinated disclosure is appreciated for issues
 
 Confirmed vulnerabilities are tracked as private GitHub security advisories and fixed in the advisory's temporary private fork. The advisory is published 7 days after the release that contains the fix, so users have time to update. Publishing is automated by `.github/workflows/publish-advisories.yml`.
 
+Release note for maintainers: an advisory-fork merge lands on `master` as a single `Merge commit from fork` commit, which semantic-release does not classify, so it cuts no release. After all advisory PRs are merged, ship them with one squash-merged PR titled `fix(security): …`. Merge stacked advisory PRs one at a time and rebase the next one onto `master` in between, because the merge squashes the branch and changes the commit SHAs.
+
 ---
 
 ## What ships to your vault
