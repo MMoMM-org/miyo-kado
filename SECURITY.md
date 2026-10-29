@@ -85,10 +85,13 @@ The full request flow passes through five permission gates in order — see `doc
 
 Tracked as GitHub Issues:
 
-- [#8](https://github.com/MMoMM-org/miyo-kado/issues/8) Blacklist permission-flag semantics inconsistent across CRUD actions
 - [#9](https://github.com/MMoMM-org/miyo-kado/issues/9) Settings tab stale after plugin reload (UX, not security)
 - [#10](https://github.com/MMoMM-org/miyo-kado/issues/10) Transient file truncation after `vault.adapter.write()` (Obsidian-internal)
 - [#11](https://github.com/MMoMM-org/miyo-kado/issues/11) MCP SDK does not handle 429 `Retry-After` (upstream SDK gap)
+
+### Security fixes
+
+- **1.3.1** — Permission enforcement hardened: search, graph, graph-audit and open-notes results now require read permission on each returned path (not just a matching scope pattern); folder renames require `operation="folder"`; tag reads honour frontmatter-only access. Upgrade recommended for any setup that denies read on part of a granted area. Advisories are published 7 days after release.
 
 ---
 
@@ -98,5 +101,5 @@ Only the latest minor version receives security patches. Kado follows semantic v
 
 | Version | Supported |
 |---|---|
-| 0.9.x | ✅ |
-| < 0.9.0 | ❌ Please upgrade |
+| 1.3.x (≥ 1.3.1) | ✅ |
+| < 1.3.1 | ❌ Please upgrade |
