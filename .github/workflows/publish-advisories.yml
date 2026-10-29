@@ -1,0 +1,50 @@
+# Publishes draft repository security advisories once a coordinated-disclosure
+# date is reached. GitHub has no native scheduled publishing, so a daily cron
+# checks the date and flips each listed advisory from draft to published.
+#
+# Configuration (repository settings → Secrets and variables → Actions):
+#   secret   ADVISORY_PUBLISH_TOKEN  classic PAT with `repository_advisories:write`
+#                                    (GITHUB_TOKEN cannot update advisories)
+#   secret   ADVISORY_IDS            space-separated GHSA IDs to publish
+#   variable ADVISORY_PUBLISH_DATE   YYYY-MM-DD (UTC); publishing starts that day
+#
+# Idempotent: advisories that are not in draft state are skipped, so the job is
+# a no-op after publishing and when nothing is configured.
+name: Publish security advisories
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft advisories when the disclosure date is reached
+        env:
+          GH_TOKEN: ${{ secrets.ADVISORY_PUBLISH_TOKEN }}
+          ADVISORY_IDS: ${{ secrets.ADVISORY_IDS }}
+          PUBLISH_DATE: ${{ vars.ADVISORY_PUBLISH_DATE }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$PUBLISH_DATE" ] || [ -z "$ADVISORY_IDS" ] || [ -z "$GH_TOKEN" ]; then
+            echo "Nothing configured — skipping."
+            exit 0
+          fi
+          today=$(date -u +%F)
+          if [[ "$today" < "$PUBLISH_DATE" ]]; then
+            echo "Disclosure date $PUBLISH_DATE not reached (today $today) — skipping."
+            exit 0
+          fi
+          for id in $ADVISORY_IDS; do
+            state=$(gh api "repos/$REPO/security-advisories/$id" --jq .state)
+            if [ "$state" != "draft" ]; then
+              echo "$id is '$state' — skipping."
+              continue
+            fi
+            gh api -X PATCH "repos/$REPO/security-advisories/$id" -f state=published --jq '.ghsa_id + " → " + .state'
+          done
