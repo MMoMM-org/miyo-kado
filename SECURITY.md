@@ -10,6 +10,8 @@ If you discover a security issue in MiYo Kado, please **do not** open a public G
 
 I aim to respond within 7 days. Coordinated disclosure is appreciated for issues that affect user vault contents or credential handling.
 
+Confirmed vulnerabilities are tracked as private GitHub security advisories and fixed in the advisory's temporary private fork. The advisory is published 7 days after the release that contains the fix, so users have time to update. Publishing is automated by `.github/workflows/publish-advisories.yml`.
+
 ---
 
 ## What ships to your vault
