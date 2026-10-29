@@ -1,3 +1,9 @@
+## [1.3.2](https://github.com/MMoMM-org/miyo-kado/compare/1.3.1...1.3.2) (2026-10-29)
+
+### Bug Fixes
+
+* **deps:** update bundled runtime dependencies and dev toolchain ([#124](https://github.com/MMoMM-org/miyo-kado/issues/124)) ([c2821b3](https://github.com/MMoMM-org/miyo-kado/commit/c2821b343d85562f20134ff0e478fa5f125cc791)), closes [#40](https://github.com/MMoMM-org/miyo-kado/issues/40) [#114](https://github.com/MMoMM-org/miyo-kado/issues/114) [#115](https://github.com/MMoMM-org/miyo-kado/issues/115)
+
 ## [1.3.1](https://github.com/MMoMM-org/miyo-kado/compare/1.3.0...1.3.1) (2026-10-29)
 
 ### Bug Fixes
