@@ -16,12 +16,16 @@ const mockMcpStart = vi.fn(async () => {});
 const mockMcpStop = vi.fn(async () => {});
 const mockIsRunning = vi.fn(() => false);
 
+// `function` (not an arrow): vitest 4 mocks are only constructible with `new`
+// when their implementation is a regular function.
 vi.mock('../src/mcp/server', () => ({
-	KadoMcpServer: vi.fn().mockImplementation(() => ({
-		start: mockMcpStart,
-		stop: mockMcpStop,
-		isRunning: mockIsRunning,
-	})),
+	KadoMcpServer: vi.fn().mockImplementation(function () {
+		return {
+			start: mockMcpStart,
+			stop: mockMcpStop,
+			isRunning: mockIsRunning,
+		};
+	}),
 }));
 
 // ---------------------------------------------------------------------------
