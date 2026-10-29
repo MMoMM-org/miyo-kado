@@ -108,8 +108,8 @@ export const dataTypePermissionGate: PermissionGate = {
 		}
 
 		// Tags is a read-only derivative: allowed when note.read OR frontmatter.read
-		// is granted. The scope is attached to the request so the adapter can
-		// shape the result accordingly (frontmatter-only vs all).
+		// is granted. The read tool resolves the return scope separately via
+		// resolveTagsReturnScope (frontmatter-only vs all).
 		if (isCoreReadRequest(request) && request.operation === 'tags') {
 			return evaluateTagsPermission(request, config, key);
 		}
@@ -121,28 +121,37 @@ export const dataTypePermissionGate: PermissionGate = {
 };
 
 /**
+ * Resolves which tags a key may see on `path`: 'all' with note.read,
+ * 'frontmatter-only' with only frontmatter.read, null when neither (or the path
+ * is out of scope). Pure — the gate uses it to allow/deny and the read tool uses
+ * it to set the adapter's return scope. Gates receive a copy of the request
+ * (see permission-chain), so the scope must never be passed by mutating it.
+ */
+export function resolveTagsReturnScope(
+	path: string,
+	config: KadoConfig,
+	key: KadoConfig['apiKeys'][number],
+): 'all' | 'frontmatter-only' | null {
+	const effective = resolveEffectivePermissions(path, config, key.id, key);
+	if (effective === null) return null;
+	if (effective.note.read) return 'all';
+	if (effective.frontmatter.read) return 'frontmatter-only';
+	return null;
+}
+
+/**
  * Evaluates a tags read: granted by note.read (full scope) OR frontmatter.read
- * (frontmatter-only scope). Mutates the request with the resulting scope so the
- * adapter can honour it. Denies only when both permissions are missing.
+ * (frontmatter-only scope). Denies only when both permissions are missing.
  */
 function evaluateTagsPermission(
 	request: import('../../types/canonical').CoreReadRequest,
 	config: KadoConfig,
 	resolvedKey: KadoConfig['apiKeys'][number],
 ): GateResult {
-	const effective = resolveEffectivePermissions(request.path, config, request.apiKeyId, resolvedKey);
-	if (effective === null) {
-		return forbidden('Request path is not within any permitted scope.');
-	}
-	if (effective.note.read) {
-		request.tagsReturnScope = 'all';
+	if (resolveTagsReturnScope(request.path, config, resolvedKey) !== null) {
 		return {allowed: true};
 	}
-	if (effective.frontmatter.read) {
-		request.tagsReturnScope = 'frontmatter-only';
-		return {allowed: true};
-	}
-	return forbidden("Key lacks 'read' permission for both note.read and frontmatter.read (required for tags).");
+	return forbidden("Key lacks 'read' permission for both note.read and frontmatter.read on this path (required for tags).");
 }
 
 /** Evaluates read permission for search requests using note.read from the effective scope. */

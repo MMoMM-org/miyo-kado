@@ -2481,3 +2481,50 @@ describe('kado-graph-audit handler', () => {
 		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
 	});
 });
+
+// ---------------------------------------------------------------------------
+// kado-read operation=tags return scope (real gate chain)
+//   note.read        → 'all' (frontmatter + inline)
+//   frontmatter.read → 'frontmatter-only' (the scope must reach the router)
+// ---------------------------------------------------------------------------
+
+describe('kado-read tags return scope', () => {
+	function crud(o: Partial<CrudFlags>): CrudFlags {
+		return {create: false, read: false, update: false, delete: false, ...o};
+	}
+
+	function makeTagsDeps(note: CrudFlags, frontmatter: CrudFlags, router: ToolDependencies['router']): ToolDependencies {
+		const all = {create: true, read: true, update: true, delete: true};
+		const security = makeSecurityConfig({
+			paths: [{path: 'notes/**', permissions: {note: all, frontmatter: all, file: all, dataviewInlineField: all}}],
+		});
+		const key = makeApiKey('kado_test-key', {
+			paths: [{path: 'notes/**', permissions: {note, frontmatter, file: crud({}), dataviewInlineField: crud({})}}],
+		});
+		return makeDeps({configManager: makeConfigManager({security, apiKeys: [key]}), gates: createDefaultGateChain(), router});
+	}
+
+	function getReadHandler(deps: ToolDependencies) {
+		const server = makeMockServer();
+		registerTools(server as unknown as Parameters<typeof registerTools>[0], deps);
+		return server.tools.find((t) => t.name === 'kado-read')!.handler;
+	}
+
+	it('routes a frontmatter-only scope when the key has frontmatter.read but not note.read', async () => {
+		const router = vi.fn(async () => makeFileResult({path: 'notes/a.md'}));
+		const handler = getReadHandler(makeTagsDeps(crud({}), crud({read: true}), router));
+
+		await handler({operation: 'tags', path: 'notes/a.md'}, makeExtra());
+
+		expect(router).toHaveBeenCalledWith(expect.objectContaining({tagsReturnScope: 'frontmatter-only'}));
+	});
+
+	it('routes the full scope when the key has note.read', async () => {
+		const router = vi.fn(async () => makeFileResult({path: 'notes/a.md'}));
+		const handler = getReadHandler(makeTagsDeps(crud({read: true}), crud({}), router));
+
+		await handler({operation: 'tags', path: 'notes/a.md'}, makeExtra());
+
+		expect(router).toHaveBeenCalledWith(expect.objectContaining({tagsReturnScope: 'all'}));
+	});
+});

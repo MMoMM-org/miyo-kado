@@ -49,6 +49,7 @@ import {kadoLog} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
 import {authenticateGate} from '../core/gates/authenticate';
+import {resolveTagsReturnScope} from '../core/gates/datatype-permission';
 import type {RouteResult} from '../core/operation-router';
 
 // ============================================================
@@ -547,10 +548,15 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		} catch (err: unknown) {
 			return mapError({code: 'VALIDATION_ERROR', message: String((err as Error).message ?? err)});
 		}
-		const perm = evaluatePermissions(request, deps.configManager.getConfig(), deps.gates);
+		const config = deps.configManager.getConfig();
+		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
 			await logDenied('kado-read', deps, keyId, request, perm.error.gate);
 			return mapError(perm.error, deriveHints({tool: 'kado-read', request, error: perm.error}));
+		}
+		if (request.operation === 'tags') {
+			const key = config.apiKeys.find((k) => k.id === keyId);
+			request.tagsReturnScope = (key && resolveTagsReturnScope(request.path, config, key)) || 'frontmatter-only';
 		}
 
 		const startMs = performance.now();

@@ -271,7 +271,8 @@ function stripFrontmatter(content: string): string {
 }
 
 async function readTags(app: App, file: Parameters<App['vault']['read']>[0], request: CoreReadRequest): Promise<CoreFileResult> {
-	const scope = request.tagsReturnScope ?? 'all';
+	// Fail closed: an unset scope never exposes body (inline) tags.
+	const scope = request.tagsReturnScope ?? 'frontmatter-only';
 	const frontmatter = readFrontmatterTags(app, file);
 
 	if (scope === 'frontmatter-only') {

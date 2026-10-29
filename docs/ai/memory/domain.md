@@ -27,7 +27,7 @@ Returns tags of a note as `{frontmatter: string[], inline: string[], all: string
   - `note.read=true` on the resolved path → `returnedTags: 'All'`, full result (frontmatter + inline). Rationale: if the caller can read the note body they already see every inline tag, so denying frontmatter.read separately would be pointless.
   - `note.read=false, frontmatter.read=true` → `returnedTags: 'FrontmatterOnly'`, `inline: []`. Signals that more tags may exist but require `note.read`. No count/length leak — just a bool-level discriminator.
   - both false → FORBIDDEN.
-  - Gate attaches the resolved scope to `request.tagsReturnScope` for the adapter.
+  - kado-read resolves the scope via `resolveTagsReturnScope` and sets `request.tagsReturnScope`; the gate only allows/denies. Never pass data out of a gate by mutating the request — the chain hands gates a copy. Adapter default when unset: `frontmatter-only` (fail closed).
 - Adapter skips `vault.read()` entirely in `frontmatter-only` scope (no disk I/O beyond metadataCache).
 - Type model: `ReadDataType = DataType | 'tags'`. `CoreReadRequest.operation: ReadDataType`. Writes/deletes stay on `DataType` — 'tags' is unreachable on those code paths by construction. Router uses `resolveReadAdapter()` which maps 'tags' to the note adapter uniformly.
 

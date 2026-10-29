@@ -9,7 +9,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {dataTypePermissionGate} from '../../../src/core/gates/datatype-permission';
+import {dataTypePermissionGate, resolveTagsReturnScope} from '../../../src/core/gates/datatype-permission';
 import type {
 	ApiKeyConfig,
 	CoreDeleteRequest,
@@ -232,22 +232,24 @@ describe('dataTypePermissionGate.evaluate() — read requests', () => {
 		expect(result.allowed).toBe(false);
 	});
 
-	it('allows a tags read and sets scope="all" when note.read is granted', () => {
+	it('allows a tags read and resolves scope="all" when note.read is granted', () => {
 		const request = makeReadRequest('projects/note.md', 'tags');
-		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig());
+		const config = makeStandardWhitelistConfig();
+		const result = dataTypePermissionGate.evaluate(request, config);
 		expect(result.allowed).toBe(true);
-		expect(request.tagsReturnScope).toBe('all');
+		expect(resolveTagsReturnScope(request.path, config, config.apiKeys[0]!)).toBe('all');
 	});
 
-	it('allows a tags read and sets scope="frontmatter-only" when only frontmatter.read is granted', () => {
+	it('allows a tags read and resolves scope="frontmatter-only" when only frontmatter.read is granted', () => {
 		const keyPerms: DataTypePermissions = {
 			...makeAllTruePermissions(),
 			note: {create: true, read: false, update: true, delete: false},
 		};
 		const request = makeReadRequest('projects/note.md', 'tags');
-		const result = dataTypePermissionGate.evaluate(request, makeStandardWhitelistConfig(keyPerms));
+		const config = makeStandardWhitelistConfig(keyPerms);
+		const result = dataTypePermissionGate.evaluate(request, config);
 		expect(result.allowed).toBe(true);
-		expect(request.tagsReturnScope).toBe('frontmatter-only');
+		expect(resolveTagsReturnScope(request.path, config, config.apiKeys[0]!)).toBe('frontmatter-only');
 	});
 
 	it('denies a tags read when both note.read and frontmatter.read are false', () => {

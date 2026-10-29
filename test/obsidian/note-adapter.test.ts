@@ -246,7 +246,7 @@ describe('NoteAdapter', () => {
 			expect((result.content as Record<string, unknown>).all).toEqual(['b', 'a', 'c']);
 		});
 
-		it('defaults to scope="all" when tagsReturnScope is not set on the request', async () => {
+		it('fails closed to scope="frontmatter-only" when tagsReturnScope is not set on the request', async () => {
 			const file = makeTFile();
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('body #x');
@@ -256,7 +256,8 @@ describe('NoteAdapter', () => {
 			const request: CoreReadRequest = {apiKeyId: 'k', operation: 'tags', path: 'notes/tagged.md'};
 			const result = await adapter.read(request);
 
-			expect((result.content as Record<string, unknown>).returnedTags).toBe('All');
+			expect((result.content as Record<string, unknown>).returnedTags).toBe('FrontmatterOnly');
+			expect((result.content as Record<string, unknown>).inline).toEqual([]);
 		});
 
 		it('returns only frontmatter tags and returnedTags="FrontmatterOnly" when scope restricts', async () => {

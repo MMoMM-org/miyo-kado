@@ -95,7 +95,8 @@ export interface CoreReadRequest {
 	/** Populated by permission-chain entry. Gates should prefer this over config lookup (M6). */
 	resolvedKey?: ApiKeyConfig;
 	/**
-	 * Set by DataTypePermissionGate for operation='tags':
+	 * Set by the kado-read tool (via resolveTagsReturnScope) for operation='tags';
+	 * unset is treated as 'frontmatter-only' (fail closed):
 	 * - 'all' when note.read is granted (full frontmatter + inline result)
 	 * - 'frontmatter-only' when only frontmatter.read is granted (inline omitted)
 	 */
