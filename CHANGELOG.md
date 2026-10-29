@@ -1,3 +1,9 @@
+## [1.3.1](https://github.com/MMoMM-org/miyo-kado/compare/1.3.0...1.3.1) (2026-10-29)
+
+### Bug Fixes
+
+* **security:** harden permission filtering for search, graph, rename and tags ([#121](https://github.com/MMoMM-org/miyo-kado/issues/121)) ([174e232](https://github.com/MMoMM-org/miyo-kado/commit/174e23262979afa9ce6893cfb5057980bb6c8a86)), closes [#8](https://github.com/MMoMM-org/miyo-kado/issues/8)
+
 ## [1.3.0](https://github.com/MMoMM-org/miyo-kado/compare/1.2.1...1.3.0) (2026-09-14)
 
 ### Features
