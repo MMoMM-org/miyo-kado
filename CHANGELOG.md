@@ -1,3 +1,9 @@
+## [1.3.3](https://github.com/MMoMM-org/miyo-kado/compare/1.3.2...1.3.3) (2026-11-02)
+
+### Bug Fixes
+
+* **read:** report truncated only when content follows the slice ([#130](https://github.com/MMoMM-org/miyo-kado/issues/130)) ([d101642](https://github.com/MMoMM-org/miyo-kado/commit/d101642b70739b9a09048a6f730109f027520896))
+
 ## [1.3.2](https://github.com/MMoMM-org/miyo-kado/compare/1.3.1...1.3.2) (2026-10-29)
 
 ### Bug Fixes
