@@ -77,8 +77,12 @@ The Kado plugin stores its config at:
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json
 ```
 
-This file is in the repo and readable from any environment (macOS or Docker).
-The test reads it to check:
+This file is local and gitignored, because Obsidian rewrites it whenever settings
+change. The tracked source of truth is `test/fixtures/live-test-config.json`, which
+`mcp-live`, `mcp-partial-rw` and `mcp-config-change` write into `data.json`. On a
+fresh clone, run one of those suites and reload the plugin to create it.
+
+It is readable from any environment (macOS or Docker). The test reads it to check:
 
 | Field | What it tells us |
 |-------|-----------------|
@@ -537,9 +541,10 @@ vault-level cleanup.
 }
 ```
 
-### data.json (in repo)
+### data.json (local, gitignored)
 
-The test expects this configuration in `test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json`:
+The test expects this configuration in `test/MiYo-Kado/.obsidian/plugins/miyo-kado/data.json`,
+seeded from `test/fixtures/live-test-config.json`:
 
 - `server.enabled: true`, `server.port: 23026`
 - Global security (whitelist) with paths: `allowed/**`, `maybe-allowed/**`

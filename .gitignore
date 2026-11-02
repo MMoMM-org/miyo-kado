@@ -24,6 +24,7 @@ coverage/
 
 # obsidian
 data.json
+data.json.bak
 
 # Test vault build artifacts (copied by npm run build, not symlinks)
 test/MiYo-Kado/.obsidian/plugins/miyo-kado/manifest.json
