@@ -191,23 +191,23 @@ describe('sliceByLineRange()', () => {
 	it('clamps end past EOF to last line', () => {
 		const {slice, truncated} = sliceByLineRange(body, 3, 999);
 		expect(slice).toBe('line3\nline4\nline5');
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
 	it('clamps start past EOF and returns last line', () => {
 		const {slice, truncated} = sliceByLineRange(body, 999, 9999);
 		expect(slice).toBe('line5');
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
-	it('truncated is false only when slice equals entire body', () => {
+	it('truncated is false when slice equals entire body', () => {
 		const {truncated} = sliceByLineRange(body, 1, 5);
 		expect(truncated).toBe(false);
 	});
 
-	it('truncated is true when first line is excluded', () => {
+	it('truncated is false when a range starts mid-body and reaches the end', () => {
 		const {truncated} = sliceByLineRange(body, 2, 5);
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
 	it('truncated is true when last line is excluded', () => {
@@ -262,10 +262,10 @@ describe('sliceByCharRange()', () => {
 		expect(truncated).toBe(false);
 	});
 
-	it('slices a middle range (0-based, exclusive end)', () => {
+	it('slices a trailing range (0-based, exclusive end)', () => {
 		const {slice, truncated} = sliceByCharRange(body, 6, 11);
 		expect(slice).toBe('world');
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
 	it('slices from start (truncated when end < length)', () => {
@@ -277,7 +277,7 @@ describe('sliceByCharRange()', () => {
 	it('clamps end past code-point length', () => {
 		const {slice, truncated} = sliceByCharRange(body, 6, 999);
 		expect(slice).toBe('world');
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
 	it('truncated is false when slice equals entire body', () => {
@@ -286,9 +286,9 @@ describe('sliceByCharRange()', () => {
 		expect(truncated).toBe(false);
 	});
 
-	it('truncated is true when start > 0', () => {
+	it('truncated is false when a range starts mid-body and reaches the end', () => {
 		const {truncated} = sliceByCharRange(body, 1, body.length);
-		expect(truncated).toBe(true);
+		expect(truncated).toBe(false);
 	});
 
 	it('throws when start < 0', () => {

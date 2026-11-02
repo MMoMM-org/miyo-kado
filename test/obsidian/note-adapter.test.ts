@@ -638,7 +638,7 @@ describe('NoteAdapter', () => {
 
 			// Section "Tasks" spans lines 2-3 (line 4 starts the next H2)
 			expect(result.content).toBe('## Tasks\nDo stuff.');
-			expect(result.truncated).toBe(true); // content exists outside the section
+			expect(result.truncated).toBe(false); // a section is always returned whole
 		});
 
 		it('section that is the entire body has truncated:false', async () => {
@@ -679,7 +679,7 @@ describe('NoteAdapter', () => {
 			);
 
 			expect(result.content).toBe('## Notes\nSome notes.');
-			expect(result.truncated).toBe(true);
+			expect(result.truncated).toBe(false);
 		});
 
 		it('throws NOT_FOUND when heading text does not exist', async () => {
@@ -747,7 +747,7 @@ describe('NoteAdapter', () => {
 				makePartialReadRequest({mode: 'section', headingPath: ['Work', 'Tasks']}),
 			);
 			expect(result.content).toBe('## Tasks\n### Subtask');
-			expect(result.truncated).toBe(true);
+			expect(result.truncated).toBe(false);
 		});
 
 		it('throws NOT_FOUND when headingPath does not resolve', async () => {
@@ -799,7 +799,7 @@ describe('NoteAdapter', () => {
 			);
 
 			expect(result.content).toBe('line4\nline5');
-			expect(result.truncated).toBe(true);
+			expect(result.truncated).toBe(false);
 		});
 	});
 

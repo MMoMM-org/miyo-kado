@@ -66,3 +66,7 @@ Each API key has its own access mode (whitelist/blacklist) configured independen
 <!-- 2026-04-12 -->
 ## Full vault access pattern is `**`
 The glob pattern `**` means "full vault access" — it matches every file and folder. It is the only supported way to grant unrestricted scope. The `/` character is NOT a valid scope pattern (Obsidian paths are relative, never start with `/`). Legacy configs with `/` are silently migrated to `**` on load. In the settings UI, the folder picker includes `** (Full vault)` as the first entry. Note: `/` in the `listDir` path parameter is a different concept — it's the vault-root marker for directory listing, not a scope pattern.
+
+<!-- 2026-11-02 -->
+## `truncated` means content remains after the slice
+On partial reads, `truncated` is true only when there is something to continue to. Text before a slice does not count, and a section read is always `false` because it is returned whole. `_hints` continues with a same-sized range window (`nextReadWindow` in `src/mcp/hints.ts`).

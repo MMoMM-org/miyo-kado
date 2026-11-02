@@ -10,6 +10,7 @@
 
 import {describe, it, expect} from 'vitest';
 import {deriveHints} from '../../src/mcp/hints';
+import {mapReadRequest} from '../../src/mcp/request-mapper';
 import type {CoreRequest, CoreSearchRequest, CoreWriteRequest, CoreReadRequest} from '../../src/types/canonical';
 
 const writeReq: CoreWriteRequest = {
@@ -75,23 +76,23 @@ describe('deriveHints()', () => {
 	it('suggests a follow-up range read when content was truncated', () => {
 		const hints = deriveHints({
 			tool: 'kado-read',
-			request: {operation: 'note', path: 'big.md', notePartial: {mode: 'firstXChars', limit: 5}} as unknown as CoreRequest,
+			request: {operation: 'note', path: 'big.md', partial: {mode: 'firstXChars', limit: 5}} as unknown as CoreRequest,
 			fileResult: {path: 'big.md', content: 'hello', created: 0, modified: 0, size: 999, truncated: true},
 		});
 		const next = hints.find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
 		expect(next).toBeDefined();
-		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 5});
+		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 5, end: 10});
 	});
 
 	it('suggests a follow-up range read when a firstXWords read was truncated', () => {
 		const hints = deriveHints({
 			tool: 'kado-read',
-			request: {operation: 'note', path: 'big.md', notePartial: {mode: 'firstXWords', limit: 2}} as unknown as CoreRequest,
+			request: {operation: 'note', path: 'big.md', partial: {mode: 'firstXWords', limit: 2}} as unknown as CoreRequest,
 			fileResult: {path: 'big.md', content: 'one two', created: 0, modified: 0, size: 999, truncated: true},
 		});
 		const next = hints.find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
 		expect(next).toBeDefined();
-		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 7});
+		expect(next!.with).toMatchObject({operation: 'note', path: 'big.md', rangeBasis: 'char', start: 7, end: 14});
 	});
 
 	it('counts the continuation offset in code points, not UTF-16 units (astral chars)', () => {
@@ -100,12 +101,53 @@ describe('deriveHints()', () => {
 		// otherwise the continuation overshoots and skips content.
 		const hints = deriveHints({
 			tool: 'kado-read',
-			request: {operation: 'note', path: 'big.md', notePartial: {mode: 'firstXChars', limit: 3}} as unknown as CoreRequest,
+			request: {operation: 'note', path: 'big.md', partial: {mode: 'firstXChars', limit: 3}} as unknown as CoreRequest,
 			fileResult: {path: 'big.md', content: '👍👍👍', created: 0, modified: 0, size: 999, truncated: true},
 		});
 		const next = hints.find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
 		expect(next).toBeDefined();
-		expect(next!.with).toMatchObject({rangeBasis: 'char', start: 3});
+		expect(next!.with).toMatchObject({rangeBasis: 'char', start: 3, end: 6});
+	});
+
+	describe('range continuation', () => {
+		const continuation = (partial: unknown, content = 'slice') => deriveHints({
+			tool: 'kado-read',
+			request: {operation: 'note', path: 'big.md', partial} as unknown as CoreRequest,
+			fileResult: {path: 'big.md', content, created: 0, modified: 0, size: 999, truncated: true},
+		}).find((h) => h.do === 'kado-read' && h.with?.mode === 'range');
+
+		it('continues a char range from its absolute end, keeping the window size', () => {
+			const next = continuation({mode: 'range', basis: 'char', start: 1445, end: 1700});
+			expect(next!.with).toMatchObject({rangeBasis: 'char', start: 1700, end: 1955});
+		});
+
+		it('continues a line range on the line after its inclusive end', () => {
+			const next = continuation({mode: 'range', basis: 'line', start: 2, end: 3});
+			expect(next!.with).toMatchObject({rangeBasis: 'line', start: 4, end: 5});
+		});
+
+		it('caps the continuation end at the mapper limit', () => {
+			const next = continuation({mode: 'range', basis: 'char', start: 600_000_000, end: 900_000_000});
+			expect(next!.with).toMatchObject({start: 900_000_000, end: 1_000_000_000});
+		});
+
+		it('emits no hint for a zero-width char range, which could never advance', () => {
+			expect(continuation({mode: 'range', basis: 'char', start: 5, end: 5})).toBeUndefined();
+		});
+
+		it('emits no hint for a section read', () => {
+			expect(continuation({mode: 'section', heading: 'Captures'})).toBeUndefined();
+		});
+
+		it.each([
+			['firstXChars', {mode: 'firstXChars', limit: 5}],
+			['firstXWords', {mode: 'firstXWords', limit: 2}],
+			['char range', {mode: 'range', basis: 'char', start: 0, end: 5}],
+			['line range', {mode: 'range', basis: 'line', start: 1, end: 2}],
+		])('produces arguments that pass read validation after %s', (_name, partial) => {
+			const next = continuation(partial);
+			expect(() => mapReadRequest(next!.with as Record<string, unknown>, 'key')).not.toThrow();
+		});
 	});
 
 	it('emits no hint for a complete (non-truncated) read', () => {

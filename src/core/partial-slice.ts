@@ -96,7 +96,8 @@ export function firstXWords(
 }
 
 /**
- * Inclusive 1-based line range. Clamps to bounds; reports whether content exists outside.
+ * Inclusive 1-based line range. Clamps to bounds; `truncated` reports whether
+ * content remains after the slice, i.e. whether there is anything to continue to.
  * A `start` beyond EOF is clamped to the last line (not an error) — reads are
  * lenient so a stale line number degrades to "last line" rather than failing.
  */
@@ -110,14 +111,15 @@ export function sliceByLineRange(
 	const from = Math.min(start, lines.length);
 	const to = Math.min(end, lines.length);
 	const slice = lines.slice(from - 1, to).join('\n');
-	const truncated = from > 1 || to < lines.length;
+	const truncated = to < lines.length;
 	return {slice, truncated};
 }
 
 /**
  * 0-based start, exclusive end, code-point based. Scans by code point and stops
  * at `end` instead of materializing the whole file with `Array.from`, so the
- * cost is O(end), not O(file length).
+ * cost is O(end), not O(file length). `truncated` reports whether content
+ * remains after the slice.
  */
 export function sliceByCharRange(
 	body: string,
@@ -138,7 +140,7 @@ export function sliceByCharRange(
 		i += c > 0xffff ? 2 : 1;
 		cp++;
 	}
-	const truncated = startByte > 0 || i < body.length;
+	const truncated = i < body.length;
 	return {slice: body.slice(startByte, i), truncated};
 }
 

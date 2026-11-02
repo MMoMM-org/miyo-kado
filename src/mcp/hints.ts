@@ -11,7 +11,15 @@
  * Pure: no imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
 
-import type {CoreRequest, CoreError, CoreSearchResult, CoreFileResult} from '../types/canonical';
+import type {
+	CoreRequest,
+	CoreError,
+	CoreSearchResult,
+	CoreFileResult,
+	CoreReadRequest,
+	NoteReadPartial,
+} from '../types/canonical';
+import {MAX_PARTIAL_INDEX} from './partial-mapper';
 
 /** Search operations whose top hit is worth a follow-up read suggestion. */
 const TOP_HIT_OPERATIONS = new Set(['byContent', 'byName', 'byTag']);
@@ -97,7 +105,43 @@ function topHitHint(ctx: HintContext): Hint | null {
 	};
 }
 
-/** Truncated read → continue with a range read starting where the slice ended. */
+/**
+ * Next same-sized window after a truncated read, in valid `mode=range` arguments.
+ * Returns null when no window can advance: a section is never cut, and a
+ * zero-width range would suggest itself forever.
+ */
+function nextReadWindow(
+	partial: NoteReadPartial,
+	content: string,
+): {rangeBasis: 'line' | 'char'; start: number; end: number} | null {
+	if (partial.mode === 'section') return null;
+
+	let rangeBasis: 'line' | 'char' = 'char';
+	let start: number;
+	let size: number;
+	if (partial.mode !== 'range') {
+		// Prefix reads: the continuation is a char range, which the adapter reads
+		// as code POINTS — so count code points, not UTF-16 units. They diverge for
+		// astral-plane chars (emoji, CJK Ext-B+); using `.length` would overshoot
+		// and skip content. `Array.from` iterates by code point.
+		start = Array.from(content).length;
+		size = start;
+	} else if (partial.basis === 'char') {
+		start = partial.end;
+		size = partial.end - partial.start;
+	} else {
+		rangeBasis = 'line';
+		start = partial.end + 1;
+		size = partial.end - partial.start + 1;
+	}
+
+	if (size <= 0 || start > MAX_PARTIAL_INDEX) return null;
+	// A line `end` is inclusive, a char `end` exclusive.
+	const end = rangeBasis === 'line' ? start + size - 1 : start + size;
+	return {rangeBasis, start, end: Math.min(end, MAX_PARTIAL_INDEX)};
+}
+
+/** Truncated read → continue with a range read of the next window. */
 function truncatedHint(ctx: HintContext): Hint | null {
 	const result = ctx.fileResult;
 	if (!result?.truncated) return null;
@@ -105,15 +149,15 @@ function truncatedHint(ctx: HintContext): Hint | null {
 	const operation = operationOf(ctx.request) ?? 'note';
 	if (!path) return null;
 	if (typeof result.content !== 'string') return null;
-	// The slice is a prefix; the continuation is a char range, which the adapter
-	// reads as code POINTS — so count code points, not UTF-16 units. They diverge
-	// for astral-plane chars (emoji, CJK Ext-B+); using `.length` would overshoot
-	// and skip content. `Array.from` iterates by code point.
-	const start = Array.from(result.content).length;
+	// A file result always answers a read request, so this is the read `partial`.
+	const partial = (ctx.request as CoreReadRequest).partial;
+	if (!partial) return null;
+	const window = nextReadWindow(partial, result.content);
+	if (!window) return null;
 	return {
 		do: 'kado-read',
-		with: {operation, path, mode: 'range', rangeBasis: 'char', start},
-		why: 'Content was truncated. Read the next chunk with a char range starting at this offset.',
+		with: {operation, path, mode: 'range', ...window},
+		why: 'More content follows this slice. Read the next chunk with this range.',
 	};
 }
 
