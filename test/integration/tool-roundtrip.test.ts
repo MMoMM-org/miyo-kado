@@ -1010,7 +1010,7 @@ describe('End-to-end tool call pipeline', () => {
 		//   Line 5: "Some notes."
 		const CONTENT = '# Project\nIntro.\n## Tasks\n- do thing\n## Notes\nSome notes.';
 
-		it('returns the matched section body and truncated:true when content exists outside the slice', async () => {
+		it('returns the matched section body and truncated:false even with content outside it', async () => {
 			const config = makeTestConfig();
 			const app = makeApp();
 			const file = createMockTFile({
@@ -1041,7 +1041,7 @@ describe('End-to-end tool call pipeline', () => {
 			// Section "Tasks" runs from line 2 up to (not including) line 4.
 			expect(body.content).toBe('## Tasks\n- do thing');
 			// Lines 0-1 and 4-5 exist outside the slice.
-			expect(body.truncated).toBe(true);
+			expect(body.truncated).toBe(false);
 		});
 
 		it('returns truncated:false when the section is the entire file body', async () => {

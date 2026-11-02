@@ -404,7 +404,7 @@ export interface CoreFileResult {
 	created: number;
 	modified: number;
 	size: number;
-	/** Set to true when a partial-read limit was reached and content was cut off. */
+	/** Partial reads only: true when more content remains after the returned slice. */
 	truncated?: boolean;
 }
 

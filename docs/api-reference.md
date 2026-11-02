@@ -121,7 +121,7 @@ All read responses return a JSON object with:
 | `created` | `number` | File creation timestamp (Unix ms) |
 | `modified` | `number` | File modification timestamp (Unix ms) |
 | `size` | `number` | File size in bytes |
-| `truncated` | `boolean` | **Only present on partial reads** (`mode` set). `true` when content outside the returned slice exists, `false` when the slice covers the whole body. Absent entirely on full reads. |
+| `truncated` | `boolean` | **Only present on partial reads** (`mode` set). `true` when more content remains after the returned slice, `false` when the slice reaches the end of what was asked for (see [`truncated` semantics](#partial-reads)). Absent entirely on full reads. |
 
 ### Examples
 
@@ -235,9 +235,14 @@ Partial reads let a client fetch only part of a note's body instead of the whole
 
 **`truncated` semantics:** every partial-read response carries `truncated: boolean`.
 
+`truncated` means more content remains **after** the returned slice, so there is something to continue to. Text before the slice does not count.
+
 - `firstXChars` — `true` when the body is longer than `limit`, else `false`.
-- `section` — `true` whenever any content exists outside the returned section; `false` only when the section spans the whole body.
-- `range` — `true` when anything was cut from either end; `false` only when the slice covers the entire body.
+- `firstXWords` — `true` when the body continues past the last returned word, else `false`.
+- `section` — always `false`. A section is returned whole, however much of the note lies outside it.
+- `range` — `true` when the body continues past the end of the slice; `false` when the slice reaches the end of the body, including when `end` was clamped.
+
+When `truncated` is `true`, `_hints` carries a complete `mode: "range"` call for the next window of the same size. Following it repeatedly reaches the end of the body, where `truncated` becomes `false` and the hint stops.
 
 A `section` mode that matches no heading returns `NOT_FOUND` naming the section — never a silent empty result.
 
@@ -283,7 +288,7 @@ A `section` mode that matches no heading returns `NOT_FOUND` naming the section 
   "created": 1743379200000,
   "modified": 1743379500000,
   "size": 4096,
-  "truncated": true
+  "truncated": false
 }
 ```
 

@@ -193,7 +193,9 @@ async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileRes
 		// Convert the 0-based [startLine, endLine) span to sliceByLineRange's
 		// 1-based inclusive form: start+1, end (clamped at line count for EOF).
 		const lineCount = content.split('\n').length;
-		({slice, truncated} = sliceByLineRange(content, span.startLine + 1, endLineOf(span, lineCount)));
+		({slice} = sliceByLineRange(content, span.startLine + 1, endLineOf(span, lineCount)));
+		// A section is always returned whole, so text outside it is not a truncation.
+		truncated = false;
 	}
 
 	return {

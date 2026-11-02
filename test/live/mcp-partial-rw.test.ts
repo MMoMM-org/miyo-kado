@@ -231,10 +231,10 @@ describe('Kado MCP Live — partial read/write', () => {
 		expect(body.content.startsWith('# Title')).toBe(true);
 		expect(body.content).toContain('Alpha');
 		expect(body.content).not.toContain('beta body');
-		expect(body.truncated).toBe(true);
+		expect(body.truncated).toBe(false);
 	});
 
-	it('section returns the heading body and reports truncated', async (ctx) => {
+	it('section returns the heading body and is never truncated', async (ctx) => {
 		await requireReady(ctx);
 		await setNote(SCRATCH, BASE);
 		const res = await callTool(key1!, 'kado-read', {operation: 'note', path: SCRATCH, mode: 'section', heading: 'Alpha'});

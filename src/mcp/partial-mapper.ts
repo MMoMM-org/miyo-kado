@@ -30,7 +30,7 @@ const MAX_HEADING_DEPTH = 50;
  * points or lines; bounding the inputs keeps numbers in safe-integer territory
  * and rejects obviously-bogus values at the boundary.
  */
-const MAX_PARTIAL_INDEX = 1_000_000_000;
+export const MAX_PARTIAL_INDEX = 1_000_000_000;
 
 /**
  * Parses heading addressing args (heading or headingPath) into a HeadingTarget.
