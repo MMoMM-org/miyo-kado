@@ -109,7 +109,7 @@ Tag rules restrict **which notes** are accessible by the tags they carry — on 
 - **Never notes tagged** (`tagDeny`) -- a note carrying **any** of these tags is blocked.
 - **Deny always wins.** A note tagged `#Work` and `#Private` is blocked when `#Private` is denied, even if `#Work` is allowed.
 - **Nested tags match.** `Work` also matches `#Work/ProjectA`; `Work/*` matches only sub-tags.
-- Frontmatter `tags` and inline `#tags` both count (tags inside code blocks do not).
+- Frontmatter `tags` (also the singular `tag`, any letter case, list or comma/space-separated string) and inline `#tags` all count; tags inside code blocks do not.
 - **Global and key rules are evaluated independently** -- a note must pass both.
 - **Notes only.** Tag rules apply to notes, frontmatter, Dataview inline fields and the tags read. Attachments (`file` data type) have no tags and stay governed by path rules alone -- for a tag-scoped key, set `file.read = false` or scope files by path.
 
@@ -126,7 +126,12 @@ Denials come back as `FORBIDDEN` with one fixed message, whatever the reason -- 
 
 **Example -- an employer key in a flat, tag-organised vault:** give the key the path `**` with the permissions you want, set **Only notes tagged** to `Work`, and disable `file.read`. The key then sees and edits only notes tagged `#Work` (including `#Work/...`); new notes it creates must carry `#Work`. Add `Private` to **Never notes tagged** to carve out exceptions.
 
-Search results use Obsidian's metadata index. Right after a restart or a bulk external change, a note that is not indexed yet is treated as untagged-and-unknown and left out of results until it is indexed (it is never shown by mistake).
+Single-note operations (read, write, delete, rename) read the note's tags from the file itself, so they always see the current tags. Search, graph, open notes and folder renames use Obsidian's metadata index instead:
+
+- Right after a restart or a bulk external change, a note that is not indexed yet is treated as unknown and left out of results until it is indexed (it is never shown by mistake).
+- When a tag is **changed** -- e.g. `#Private` is added to a note -- results can reflect the old tags for the moment it takes Obsidian to re-index the note (normally well under a second). Reading the note itself is refused immediately, because that check reads the file.
+
+If a note must never be visible, keep it behind a tag *and* a path rule, or add the tag before the note gets sensitive content.
 
 ### Search tags
 

@@ -1173,7 +1173,7 @@ Each item in `items`:
 
 ### Scope Filtering
 
-Search results only include files the calling key may **read**. Permissions are resolved like a direct read: the global security scope and the key-specific scope are intersected, and within each the most specific matching path entry decides. Markdown files need `note.read`, other files `file.read`. A path that matches a broad pattern (e.g. `**`) but whose more specific entry disables read (e.g. `Private/**`) is excluded. Notes that fail the key's [tag rules](configuration.md#tag-rules) are excluded the same way (using Obsidian's metadata index; a note not indexed yet is excluded until it is). `byContent` never reads such files, and `listTags` never counts their tags.
+Search results only include files the calling key may **read**. Permissions are resolved like a direct read: the global security scope and the key-specific scope are intersected, and within each the most specific matching path entry decides. Markdown files need `note.read`, other files `file.read`. A path that matches a broad pattern (e.g. `**`) but whose more specific entry disables read (e.g. `Private/**`) is excluded. Notes that fail the key's [tag rules](configuration.md#tag-rules) are excluded the same way (using Obsidian's metadata index; a note not indexed yet is excluded until it is, and a just-changed tag takes effect once Obsidian has re-indexed the note). `byContent` never reads such files, and `listTags` never counts their tags.
 
 - **Whitelist mode**: unlisted paths are excluded.
 - **Blacklist mode**: unlisted paths are allowed; a listed entry applies its own CRUD flags (an entry that only blocks `delete` stays searchable).
