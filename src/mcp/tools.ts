@@ -727,11 +727,11 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 					await logDenied('kado-rename', deps, keyId, request, neutral.error.gate);
 					return mapError(neutral.error, deriveHints({tool: 'kado-rename', request, error: neutral.error}));
 				}
-				const tagPerm = evaluateFolderTagAccess(keyId, config, deps.tagSource, treePaths);
-				if (!tagPerm.allowed) {
-					await logDenied('kado-rename', deps, keyId, request, tagPerm.error.gate);
-					return mapError(tagPerm.error, deriveHints({tool: 'kado-rename', request, error: tagPerm.error}));
-				}
+			}
+			const tagPerm = evaluateFolderTagAccess(keyId, config, deps.tagSource, treePaths);
+			if (!tagPerm.allowed) {
+				await logDenied('kado-rename', deps, keyId, request, tagPerm.error.gate);
+				return mapError(tagPerm.error, deriveHints({tool: 'kado-rename', request, error: tagPerm.error}));
 			}
 		}
 

@@ -10,7 +10,7 @@
 
 import type {ApiKeyConfig, CoreWriteRequest, GateResult, KadoConfig, NoteTagSource} from '../types/canonical';
 import {canReadPath} from '../core/gates/datatype-permission';
-import {compileTagRules, evaluateCompiledTagAccess, isTagGovernedDataType} from '../core/tag-access';
+import {compileTagRules, evaluateCompiledTagAccess, isMarkdownPath, isTagGovernedDataType, TAG_ACCESS_GATE} from '../core/tag-access';
 import {kadoLog, truncateKeyId} from '../core/logger';
 
 /**
@@ -57,20 +57,24 @@ export async function evaluateNoteTagAccess(
 /**
  * Tag access policy for a folder rename: the rename moves every descendant, so
  * each markdown note in the tree must pass the key's tag rules. Uses cached tags
- * (a whole tree; unindexed notes fail closed).
+ * (a whole tree; unindexed notes fail closed). A tree that cannot be resolved
+ * (`null`) is denied while tag rules exist — the descendants cannot be checked.
  */
 export function evaluateFolderTagAccess(
 	keyId: string,
 	config: KadoConfig,
 	tagSource: NoteTagSource | undefined,
-	treePaths: string[],
+	treePaths: string[] | null,
 ): GateResult {
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return {allowed: true};
 	const rules = compileTagRules(config, key);
 	if (rules === null) return {allowed: true};
+	if (treePaths === null) {
+		return {allowed: false, error: {code: 'FORBIDDEN', message: FOLDER_TAG_DENIAL_MESSAGE, gate: TAG_ACCESS_GATE}};
+	}
 	for (const path of treePaths) {
-		if (!path.endsWith('.md')) continue;
+		if (!isMarkdownPath(path)) continue;
 		const result = evaluateCompiledTagAccess(tagSource?.cachedTags(path) ?? null, rules);
 		if (!result.allowed) return redactTagDenial(result, FOLDER_TAG_DENIAL_MESSAGE, keyId, path);
 	}
@@ -99,7 +103,7 @@ export function createReadablePredicate(
 	const rules = compileTagRules(config, key);
 	return (path) => {
 		if (!canReadPath(path, config, key)) return false;
-		if (rules === null || !path.endsWith('.md')) return true;
+		if (rules === null || !isMarkdownPath(path)) return true;
 		return evaluateCompiledTagAccess(tagSource?.cachedTags(path) ?? null, rules).allowed;
 	};
 }

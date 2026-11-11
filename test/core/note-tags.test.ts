@@ -3,7 +3,7 @@
  */
 
 import {describe, it, expect} from 'vitest';
-import {extractNoteTags, normalizeFrontmatterTags, splitFrontmatter} from '../../src/core/note-tags';
+import {extractNoteTags, frontmatterTags, normalizeFrontmatterTags, splitFrontmatter} from '../../src/core/note-tags';
 
 /** Minimal YAML stub: supports `tags: a, b`, `tags: [a, b]` and block lists — enough for tag extraction. */
 function fakeParseYaml(yaml: string): unknown {
@@ -48,6 +48,24 @@ describe('normalizeFrontmatterTags', () => {
 	});
 });
 
+describe('frontmatterTags', () => {
+	it('reads the singular `tag` alias and case variants like Obsidian does', () => {
+		expect(frontmatterTags({tag: 'Private'})).toEqual(['Private']);
+		expect(frontmatterTags({Tags: ['Work']})).toEqual(['Work']);
+		expect(frontmatterTags({TAG: 'a, b'})).toEqual(['a', 'b']);
+	});
+
+	it('merges several tag keys and ignores unrelated keys', () => {
+		expect(frontmatterTags({tags: ['Work'], tag: 'Private', tagline: 'x'})).toEqual(['Work', 'Private']);
+	});
+
+	it('returns [] for a missing or non-object frontmatter', () => {
+		expect(frontmatterTags(undefined)).toEqual([]);
+		expect(frontmatterTags(null)).toEqual([]);
+		expect(frontmatterTags('tags: x')).toEqual([]);
+	});
+});
+
 describe('splitFrontmatter', () => {
 	it('returns empty prefix when there is no frontmatter', () => {
 		expect(splitFrontmatter('hello')).toEqual({prefix: '', body: 'hello'});
@@ -81,6 +99,10 @@ describe('extractNoteTags', () => {
 	it('ignores frontmatter whose YAML fails to parse but still reads inline tags', () => {
 		const throwing = (): unknown => { throw new Error('bad yaml'); };
 		expect(extractNoteTags('---\n: :\n---\n#Work', throwing)).toEqual(['Work']);
+	});
+
+	it('reads a singular `tag:` frontmatter key', () => {
+		expect(extractNoteTags('---\ntag: Private\n---\nbody', fakeParseYaml)).toEqual(['Private']);
 	});
 
 	it('does not scan frontmatter text for inline tags', () => {

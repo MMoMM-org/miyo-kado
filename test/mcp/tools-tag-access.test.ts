@@ -278,6 +278,19 @@ describe('tag access — kado-rename', () => {
 		expect(err.message).not.toContain('F/b.md');
 	});
 
+	it('checks upper-case .MD descendants in a folder rename', async () => {
+		const folder = makeFolder('F', ['F/a.MD']);
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {app: makeApp(folder), tagSource: makeTagSource({'F/a.MD': []})});
+		expect(errorOf(await handler('kado-rename', deps)({operation: 'folder', source: 'F', target: 'G'}, extra)).message).toBe(FOLDER_TAG_DENIAL_MESSAGE);
+	});
+
+	it('denies a folder rename when tag rules exist but the folder tree cannot be resolved', async () => {
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {app: makeApp(), tagSource: makeTagSource({})});
+		const err = errorOf(await handler('kado-rename', deps)({operation: 'folder', source: 'Missing', target: 'Other'}, extra));
+		expect(err.message).toBe(FOLDER_TAG_DENIAL_MESSAGE);
+		expect(deps.router).not.toHaveBeenCalled();
+	});
+
 	it('allows a folder rename when every descendant note passes (non-markdown ignored)', async () => {
 		const folder = makeFolder('F', ['F/a.md', 'F/img.png']);
 		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {
@@ -316,6 +329,16 @@ describe('tag access — result filters', () => {
 		expect(routed.readablePath('untagged.md')).toBe(false);
 		expect(routed.readablePath('unindexed.md')).toBe(false);
 		expect(routed.readablePath('Attachments/a.png')).toBe(true);
+	});
+
+	it('kado-search readablePath applies tag rules to upper-case .MD notes', async () => {
+		const router = vi.fn(async () => ({items: [], total: 0}));
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {router, tagSource: makeTagSource({'A.MD': ['Work'], 'B.MD': []})});
+		await handler('kado-search', deps)({operation: 'listNotes'}, extra);
+		const routed = (router.mock.calls as unknown as [{readablePath: (p: string) => boolean}][])[0]![0];
+		expect(routed.readablePath('A.MD')).toBe(true);
+		expect(routed.readablePath('B.MD')).toBe(false);
+		expect(routed.readablePath('unknown.Md')).toBe(false);
 	});
 
 	it('kado-search readablePath ignores tags when no rules exist', async () => {

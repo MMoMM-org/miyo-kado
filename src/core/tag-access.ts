@@ -77,6 +77,11 @@ export function hasTagRules(config: KadoConfig, key: ApiKeyConfig): boolean {
 	return compileTagRules(config, key) !== null;
 }
 
+/** True for markdown note paths, case-insensitively (`.md`, `.MD`) — same rule as the request mapper. */
+export function isMarkdownPath(path: string): boolean {
+	return path.toLowerCase().endsWith('.md');
+}
+
 /** Operations that act on (part of) a markdown note and are therefore subject to tag rules. */
 const TAG_GOVERNED_OPERATIONS: ReadonlySet<string> = new Set(['note', 'frontmatter', 'dataview-inline-field', 'tags']);
 

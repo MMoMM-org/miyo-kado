@@ -82,8 +82,26 @@ export function normalizeFrontmatterTags(raw: unknown): string[] {
 	return dedupePreservingOrder(collected);
 }
 
+/** Frontmatter keys Obsidian reads tags from: `tags` and the singular `tag`, any letter case. */
+const FRONTMATTER_TAG_KEY = /^tags?$/i;
+
 /**
- * Extracts every tag a note carries from its raw markdown: frontmatter `tags`
+ * Collects the tags of a parsed frontmatter object from every tag key Obsidian
+ * honours (`tags`, `tag`, `Tags`, …), each in string or list form. Reading only
+ * `tags` would let a note with `tag: Private` slip past a deny rule (#81).
+ */
+export function frontmatterTags(frontmatter: unknown): string[] {
+	if (frontmatter === null || typeof frontmatter !== 'object') return [];
+	const collected: string[] = [];
+	for (const [key, value] of Object.entries(frontmatter as Record<string, unknown>)) {
+		if (FRONTMATTER_TAG_KEY.test(key)) collected.push(...normalizeFrontmatterTags(value));
+	}
+	return dedupePreservingOrder(collected);
+}
+
+/**
+ * Extracts every tag a note carries from its raw markdown: frontmatter tags
+ * (`tags`/`tag`, any case)
  * plus inline `#tags` in the body (code blocks/spans excluded). Unparseable
  * frontmatter contributes no tags; inline tags are still read. Tags are
  * returned without `#`, deduped, frontmatter first.
@@ -102,6 +120,5 @@ function readFrontmatterTagsFromYaml(yaml: string | null, parseYaml: YamlParser)
 	} catch {
 		return [];
 	}
-	if (parsed === null || typeof parsed !== 'object') return [];
-	return normalizeFrontmatterTags((parsed as Record<string, unknown>)['tags']);
+	return frontmatterTags(parsed);
 }

@@ -57,6 +57,18 @@ describe('NoteTagSource', () => {
 			expect(createNoteTagSource(app as never).cachedTags('n.md')).toEqual(['Work', 'Shared', 'Team']);
 		});
 
+		it('reads a singular `tag` frontmatter key from the cache', () => {
+			app.vault.getFileByPath.mockReturnValue(makeFile('n.md'));
+			app.metadataCache.getFileCache.mockReturnValue(createMockCachedMetadata({frontmatter: {tag: 'Private'}}));
+			expect(createNoteTagSource(app as never).cachedTags('n.md')).toEqual(['Private']);
+		});
+
+		it('treats an upper-case .MD extension as markdown', () => {
+			app.vault.getFileByPath.mockReturnValue(makeFile('N.MD', 'MD'));
+			app.metadataCache.getFileCache.mockReturnValue(createMockCachedMetadata({tags: [{tag: '#Work', position: {start: {line: 0, col: 0, offset: 0}, end: {line: 0, col: 5, offset: 5}}}]}));
+			expect(createNoteTagSource(app as never).cachedTags('N.MD')).toEqual(['Work']);
+		});
+
 		it('returns [] for an indexed note without tags', () => {
 			app.vault.getFileByPath.mockReturnValue(makeFile('n.md'));
 			app.metadataCache.getFileCache.mockReturnValue(createMockCachedMetadata({}));

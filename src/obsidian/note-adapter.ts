@@ -10,7 +10,7 @@ import {MarkdownView, Notice, parseYaml} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget, NoteWritePartial} from '../types/canonical';
 import {extractInlineTags} from '../core/tag-utils';
-import {dedupePreservingOrder, innerYaml, normalizeFrontmatterTags, splitFrontmatter} from '../core/note-tags';
+import {dedupePreservingOrder, frontmatterTags, innerYaml, splitFrontmatter} from '../core/note-tags';
 import {ensureParentFolder} from './ensure-parent-folder';
 import {firstXChars, firstXWords, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
 
@@ -211,9 +211,9 @@ async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileRes
 
 type FileCacheArg = Parameters<App['metadataCache']['getFileCache']>[0];
 
-/** Reads frontmatter tags for a note from the metadata cache: string or string[] form, normalized and deduped. */
+/** Reads frontmatter tags (`tags`/`tag`, any case; string or list form) for a note from the metadata cache. */
 function readFrontmatterTags(app: App, file: FileCacheArg): string[] {
-	return normalizeFrontmatterTags(app.metadataCache.getFileCache(file)?.frontmatter?.tags);
+	return frontmatterTags(app.metadataCache.getFileCache(file)?.frontmatter);
 }
 
 /** Strips a leading YAML frontmatter block so inline-tag scanning does not re-scan it. */
