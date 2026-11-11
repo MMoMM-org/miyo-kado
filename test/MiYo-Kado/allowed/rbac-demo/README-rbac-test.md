@@ -53,7 +53,7 @@ block message names "the key's" rule.
 | Call | Expected |
 |---|---|
 | `kado-rename operation=folder source="allowed/rbac-demo/neutral" target="allowed/rbac-demo/neutral-x"` | **ALLOWED** — whole subtree stays under `allowed/rbac-demo/**` |
-| `kado-rename operation=folder source="allowed/rbac-demo/guarded" target="allowed/rbac-demo/guarded-x"` | **BLOCKED** — `VALIDATION_ERROR` (`folder-scope-neutrality`), message names `…/guarded/sub → …/guarded-x/sub` (or `…/sub/deep.md`) and "the key's" rule |
+| `kado-rename operation=folder source="allowed/rbac-demo/guarded" target="allowed/rbac-demo/guarded-x"` | **BLOCKED** — `VALIDATION_ERROR` (`folder-scope-neutrality`), message names `…/guarded/sub → …/guarded-x/sub` (or `…/sub/deep.md`) and "the key's" rule (the path is shown because `guarded/sub` is readable; with read disabled there the message is the fixed path-free text, #136) |
 
 After the blocked rename, confirm `guarded/` is untouched on disk and the plugin
 `data.json` is byte-identical (the config was not migrated).
