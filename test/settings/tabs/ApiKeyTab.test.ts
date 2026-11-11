@@ -137,6 +137,21 @@ describe('renderApiKeyTab — rendering', () => {
 		const input = nameSetting.querySelector('input[type="text"]') as HTMLInputElement;
 		expect(input.value).toBe('Original Label');
 	});
+
+	it('renders Tag rules between Paths and Search tags, bound to the key (#81)', () => {
+		const container = renderSandbox();
+		const key = makeApiKey({id: 'kado_a', tagAllow: ['Work'], tagDeny: ['Private']});
+		const {plugin} = mockPlugin([key]);
+
+		renderApiKeyTab(container, plugin, key.id, vi.fn(), vi.fn());
+
+		const labels = Array.from(container.querySelectorAll('.kado-section-label')).map((el) => el.textContent);
+		const order = ['Paths', 'Tag rules', 'Search tags'].map((l) => labels.indexOf(l));
+		expect(order.every((i) => i >= 0)).toBe(true);
+		expect([...order].sort((a, b) => a - b)).toEqual(order);
+		const values = Array.from(container.querySelectorAll<HTMLInputElement>('.kado-tag-input')).map((el) => el.value);
+		expect(values).toEqual(expect.arrayContaining(['#Work', '#Private']));
+	});
 });
 
 describe('renderApiKeyTab — rename flow', () => {

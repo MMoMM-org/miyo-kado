@@ -1,8 +1,9 @@
 /**
- * GlobalSecurityTab — manage the single global security scope (listMode, paths, tags).
+ * GlobalSecurityTab — manage the single global security scope (listMode, paths, tag rules, search tags).
  *
  * Replaces the old multi-area model with a flat scope: one listMode toggle,
- * a list of paths with per-path permissions, and a list of tags.
+ * a list of paths with per-path permissions, tag access rules (#81) and a
+ * list of search tags.
  */
 
 import {Setting} from 'obsidian';
@@ -11,6 +12,7 @@ import type {ListMode} from '../../types/canonical';
 import {createDefaultPermissions} from '../../types/canonical';
 import {renderPathEntry, type PathRule} from '../components/PathEntry';
 import {renderTagEntry} from '../components/TagEntry';
+import {renderTagRulesSection} from '../components/TagRulesSection';
 import {renderOpenNotesSection} from '../components/OpenNotesSection';
 
 export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPlugin, onRedisplay: () => void): void {
@@ -78,8 +80,19 @@ export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPl
 		onRedisplay();
 	});
 
-	// ── Tags Section ──
-	containerEl.createDiv({cls: 'kado-section-label', text: 'Tags'});
+	// ── Tag Rules Section (#81) ──
+	renderTagRulesSection(containerEl, security, {
+		app: plugin.app,
+		onSave: () => { void plugin.saveSettings(); },
+		onRedisplay: onRedisplay,
+	});
+
+	// ── Search Tags Section ──
+	containerEl.createDiv({cls: 'kado-section-label', text: 'Search tags'});
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Tags that search may filter by. They do not restrict which notes are accessible — use tag rules for that.',
+	});
 
 	const tagsContainer = containerEl.createDiv();
 

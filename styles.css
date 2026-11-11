@@ -565,3 +565,10 @@
 .kado-dryrun-tagscope.is-out {
 	color: var(--text-warning, var(--text-muted));
 }
+
+/* Tag rules (#81): sub-label above each rule list */
+.kado-tag-rule-label {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-top: 8px;
+}
