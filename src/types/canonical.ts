@@ -498,6 +498,20 @@ export type GateResult =
 	| { allowed: true }
 	| { allowed: false; error: CoreError };
 
+/**
+ * Port (#81): resolves the tags a markdown note carries, for the tag access policy.
+ * All tags are returned without `#`. `null` = unknown (missing, non-markdown,
+ * unreadable or not indexed) — the policy treats that as denied when rules exist.
+ */
+export interface NoteTagSource {
+	/** Tags read from the note's current file content (index-lag safe). For single-note operations. */
+	readTags(path: string): Promise<string[] | null>;
+	/** Tags from the metadata cache, synchronously. For bulk result filters (search, graph, open notes). */
+	cachedTags(path: string): string[] | null;
+	/** Tags in not-yet-written markdown content. For note creation. */
+	tagsOfContent(content: string): string[];
+}
+
 /** A single step in the permission chain that can allow or deny a request. */
 export interface PermissionGate {
 	name: string;
