@@ -25,6 +25,8 @@ src/
     gates/           # authenticate, global-scope, key-scope, datatype-permission, path-access
     glob-match.ts    # Glob pattern matching for path permissions
     tag-utils.ts     # Tag normalization and wildcard matching
+    note-tags.ts     # Note tags from raw markdown (frontmatter tags/tag + inline), shared by adapters
+    tag-access.ts    # Tag rules policy (#81): tagAllow/tagDeny, deny wins, search-tag scope
     permission-chain.ts
     concurrency-guard.ts
     config-manager.ts
@@ -38,6 +40,7 @@ src/
     auth.ts          # Bearer token middleware (constant-time comparison)
     tools.ts         # All 7 tool handlers (read/write/search/delete/rename/open-notes/graph) + scope injection
     hints.ts         # Pure deriveHints() — optional, additive _hints next-step guidance
+    tag-policy.ts    # Tool-side tag rules: single-note checks, redacted denials, disclosure predicate
     request-mapper.ts
     response-mapper.ts
   obsidian/          # Obsidian API adapters — vault I/O

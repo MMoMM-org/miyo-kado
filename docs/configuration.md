@@ -25,6 +25,7 @@ For installation, see [Installation](installation.md). For connecting your AI cl
 
 ## Global Security Tab
 
+<!-- SCREENSHOT-TODO(#137): retake settings-global-security.png — show the "Tag rules" section (Only/Never notes tagged) and "Search tags" -->
 <p align="center">
   <img src="../assets/settings-global-security.png" alt="MiYo Kado Global Security settings tab" width="560" />
 </p>
@@ -145,6 +146,7 @@ Tags listed in **Only notes tagged** (global or key) are added to the search tag
 
 ## API Key Management
 
+<!-- SCREENSHOT-TODO(#137): retake settings-api-key.png — show the key's "Tag rules" section and "Search tags" -->
 <p align="center">
   <img src="../assets/settings-api-key.png" alt="MiYo Kado API Key settings tab" width="560" />
 </p>
@@ -180,6 +182,7 @@ Click **Delete API key** in the danger zone. This cannot be undone.
 
 ## Permission Test Tab
 
+<!-- SCREENSHOT-TODO(#137): retake settings-permission-test-denied.png — ideally a denial with deciding gate tag-access -->
 <p align="center">
   <img src="../assets/settings-permission-test-denied.png" alt="MiYo Kado Permission Test settings tab showing a DENIED result with the deciding gate and reason" width="560" />
 </p>

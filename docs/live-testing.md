@@ -464,6 +464,18 @@ Open three notes across paths with different ACLs: one in `allowed/` (key has R)
 7. Key3, `scope: 'all'` → only the active note (silent filter of `other` category — no error).
 8. Switch focus to a different permitted note, re-call with `scope: 'active'` → the response reflects the new active file.
 
+**Tag rules (#81):**
+
+`data.json` must be edited and the plugin reloaded between setup and test (see *Plugin Config*). Create the fixtures with Key1 **before** adding the rules (afterwards untagged notes cannot be created), then set Key1 `tagAllow: ["Work"]`, `tagDeny: ["Private"]` and reload. Fixtures in `allowed/tag-test/`: a `#Work` note, an untagged note, a `#Home` note, one with `tags: [Work]` + inline `#Private`, one with `tag: Private` (singular key), an inline `#Work/ProjectA` note, an upper-case `.MD` note with and without `#Work`, and two subfolders (one containing only `#Work` notes, one containing an untagged note).
+
+1. `kado-read` → only the `#Work`, `#Work/ProjectA` and tagged `.MD` notes succeed; every denial (untagged, other tag, `#Private`, `tag: Private`, a non-existent path) returns the same `"Access denied by tag rules."`.
+2. `listNotes` / `listDir` / `byName` / `byContent` / `byTag #Work` / `listTags` → only allowed notes; `listDir` child counts exclude hidden notes; `listTags` counts only visible notes.
+3. `kado-write` create without a tag or with `#Private` → denied; with `#Work` → created. Append to an untagged note → denied (even if it would add `#Work`). Frontmatter update on a `#Work` note → allowed.
+4. `kado-rename` / `kado-delete` an untagged note → denied. Folder rename: subfolder with an untagged note → denied with the fixed folder message (no path); `#Work`-only subfolder → renamed.
+5. `kado-graph outgoing` from a `#Work` note omits linked out-of-scope notes; `backlinks` from an untagged source → denied.
+6. Audit log: each denial has `"gate":"tag-access"`.
+7. Cleanup: delete the fixture folder, restore `data.json` from your backup, reload the plugin, and check `git status --short test/MiYo-Kado` before committing (the vault is tracked).
+
 **Full vault access (`**` pattern):**
 
 To test full vault access, configure a key with `**` as the only path pattern in both global security and the API key:
