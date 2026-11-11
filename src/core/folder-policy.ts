@@ -16,6 +16,8 @@
 import type {ApiKeyConfig, CoreDeleteRequest, CoreRenameRequest, CoreWriteRequest, DataTypePermissions, GateResult, KadoConfig, PermissionGate} from '../types/canonical';
 import {evaluatePermissions} from './permission-chain';
 import {resolveScope} from './gates/scope-resolver';
+import {canReadPath} from './gates/datatype-permission';
+import {kadoLog} from './logger';
 
 /**
  * Evaluates permission for an empty-folder delete by composing the existing gate
@@ -81,7 +83,9 @@ function permissionsEqual(a: DataTypePermissions | null, b: DataTypePermissions 
  * boundary. This check is **fail-closed**: for the folder and every descendant it
  * compares the effective resolved scope at the source path vs the rewritten
  * target path — for BOTH the global security scope AND the acting key's scope —
- * and returns VALIDATION_ERROR (naming the first offending path) if any differ.
+ * and returns VALIDATION_ERROR if any differ. The error names the first
+ * offending path only when the key may read it, otherwise it returns
+ * FOLDER_SCOPE_DENIAL_MESSAGE so no hidden path leaks (#136).
  * Identical scope on both sides → neutral → allowed. Kado never rewrites the
  * permission config to "fix" a mismatch: the declaration is the single source of
  * truth, so a boundary-crossing rename is the user's conscious config change.
@@ -101,22 +105,33 @@ export function checkFolderRenameScopeNeutral(
 	for (const p of paths) {
 		const pPrime = target + p.slice(source.length);
 		if (!permissionsEqual(resolveScope(security, p), resolveScope(security, pPrime))) {
-			return neutralityError(p, pPrime, 'global security');
+			return neutralityError(p, pPrime, 'global security', canReadPath(p, config, key));
 		}
 		if (!permissionsEqual(resolveScope(keyScope, p), resolveScope(keyScope, pPrime))) {
-			return neutralityError(p, pPrime, "the key's");
+			return neutralityError(p, pPrime, "the key's", canReadPath(p, config, key));
 		}
 	}
 	return {allowed: true};
 }
 
-function neutralityError(from: string, to: string, which: string): GateResult {
+const NEUTRALITY_ADVICE = 'Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically.';
+
+/**
+ * Client-facing neutrality block when the offending descendant is NOT readable
+ * by the key (#136): naming it would disclose a hidden file's name, location
+ * and existence. The detail goes to the debug log for the vault owner only.
+ */
+export const FOLDER_SCOPE_DENIAL_MESSAGE = `Rename blocked: the folder contains items under a different permission scope. ${NEUTRALITY_ADVICE}`;
+
+function neutralityError(from: string, to: string, which: string, fromReadable: boolean): GateResult {
+	const detail = `Rename blocked: "${from}" would become "${to}", changing its effective access under the ${which} permission scope. ${NEUTRALITY_ADVICE}`;
+	if (!fromReadable) kadoLog('folder rename scope-neutrality denied', {reason: detail});
 	return {
 		allowed: false,
 		error: {
 			code: 'VALIDATION_ERROR',
 			gate: 'folder-scope-neutrality',
-			message: `Rename blocked: "${from}" would become "${to}", changing its effective access under the ${which} permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically.`,
+			message: fromReadable ? detail : FOLDER_SCOPE_DENIAL_MESSAGE,
 		},
 	};
 }

@@ -5,7 +5,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions, checkFolderRenameScopeNeutral} from '../../src/core/folder-policy';
+import {evaluateFolderDeletePermissions, evaluateFolderRenamePermissions, checkFolderRenameScopeNeutral, FOLDER_SCOPE_DENIAL_MESSAGE} from '../../src/core/folder-policy';
 import type {ApiKeyConfig, CoreDeleteRequest, CoreRenameRequest, DataTypePermissions, KadoConfig, PathPermission, PermissionGate, GateResult, CoreRequest} from '../../src/types/canonical';
 
 const config = {apiKeys: []} as unknown as KadoConfig;
@@ -138,6 +138,61 @@ describe('checkFolderRenameScopeNeutral()', () => {
 
 		const r = checkFolderRenameScopeNeutral('Projects/alt', 'Projects/neu', paths, config, openKey);
 		expect(r.allowed).toBe(true);
+	});
+
+	describe('does not disclose descendants the key may not read (#136)', () => {
+		// A narrower rule disables read on A/alt/private/**; after the rename the
+		// note would fall under the broad A/** rule → not neutral. The offender is
+		// unreadable for the key, so its name must not appear in the error.
+		const noRead = (): DataTypePermissions => {
+			const p = allPerms();
+			p.note.read = false;
+			p.file.read = false;
+			return p;
+		};
+		const paths = ['A/alt', 'A/alt/ok.md', 'A/alt/private', 'A/alt/private/secret.md'];
+
+		function expectRedacted(r: GateResult): void {
+			expect(r.allowed).toBe(false);
+			if (r.allowed) return;
+			expect(r.error.code).toBe('VALIDATION_ERROR');
+			expect(r.error.gate).toBe('folder-scope-neutrality');
+			expect(r.error.message).toBe(FOLDER_SCOPE_DENIAL_MESSAGE);
+			expect(r.error.message).not.toContain('secret');
+			expect(r.error.message).not.toContain('private');
+		}
+
+		it('redacts an unreadable offender under the global scope', () => {
+			const config = cfg([
+				{path: 'A/**', permissions: allPerms()},
+				{path: 'A/alt/private/**', permissions: noRead()},
+			]);
+			expectRedacted(checkFolderRenameScopeNeutral('A/alt', 'A/neu', paths, config, openKey));
+		});
+
+		it("redacts an unreadable offender under the key's scope", () => {
+			const config = cfg([], 'blacklist');
+			const key = {listMode: 'whitelist', paths: [
+				{path: 'A/**', permissions: allPerms()},
+				{path: 'A/alt/private/**', permissions: noRead()},
+			]} as unknown as ApiKeyConfig;
+			expectRedacted(checkFolderRenameScopeNeutral('A/alt', 'A/neu', paths, config, key));
+		});
+
+		it('keeps the detailed message when the offender is readable', () => {
+			const readOnly = (): DataTypePermissions => {
+				const p = allPerms();
+				p.note.update = false;
+				return p;
+			};
+			const config = cfg([
+				{path: 'A/**', permissions: allPerms()},
+				{path: 'A/alt/private/**', permissions: readOnly()},
+			]);
+			const r = checkFolderRenameScopeNeutral('A/alt', 'A/neu', paths, config, openKey);
+			expect(r.allowed).toBe(false);
+			if (!r.allowed) expect(r.error.message).toContain('A/alt/private/secret.md');
+		});
 	});
 
 	it('does not mutate the config (block-not-migrate)', () => {

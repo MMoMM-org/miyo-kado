@@ -851,7 +851,7 @@ For `operation: "folder"` the mode is always **rename** (in-place; a cross-paren
 
 ### Folder rename — RBAC permission-neutral guard
 
-Renaming a folder rewrites the path of **every** descendant (`A/old/note.md → A/new/note.md`), which could move content under a different permission rule. Kado enforces a **fail-closed, block-not-migrate** invariant: for the folder and every descendant it compares the effective resolved scope at the old path vs the new path — under both the global security scope and the acting key's scope. If any descendant's effective access would change, the rename is **blocked** with `VALIDATION_ERROR` naming the offending path and boundary. Kado **never rewrites your permission config** to accommodate a rename — the config is the single source of truth. The common case (the whole subtree governed by one rule) is neutral and renames with zero friction; only a rename that genuinely crosses a permission boundary is refused, at which point you adjust the config yourself and retry.
+Renaming a folder rewrites the path of **every** descendant (`A/old/note.md → A/new/note.md`), which could move content under a different permission rule. Kado enforces a **fail-closed, block-not-migrate** invariant: for the folder and every descendant it compares the effective resolved scope at the old path vs the new path — under both the global security scope and the acting key's scope. If any descendant's effective access would change, the rename is **blocked** with `VALIDATION_ERROR` naming the offending path and boundary — but only when the key may read that path. If the offending descendant is one the key cannot read, the message is a fixed text without any path, so the error never discloses a hidden file (#136); the detail is written to the debug log for the vault owner. Kado **never rewrites your permission config** to accommodate a rename — the config is the single source of truth. The common case (the whole subtree governed by one rule) is neutral and renames with zero friction; only a rename that genuinely crosses a permission boundary is refused, at which point you adjust the config yourself and retry.
 
 ### Parameters
 
@@ -951,6 +951,15 @@ Renaming a folder rewrites the path of **every** descendant (`A/old/note.md → 
 {
   "code": "VALIDATION_ERROR",
   "message": "Rename blocked: \"100 Inbox/Q1 drafts/plan.md\" would become \"100 Inbox/Q1 final/plan.md\", changing its effective access under the global security permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically."
+}
+```
+
+When the offending descendant is not readable by the key, the path is withheld:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Rename blocked: the folder contains items under a different permission scope. Adjust the permission config to make the rename access-neutral, then retry — Kado does not change permissions automatically."
 }
 ```
 
