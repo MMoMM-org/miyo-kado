@@ -566,9 +566,17 @@
 	color: var(--text-warning, var(--text-muted));
 }
 
-/* Tag rules (#81): sub-label above each rule list */
+/* Tag rules (#81): own block with breathing room after the path list */
+.kado-tag-rules {
+	margin-top: 24px;
+	margin-bottom: 16px;
+}
+
+/* Sub-heading above each rule list ("Only notes tagged" / "Never notes tagged") */
 .kado-tag-rule-label {
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	margin-top: 8px;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	margin-top: 16px;
+	margin-bottom: 2px;
 }

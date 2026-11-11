@@ -32,7 +32,8 @@ interface RuleListSpec {
 	badge: {text: string; title: string};
 }
 
-export function renderTagRulesSection(containerEl: HTMLElement, rules: TagRuleLists, options: TagRulesSectionOptions): void {
+export function renderTagRulesSection(parentEl: HTMLElement, rules: TagRuleLists, options: TagRulesSectionOptions): void {
+	const containerEl = parentEl.createDiv({cls: 'kado-tag-rules'});
 	containerEl.createDiv({cls: 'kado-section-label', text: 'Tag rules'});
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
