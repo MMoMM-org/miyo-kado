@@ -39,7 +39,10 @@ src/
   mcp/               # MCP SDK layer — Express server, auth, tool registration
     server.ts        # HTTP server lifecycle, rate limiting, concurrency cap
     auth.ts          # Bearer token middleware (constant-time comparison)
-    tools.ts         # All 7 tool handlers (read/write/search/delete/rename/open-notes/graph) + scope injection
+    tools.ts         # Entry point: registerTools + re-exports of the tool-layer public API
+    tool-*.ts        # One module per handler group (read-write, delete-rename, search, open-notes, graph)
+                     #   plus tool-shapes (Zod + descriptions), tool-logging, tool-support, tool-deps
+    scope-filters.ts # Result-disclosure filters + search scope injection
     hints.ts         # Pure deriveHints() — optional, additive _hints next-step guidance
     tag-policy.ts    # Tool-side tag rules: single-note checks, redacted denials, disclosure predicate
     request-mapper.ts
