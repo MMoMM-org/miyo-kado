@@ -268,16 +268,19 @@ function missingAuthError(): CallToolResult {
 
 /**
  * Returns true when the key may READ the file at `path` (global ∩ key, most
- * specific entry wins — see canReadPath). Shared result-disclosure predicate for
- * search, graph, graph-audit and open-notes. A glob match alone is not enough: a
- * matching entry may still disable read.
+ * specific entry wins — see canReadPath) AND, for markdown notes, the note passes
+ * the key's tag rules (#81, cached tags; unindexed notes fail closed). Shared
+ * result-disclosure predicate for search, graph, graph-audit and open-notes. A
+ * glob match alone is not enough: a matching entry may still disable read.
  */
-export function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig): boolean {
-	return canReadPath(path, config, key);
+export function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig, tagSource?: NoteTagSource): boolean {
+	if (!canReadPath(path, config, key)) return false;
+	if (!path.endsWith('.md') || !hasTagRules(config, key)) return true;
+	return evaluateTagAccess(tagSource?.cachedTags(path) ?? null, config, key).allowed;
 }
 
 /** Filters search result items to only include paths within the key's permitted scope. */
-export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig): CoreSearchItem[] {
+export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig, tagSource?: NoteTagSource): CoreSearchItem[] {
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return [];
 
@@ -287,7 +290,7 @@ export function filterResultsByScope(items: CoreSearchItem[], keyId: string, con
 			const inKey = isFolderInScope(item.path, key.listMode, key.paths.map((p) => p.path));
 			return inGlobal && inKey;
 		}
-		return isPathPermittedForKey(item.path, key, config);
+		return isPathPermittedForKey(item.path, key, config, tagSource);
 	});
 }
 
@@ -373,8 +376,8 @@ function pruneToScopeKind(
  * Silently drops any descriptor whose path is not permitted — ADR-4 privacy invariant.
  * Delegates to isPathPermittedForKey to share glob-matching logic with filterResultsByScope.
  */
-function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, config: KadoConfig): OpenNoteDescriptor[] {
-	return notes.filter((note) => isPathPermittedForKey(note.path, key, config));
+function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, config: KadoConfig, tagSource?: NoteTagSource): OpenNoteDescriptor[] {
+	return notes.filter((note) => isPathPermittedForKey(note.path, key, config, tagSource));
 }
 
 function extractDataType(request: CoreRequest): DataType {
@@ -878,7 +881,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		request.scopePatterns = computeScopePatterns(keyId, config);
 		request.allowedTags = computeAllowedTags(keyId, config);
 		const searchKey = config.apiKeys.find((k) => k.id === keyId);
-		request.readablePath = searchKey ? (path) => canReadPath(path, config, searchKey) : () => false;
+		request.readablePath = searchKey ? (path) => isPathPermittedForKey(path, searchKey, config, deps.tagSource) : () => false;
 
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
@@ -900,7 +903,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 			// undefined and the adapter cannot pre-filter by scope. Apply post-hoc filtering
 			// here so blacklisted paths are never returned to the caller.
 			if (request.scopePatterns === undefined && request.operation !== 'listTags') {
-				const filtered = filterResultsByScope(searchResult.items, keyId, config);
+				const filtered = filterResultsByScope(searchResult.items, keyId, config, deps.tagSource);
 				searchResult = {...searchResult, items: filtered, total: filtered.length};
 			}
 
@@ -944,7 +947,7 @@ function registerOpenNotesTool(server: McpServer, deps: ToolDependencies): void 
 		try {
 			const all = enumerateOpenNotes(deps.app);
 			const byScope = pruneToScopeKind(all, gate.kind);
-			const permitted = filterDescriptorsByAcl(byScope, key, config);
+			const permitted = filterDescriptorsByAcl(byScope, key, config, deps.tagSource);
 			await logAllowed('kado-open-notes', deps, keyId, req, startMs, {permittedCount: permitted.length});
 			return mapOpenNotesResult({notes: permitted});
 		} catch (err: unknown) {
@@ -1028,8 +1031,8 @@ function registerGraphAuditTool(server: McpServer, deps: ToolDependencies): void
 			// Disclosure guard: an orphan is a real note path — filter by its own path.
 			// A dead link rides on its SOURCE note's visibility (the target is unresolved
 			// text, not a path); include it only if the source is permitted.
-			const orphans = audit.orphans.filter((o) => isPathPermittedForKey(o.path, key, config));
-			const deadLinks = audit.deadLinks.filter((d) => isPathPermittedForKey(d.source, key, config));
+			const orphans = audit.orphans.filter((o) => isPathPermittedForKey(o.path, key, config, deps.tagSource));
+			const deadLinks = audit.deadLinks.filter((d) => isPathPermittedForKey(d.source, key, config, deps.tagSource));
 
 			const page = paginateAudit(orphans, deadLinks, request.cursor, request.limit);
 			await logAllowed('kado-graph-audit', deps, keyId, request, startMs);
@@ -1080,7 +1083,7 @@ function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
 			// A related node's `via` names the 1-hop notes it was reached through —
 			// filter those too, and drop the node when no readable hop remains
 			// (otherwise it reveals a link path through a hidden note).
-			const readable = (p: string): boolean => key !== undefined && isPathPermittedForKey(p, key, config);
+			const readable = (p: string): boolean => key !== undefined && isPathPermittedForKey(p, key, config, deps.tagSource);
 			const nodes = graphResult.nodes.flatMap((n) => {
 				if (n.relation === 'dangling') return key ? [n] : [];
 				if (!readable(n.path)) return [];

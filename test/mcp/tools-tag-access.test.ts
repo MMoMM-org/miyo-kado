@@ -273,3 +273,98 @@ describe('tag access — kado-graph source', () => {
 		expect(deps.router).not.toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Result-disclosure filters (search, graph, graph-audit, open-notes)
+// ---------------------------------------------------------------------------
+
+describe('tag access — result filters', () => {
+	const tags = {'work.md': ['Work'], 'home.md': ['Home'], 'both.md': ['Work', 'Private'], 'untagged.md': []};
+
+	it('kado-search hands the adapter a readablePath predicate that applies tag rules', async () => {
+		const router = vi.fn(async () => ({items: [], total: 0}));
+		const deps = makeDeps(makeConfig({keyAllow: ['Work'], keyDeny: ['Private']}), {router, tagSource: makeTagSource(tags)});
+		await handler('kado-search', deps)({operation: 'byContent', query: 'x'}, extra);
+		const routed = (router.mock.calls as unknown as [{readablePath: (p: string) => boolean}][])[0]![0];
+		expect(routed.readablePath('work.md')).toBe(true);
+		expect(routed.readablePath('home.md')).toBe(false);
+		expect(routed.readablePath('both.md')).toBe(false);
+		expect(routed.readablePath('untagged.md')).toBe(false);
+		expect(routed.readablePath('unindexed.md')).toBe(false);
+		expect(routed.readablePath('Attachments/a.png')).toBe(true);
+	});
+
+	it('kado-search readablePath ignores tags when no rules exist', async () => {
+		const router = vi.fn(async () => ({items: [], total: 0}));
+		const tagSource = makeTagSource(tags);
+		const deps = makeDeps(makeConfig(), {router, tagSource});
+		await handler('kado-search', deps)({operation: 'listNotes'}, extra);
+		const routed = (router.mock.calls as unknown as [{readablePath: (p: string) => boolean}][])[0]![0];
+		expect(routed.readablePath('unindexed.md')).toBe(true);
+		expect(tagSource.cachedTags).not.toHaveBeenCalled();
+	});
+
+	it('kado-search post-filters results by tag rules when both scopes are blacklists', async () => {
+		const config = makeConfig({keyAllow: ['Work']});
+		config.security.listMode = 'blacklist';
+		config.security.paths = [];
+		config.apiKeys[0]!.listMode = 'blacklist';
+		config.apiKeys[0]!.paths = [];
+		const item = (path: string) => ({path, name: path, created: 1, modified: 1, size: 1});
+		const router = vi.fn(async () => ({items: [item('work.md'), item('home.md')], total: 2}));
+		const deps = makeDeps(config, {router, tagSource: makeTagSource(tags)});
+		const result = await handler('kado-search', deps)({operation: 'byName', query: 'md'}, extra);
+		const text = (result.content[0] as {text: string}).text;
+		expect(text).toContain('work.md');
+		expect(text).not.toContain('home.md');
+	});
+
+	it('kado-graph drops resolved nodes and via hops outside tag scope', async () => {
+		const router = vi.fn(async () => ({
+			source: 'work.md',
+			operation: 'related' as const,
+			nodes: [
+				{path: 'work.md', relation: 'related' as const, via: ['home.md', 'work.md']},
+				{path: 'home.md', relation: 'outgoing' as const},
+			],
+		}));
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {router, tagSource: makeTagSource(tags)});
+		const result = await handler('kado-graph', deps)({operation: 'related', path: 'work.md'}, extra);
+		const body = JSON.parse((result.content[0] as {text: string}).text) as {nodes: Array<{path: string; via?: string[]}>};
+		expect(body.nodes).toEqual([{path: 'work.md', relation: 'related', via: ['work.md']}]);
+	});
+
+	it('kado-graph-audit omits orphans and dead-link sources outside tag scope', async () => {
+		const router = vi.fn(async () => ({
+			orphans: [{path: 'work.md'}, {path: 'home.md'}],
+			deadLinks: [{source: 'both.md', target: 'Secret', count: 1}, {source: 'work.md', target: 'Missing', count: 1}],
+		}));
+		const deps = makeDeps(makeConfig({keyAllow: ['Work'], keyDeny: ['Private']}), {router, tagSource: makeTagSource(tags)});
+		const text = ((await handler('kado-graph-audit', deps)({}, extra)).content[0] as {text: string}).text;
+		expect(text).toContain('work.md');
+		expect(text).not.toContain('home.md');
+		expect(text).not.toContain('Secret');
+	});
+
+	it('kado-open-notes filters open notes outside tag scope', async () => {
+		const config = makeConfig({keyAllow: ['Work']});
+		config.security.allowActiveNote = true;
+		config.security.allowOtherNotes = true;
+		config.apiKeys[0]!.allowActiveNote = true;
+		config.apiKeys[0]!.allowOtherNotes = true;
+		const leaf = (path: string) => {
+			const file = new TFile();
+			file.path = path;
+			file.basename = path.replace(/\.md$/, '');
+			return {view: {file, getViewType: () => 'markdown'}};
+		};
+		const app = {
+			vault: {getAbstractFileByPath: vi.fn(() => null)},
+			workspace: {activeLeaf: null, getLeavesOfType: vi.fn((type: string) => (type === 'markdown' ? [leaf('work.md'), leaf('home.md')] : []))},
+		} as unknown as App;
+		const deps = makeDeps(config, {app, tagSource: makeTagSource(tags)});
+		const text = ((await handler('kado-open-notes', deps)({scope: 'all'}, extra)).content[0] as {text: string}).text;
+		expect(text).toContain('work.md');
+		expect(text).not.toContain('home.md');
+	});
+});
