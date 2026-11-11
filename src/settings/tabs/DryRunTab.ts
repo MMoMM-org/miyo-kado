@@ -1,10 +1,11 @@
 /**
  * DryRunTab — the "Permission Test" settings panel (#83).
  *
- * Lets the user pick a key + operation + data type + path (+ optional tag) and
- * see, live, whether that request would be ALLOWED or DENIED, which gate decided
- * and why — running the real permission chain via runDryRun (no duplicated
- * logic, read-only, never touches the vault).
+ * Lets the user pick a key + operation + data type + path (+ optional note tags
+ * and search tag) and see, live, whether that request would be ALLOWED or
+ * DENIED, which gate decided and why — running the real permission chain and
+ * tag access policy via runDryRun (no duplicated logic, read-only, never writes
+ * to the vault). Note tags default to the note's cached tags (#81).
  *
  * Form state lives on the KadoSettingsTab instance (passed in as `state`) so it
  * survives re-renders and, crucially, switching the selected key without losing
@@ -18,6 +19,9 @@ import {createDefaultGateChain} from '../../core/permission-chain';
 import {runDryRun, toSubtreeProbe} from '../../core/dry-run';
 import type {DryRunInput, DryRunOperation} from '../../core/dry-run';
 import type {ReadDataType} from '../../types/canonical';
+import {hasTagRules} from '../../core/tag-access';
+import {normalizeFrontmatterTags} from '../../core/note-tags';
+import {createNoteTagSource} from '../../obsidian/note-tag-source';
 import {PathInputSuggest} from '../components/PathInputSuggest';
 import {TagInputSuggest} from '../components/TagInputSuggest';
 
@@ -29,11 +33,13 @@ export interface DryRunState {
 	path: string;
 	target: string;
 	tag: string;
+	/** User-entered note tags (comma/space separated). Empty = use the note's own tags. */
+	noteTags: string;
 }
 
 /** Fresh default dry-run form state. */
 export function createDryRunState(): DryRunState {
-	return {operation: 'read', dataType: 'note', path: '', target: '', tag: ''};
+	return {operation: 'read', dataType: 'note', path: '', target: '', tag: '', noteTags: ''};
 }
 
 const OPERATIONS: {value: DryRunOperation; label: string}[] = [
@@ -172,10 +178,24 @@ export function renderDryRunTab(containerEl: HTMLElement, plugin: KadoPlugin, st
 			});
 	}
 
-	// ── Tag (optional, independent readout) ──
+	// ── Note tags (tag access rules, #81; hidden for search) ──
+	if (state.operation !== 'search') {
+		new Setting(containerEl)
+			.setName('Note tags (optional)')
+			.setDesc('Tags the note carries, for tag rules. Leave empty to use the note\'s current tags; enter them for a note that does not exist yet.')
+			.addText((text) => {
+				text.setPlaceholder('Comma-separated tags').setValue(state.noteTags);
+				text.onChange((value) => {
+					state.noteTags = value;
+					recompute();
+				});
+			});
+	}
+
+	// ── Search tag (optional, independent readout) ──
 	new Setting(containerEl)
-		.setName('Tag (optional)')
-		.setDesc('Independent check: is this tag within the key\'s tag scope? Tags do not gate path access yet.')
+		.setName('Search tag (optional)')
+		.setDesc('Independent check: may this key filter kado-search by this tag?')
 		.addText((text) => {
 			text.setPlaceholder('Project').setValue(state.tag);
 			text.onChange((value) => {
@@ -227,6 +247,8 @@ function renderResult(resultEl: HTMLElement, plugin: KadoPlugin, state: DryRunSt
 		target: probedTarget,
 		tag: state.tag.trim() || undefined,
 	};
+	const noteTags = resolveNoteTags(plugin, state, enteredPath);
+	input.noteTags = noteTags.tags;
 	const result = runDryRun(input, config, createDefaultGateChain());
 
 	if (probedPath !== enteredPath) {
@@ -245,7 +267,24 @@ function renderResult(resultEl: HTMLElement, plugin: KadoPlugin, state: DryRunSt
 	}
 	resultEl.createEl('p', {cls: 'kado-dryrun-reason', text: result.reason});
 
+	const key = config.apiKeys.find((k) => k.id === state.keyId);
+	if (key && hasTagRules(config, key) && state.operation !== 'search') {
+		const list = noteTags.tags && noteTags.tags.length > 0 ? noteTags.tags.map((t) => `#${t}`).join(', ') : 'none';
+		resultEl.createEl('p', {cls: 'setting-item-description', text: `Note tags used for tag rules (${noteTags.origin}): ${list}`});
+	}
+
 	if (state.tag.trim() !== '') renderTagScope(resultEl, plugin, state, result.tagScope);
+}
+
+/**
+ * Note tags for the tag-rule verdict: the user's entry when given, else the
+ * note's cached tags; a path that does not exist yet counts as untagged.
+ * `undefined` tags = the note exists but is not indexed (fail-closed).
+ */
+function resolveNoteTags(plugin: KadoPlugin, state: DryRunState, path: string): {tags: string[] | undefined; origin: string} {
+	if (state.noteTags.trim() !== '') return {tags: normalizeFrontmatterTags(state.noteTags), origin: 'entered'};
+	if (plugin.app.vault.getFileByPath(path) === null) return {tags: [], origin: 'new note'};
+	return {tags: createNoteTagSource(plugin.app).cachedTags(path) ?? undefined, origin: 'from note'};
 }
 
 /** Renders the secondary tag-scope line. */

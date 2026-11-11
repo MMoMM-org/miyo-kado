@@ -49,12 +49,18 @@ export function normalizeConfig(stored: unknown): KadoConfig {
 	mergedSecurity.allowActiveNote = mergedSecurity.allowActiveNote === true;
 	mergedSecurity.allowOtherNotes = mergedSecurity.allowOtherNotes === true;
 
+	// Tag access rules (#81): absent or malformed → [] (no restriction)
+	mergedSecurity.tagAllow = toStringList(mergedSecurity.tagAllow);
+	mergedSecurity.tagDeny = toStringList(mergedSecurity.tagDeny);
+
 	// Ensure apiKeys have new flat fields (listMode, paths, tags)
 	const keys = (partial.apiKeys ?? defaults.apiKeys).map(key => ({
 		...key,
 		listMode: key.listMode ?? 'whitelist' as const,
 		paths: key.paths ?? [],
 		tags: key.tags ?? [],
+		tagAllow: toStringList((key as unknown as Record<string, unknown>).tagAllow),
+		tagDeny: toStringList((key as unknown as Record<string, unknown>).tagDeny),
 		allowActiveNote: (key as unknown as Record<string, unknown>).allowActiveNote === true,
 		allowOtherNotes: (key as unknown as Record<string, unknown>).allowOtherNotes === true,
 	}));
@@ -82,4 +88,10 @@ export function normalizeConfig(stored: unknown): KadoConfig {
 			: defaults.renameTimeoutMs,
 		renameWarningAcknowledged: partial.renameWarningAcknowledged === true,
 	};
+}
+
+/** Coerces a stored tag-rule list to string[]: non-arrays → [], non-string entries dropped. */
+function toStringList(raw: unknown): string[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.filter((entry): entry is string => typeof entry === 'string');
 }

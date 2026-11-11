@@ -9,7 +9,8 @@ import type {App, HeadingCache, TFile} from 'obsidian';
 import {MarkdownView, Notice, parseYaml} from 'obsidian';
 import type {ReadWriteAdapter} from '../core/operation-router';
 import type {CoreReadRequest, CoreWriteRequest, CoreFileResult, CoreWriteResult, CoreError, CoreErrorCode, HeadingTarget, NoteWritePartial} from '../types/canonical';
-import {extractInlineTags, normalizeTag} from '../core/tag-utils';
+import {extractInlineTags} from '../core/tag-utils';
+import {dedupePreservingOrder, frontmatterTags, innerYaml, splitFrontmatter} from '../core/note-tags';
 import {ensureParentFolder} from './ensure-parent-folder';
 import {firstXChars, firstXWords, sliceByLineRange, sliceByCharRange, applyAppend, applyPrepend} from '../core/partial-slice';
 
@@ -208,63 +209,11 @@ async function readNote(app: App, request: CoreReadRequest): Promise<CoreFileRes
 	};
 }
 
-/** Splits a frontmatter tags string at whitespace or commas and normalizes each token. */
-function parseFrontmatterTagString(raw: string): string[] {
-	return raw
-		.split(/[\s,]+/)
-		.map((t) => normalizeTag(t))
-		.filter((t): t is string => t !== null);
-}
-
 type FileCacheArg = Parameters<App['metadataCache']['getFileCache']>[0];
 
-/** Reads frontmatter tags for a note: accepts string or string[] form, normalizes and dedupes. */
+/** Reads frontmatter tags (`tags`/`tag`, any case; string or list form) for a note from the metadata cache. */
 function readFrontmatterTags(app: App, file: FileCacheArg): string[] {
-	const cache = app.metadataCache.getFileCache(file);
-	const raw: unknown = cache?.frontmatter?.tags;
-	if (raw === undefined || raw === null) return [];
-	const collected: string[] = [];
-	if (typeof raw === 'string') {
-		collected.push(...parseFrontmatterTagString(raw));
-	} else if (Array.isArray(raw)) {
-		for (const entry of raw) {
-			if (typeof entry !== 'string') continue;
-			const tag = normalizeTag(entry);
-			if (tag !== null) collected.push(tag);
-		}
-	}
-	return dedupePreservingOrder(collected);
-}
-
-function dedupePreservingOrder(tags: string[]): string[] {
-	const seen = new Set<string>();
-	const out: string[] = [];
-	for (const tag of tags) {
-		if (!seen.has(tag)) {
-			seen.add(tag);
-			out.push(tag);
-		}
-	}
-	return out;
-}
-
-/**
- * Splits content at the YAML frontmatter boundary into `{prefix, body}` where
- * `prefix + body === content` in the normal case. The split point is returned
- * explicitly rather than reconstructed by length arithmetic, so callers (e.g.
- * prepend) can never run the closing fence and inserted text together.
- *
- * Edge case: a frontmatter-only file whose closing `---` is the very last byte
- * (no trailing newline). There is no body, and concatenating onto the bare
- * fence would corrupt it, so the prefix is normalized with a trailing newline.
- */
-function splitFrontmatter(content: string): {prefix: string; body: string} {
-	if (!content.startsWith('---')) return {prefix: '', body: content};
-	const end = content.indexOf('\n---', 3);
-	if (end === -1) return {prefix: '', body: content};
-	const afterFence = content.indexOf('\n', end + 1);
-	if (afterFence === -1) return {prefix: content + '\n', body: ''};
-	return {prefix: content.slice(0, afterFence + 1), body: content.slice(afterFence + 1)};
+	return frontmatterTags(app.metadataCache.getFileCache(file)?.frontmatter);
 }
 
 /** Strips a leading YAML frontmatter block so inline-tag scanning does not re-scan it. */
@@ -338,19 +287,6 @@ async function isFileOpenAndDirty(app: App, file: TFile): Promise<boolean> {
 	const cachedContent = await app.vault.cachedRead(file);
 	if (editorContent === cachedContent) return false; // fast path: byte-identical
 	return !contentsEquivalent(editorContent, cachedContent);
-}
-
-/**
- * Returns the raw YAML text inside a frontmatter block (between the opening and
- * closing `---` fences), or null if `prefix` is not a frontmatter block. Operates
- * on the `prefix` returned by splitFrontmatter, which is `---\n<yaml>\n---\n`.
- */
-function innerYaml(prefix: string): string | null {
-	if (!prefix.startsWith('---')) return null;
-	const open = prefix.indexOf('\n');
-	const close = prefix.indexOf('\n---', open);
-	if (open === -1 || close === -1) return null;
-	return prefix.slice(open + 1, close + 1);
 }
 
 /**

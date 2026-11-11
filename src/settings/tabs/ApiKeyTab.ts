@@ -13,6 +13,7 @@ import {folderPrefixOf} from '../../core/glob-match';
 import {findMostSpecificEntry} from '../../core/gates/scope-resolver';
 import {renderPermissionMatrix} from '../components/PermissionMatrix';
 import {renderTagEntry} from '../components/TagEntry';
+import {renderTagRulesSection} from '../components/TagRulesSection';
 import {renderOpenNotesSection} from '../components/OpenNotesSection';
 import {VaultFolderModal} from '../components/VaultFolderModal';
 
@@ -194,8 +195,19 @@ function renderKeyPermissions(
 		new VaultFolderModal(plugin.app, (folder) => addPath(folder), prefixes).open();
 	});
 
-	// ── Tags Section ──
-	containerEl.createDiv({cls: 'kado-section-label', text: 'Tags'});
+	// ── Tag Rules Section (#81) ──
+	renderTagRulesSection(containerEl, key, {
+		app: plugin.app,
+		onSave: () => { void plugin.saveSettings(); },
+		onRedisplay: onRedisplay,
+	});
+
+	// ── Search Tags Section ──
+	containerEl.createDiv({cls: 'kado-section-label', text: 'Search tags'});
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Tags that search may filter by. They do not restrict which notes are accessible — use tag rules for that. Allowed tags from the tag rules are included automatically.',
+	});
 
 	const tagsContainer = containerEl.createDiv();
 

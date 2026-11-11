@@ -966,6 +966,29 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 // byTag
 // ---------------------------------------------------------------------------
 
+describe('SearchAdapter — frontmatter tag keys (#81 consistency)', () => {
+	it('byTag finds notes tagged via the singular `tag` key, the string form and a capitalised key', async () => {
+		const a = makeTFile({path: 'a.md'});
+		const b = makeTFile({path: 'b.md'});
+		const c = makeTFile({path: 'c.md'});
+		const app = makeApp({
+			markdownFiles: [a, b, c],
+			cacheMap: new Map([[a, {frontmatter: {tag: 'private'}}], [b, {frontmatter: {tags: 'work, private'}}], [c, {frontmatter: {Tags: ['private']}}]]),
+		});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({
+			operation: 'byTag', query: '#private', allowedTags: ['*'],
+		})));
+		expect(result.items.map((i) => i.path).sort()).toEqual(['a.md', 'b.md', 'c.md']);
+	});
+
+	it('listTags counts tags from every frontmatter tag key', async () => {
+		const a = makeTFile({path: 'a.md'});
+		const app = makeApp({markdownFiles: [a], cacheMap: new Map([[a, {frontmatter: {tag: 'private', tags: ['work']}}]])});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({operation: 'listTags', allowedTags: ['*']})));
+		expect(result.items.map((i) => i.path).sort()).toEqual(['#private', '#work']);
+	});
+});
+
 describe('SearchAdapter — byTag', () => {
 	it('returns notes matching query tag using metadataCache', async () => {
 		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md', ctime: 10, mtime: 20, size: 5});
@@ -3192,6 +3215,45 @@ describe('SearchAdapter — readablePath', () => {
 		})));
 
 		expect(result.items.map((i) => i.path).sort()).toEqual(['Atlas/Public/pub.md', 'Atlas/note-a.md']);
+	});
+
+	it('byTag drops unreadable notes carrying the tag', async () => {
+		const pub = makeTFile({path: 'Public/a.md'});
+		const priv = makeTFile({path: 'Private/b.md'});
+		const app = makeApp({
+			markdownFiles: [pub, priv],
+			cacheMap: new Map([[pub, {tags: [{tag: '#work'}]}], [priv, {tags: [{tag: '#work'}]}]]),
+		});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({
+			operation: 'byTag', query: '#work', allowedTags: ['*'], readablePath: notPrivate,
+		})));
+		expect(result.items.map((i) => i.path)).toEqual(['Public/a.md']);
+	});
+
+	it('byFrontmatter drops unreadable notes with a matching key', async () => {
+		const pub = makeTFile({path: 'Public/a.md'});
+		const priv = makeTFile({path: 'Private/b.md'});
+		const app = makeApp({
+			markdownFiles: [pub, priv],
+			cacheMap: new Map([[pub, {frontmatter: {status: 'open'}}], [priv, {frontmatter: {status: 'open'}}]]),
+		});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({
+			operation: 'byFrontmatter', query: 'status=open', readablePath: notPrivate,
+		})));
+		expect(result.items.map((i) => i.path)).toEqual(['Public/a.md']);
+	});
+
+	it('filter.tags never surfaces unreadable notes', async () => {
+		const pub = makeTFile({path: 'Public/report.md'});
+		const priv = makeTFile({path: 'Private/report.md'});
+		const app = makeApp({
+			markdownFiles: [pub, priv],
+			cacheMap: new Map([[pub, {tags: [{tag: '#work'}]}], [priv, {tags: [{tag: '#work'}]}]]),
+		});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({
+			operation: 'byName', query: 'report', allowedTags: ['*'], filter: {tags: ['#work']}, readablePath: notPrivate,
+		})));
+		expect(result.items.map((i) => i.path)).toEqual(['Public/report.md']);
 	});
 
 	it('listDir omits unreadable files and excludes them from childCount', async () => {

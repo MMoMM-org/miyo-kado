@@ -23,6 +23,8 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 		...overrides,
@@ -32,7 +34,7 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 function makeConfig(keys: ApiKeyConfig[] = []): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const, rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5},
-		security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+		security: {listMode: 'whitelist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		apiKeys: keys,
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 		debugLogging: false,

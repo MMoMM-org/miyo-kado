@@ -140,7 +140,7 @@ describe('createDefaultConfig', () => {
 	it('produces independent objects on each call', () => {
 		const a = createDefaultConfig();
 		const b = createDefaultConfig();
-		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false});
+		a.apiKeys.push({id: 'x', label: 'x', enabled: true, createdAt: 0, listMode: 'whitelist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false});
 		expect(b.apiKeys).toHaveLength(0);
 	});
 });

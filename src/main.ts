@@ -28,6 +28,7 @@ import {
 import {createRenameAdapter} from './obsidian/rename-adapter';
 import {LinkGraphIndex} from './obsidian/link-graph-index';
 import {createGraphAdapter} from './obsidian/graph-adapter';
+import {createNoteTagSource} from './obsidian/note-tag-source';
 import {getAlwaysUpdateLinks} from './obsidian/vault-config';
 import {RenameRiskModal} from './settings/components/RenameRiskModal';
 import {AuditLogger} from './core/audit-logger';
@@ -103,6 +104,7 @@ export default class KadoPlugin extends Plugin {
 		const gates = createDefaultGateChain();
 		const getFileMtime = (path: string): number | undefined =>
 			this.app.vault.getFileByPath(path)?.stat.mtime;
+		const tagSource = createNoteTagSource(this.app);
 
 		const auditConfig = this.configManager.getConfig().audit;
 		let writeChain = Promise.resolve();
@@ -166,7 +168,7 @@ export default class KadoPlugin extends Plugin {
 				// Re-evaluated each time the server (re)starts.
 				const cfg = this.configManager.getConfig();
 				const renameToolEnabled = getAlwaysUpdateLinks(this.app) || cfg.renameWhenLinkUpdateOff;
-				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, auditLogger: this.auditLogger, onActivity: (evt) => this.handleToolActivity(evt), app: this.app, renameToolEnabled});
+				registerTools(server, {configManager: this.configManager, gates, router, getFileMtime, tagSource, auditLogger: this.auditLogger, onActivity: (evt) => this.handleToolActivity(evt), app: this.app, renameToolEnabled});
 			},
 			this.manifest.version,
 		);

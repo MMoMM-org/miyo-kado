@@ -57,6 +57,8 @@ function makeSecurityConfig(overrides?: Partial<SecurityConfig>): SecurityConfig
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 		...overrides,

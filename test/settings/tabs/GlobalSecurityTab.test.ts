@@ -28,15 +28,28 @@ function mockPlugin(configOverride?: Partial<ReturnType<typeof defaultConfig>>) 
 }
 
 describe('renderGlobalSecurityTab — rendering', () => {
-	it('renders a Paths section and a Tags section', () => {
+	it('renders Paths, Tag rules and Search tags sections in that order', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin();
 
 		renderGlobalSecurityTab(container, plugin, vi.fn());
 
 		const labels = Array.from(container.querySelectorAll('.kado-section-label')).map((el) => el.textContent);
-		expect(labels).toContain('Paths');
-		expect(labels).toContain('Tags');
+		const order = ['Paths', 'Tag rules', 'Search tags'].map((l) => labels.indexOf(l));
+		expect(order.every((i) => i >= 0)).toBe(true);
+		expect([...order].sort((a, b) => a - b)).toEqual(order);
+	});
+
+	it('adding a global allowed tag rule mutates security.tagAllow (#81)', () => {
+		const container = renderSandbox();
+		const {plugin, config, saveSettings} = mockPlugin();
+
+		renderGlobalSecurityTab(container, plugin, vi.fn());
+		const btn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '+ add allowed tag') as HTMLButtonElement;
+		btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+
+		expect(config.security.tagAllow).toEqual(['']);
+		expect(saveSettings).toHaveBeenCalled();
 	});
 
 	it('renders an add-path button and an add-tag button', () => {
@@ -67,6 +80,8 @@ describe('renderGlobalSecurityTab — rendering', () => {
 					},
 				],
 				tags: [],
+				tagAllow: [],
+				tagDeny: [],
 				allowActiveNote: false,
 				allowOtherNotes: false,
 			},
@@ -155,7 +170,7 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 	it('Open Notes toggle descriptions use blacklist wording when listMode is blacklist', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin({
-			security: {listMode: 'blacklist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+			security: {listMode: 'blacklist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		});
 
 		renderGlobalSecurityTab(container, plugin, vi.fn());
@@ -168,7 +183,7 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 	it('Open Notes toggle descriptions use whitelist wording when listMode is whitelist', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin({
-			security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+			security: {listMode: 'whitelist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		});
 
 		renderGlobalSecurityTab(container, plugin, vi.fn());
@@ -228,6 +243,8 @@ describe('renderGlobalSecurityTab — interactivity', () => {
 					},
 				],
 				tags: [],
+				tagAllow: [],
+				tagDeny: [],
 				allowActiveNote: false,
 				allowOtherNotes: false,
 			},

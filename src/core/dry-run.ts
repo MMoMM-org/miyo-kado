@@ -7,11 +7,12 @@
  * update/delete/search, evaluateRenamePermissions for rename/move). Nothing is
  * duplicated, so the dry-run verdict can never drift from real tool behavior.
  *
- * It additionally reports a SECONDARY, independent tag-scope readout: whether an
- * optional tag falls within the key's effective (global ∩ key) tag scope. Tags
- * do NOT gate path access in the current model (they scope kado-search byTag) —
- * so this is informational for now, and forward-compatible with the planned
- * tag-deny feature (#81) where a tag will participate in the verdict itself.
+ * Tag access rules (#81) participate in the verdict exactly as in the tools:
+ * after the path chain allows, evaluateTagAccess runs on the note's tags
+ * (`noteTags`, supplied by the caller — the panel reads them from the note, or
+ * the user enters them for a create). It additionally reports a SECONDARY,
+ * independent readout: whether an optional search tag falls within the key's
+ * effective (global ∩ key) kado-search byTag scope.
  *
  * No imports from `obsidian` or `@modelcontextprotocol/sdk`.
  */
@@ -31,6 +32,7 @@ import type {
 import {evaluatePermissions} from './permission-chain';
 import {evaluateRenamePermissions} from './rename-policy';
 import {matchTag, normalizeTag} from './tag-utils';
+import {computeSearchTagScope, evaluateTagAccess, isTagGovernedDataType} from './tag-access';
 
 /** High-level operations a dry-run can evaluate. `write` is split into create/update for CRUD precision. */
 export type DryRunOperation = 'read' | 'create' | 'update' | 'delete' | 'rename' | 'search';
@@ -52,8 +54,13 @@ export interface DryRunInput {
 	path: string;
 	/** Target path — only used for rename/move. */
 	target?: string;
-	/** Optional tag for the independent tag-scope readout. */
+	/** Optional tag for the independent kado-search byTag scope readout. */
 	tag?: string;
+	/**
+	 * Tags the note at `path` carries (for create: the tags its content would
+	 * carry). Undefined = unknown, which tag rules treat as denied (fail-closed).
+	 */
+	noteTags?: string[];
 }
 
 /** Outcome of a dry-run: the path verdict plus the secondary tag-scope readout. */
@@ -93,7 +100,8 @@ export function toSubtreeProbe(path: string, isFolder: boolean): string {
  * `gates` should be `createDefaultGateChain()` (or the plugin's live chain).
  */
 export function runDryRun(input: DryRunInput, config: KadoConfig, gates: PermissionGate[]): DryRunResult {
-	const {verdict, mode} = evaluatePathVerdict(input, config, gates);
+	const {verdict: pathVerdict, mode} = evaluatePathVerdict(input, config, gates);
+	const verdict = pathVerdict.allowed ? evaluateTagVerdict(input, config) : pathVerdict;
 	const tagScope = evaluateTagScope(input.tag, input.keyId, config);
 
 	if (verdict.allowed) {
@@ -165,6 +173,19 @@ function evaluatePathVerdict(
 }
 
 /**
+ * Applies the tag access policy (#81) the way the tools do: only for note-level
+ * data types on a single note. Search (result-level filtering) and folder probes
+ * (a folder rename is checked per descendant at runtime) are not evaluated.
+ */
+function evaluateTagVerdict(input: DryRunInput, config: KadoConfig): GateResult {
+	const key = config.apiKeys.find((k) => k.id === input.keyId);
+	if (!key || input.operation === 'search' || input.path.endsWith('/') || !isTagGovernedDataType(input.dataType)) {
+		return {allowed: true};
+	}
+	return evaluateTagAccess(input.noteTags ?? null, config, key);
+}
+
+/**
  * Reports whether `tag` is within the key's effective tag scope — the
  * intersection of global security tags and the key's own tags (both must be
  * non-empty), matched with the same wildcard semantics as kado-search.
@@ -178,12 +199,7 @@ function evaluateTagScope(rawTag: string | undefined, keyId: string, config: Kad
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return 'out-of-scope';
 
-	const globalTags = config.security.tags ?? [];
-	const keyTags = key.tags ?? [];
-	if (globalTags.length === 0 || keyTags.length === 0) return 'out-of-scope';
-
-	// Effective scope = key tags that are also permitted by a global tag pattern.
-	const allowed = keyTags.filter((kt) => globalTags.some((gt) => matchTag(kt, gt)));
-	const inScope = allowed.some((pattern) => matchTag(tag, pattern));
+	// Same scope the search tool enforces (global ∩ key search tags + tagAllow).
+	const inScope = computeSearchTagScope(config, key).some((pattern) => matchTag(tag, pattern));
 	return inScope ? 'in-scope' : 'out-of-scope';
 }

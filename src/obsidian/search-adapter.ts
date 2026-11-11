@@ -12,6 +12,7 @@ import type {SearchAdapter} from '../core/operation-router';
 import type {CoreSearchRequest, CoreSearchResult, CoreSearchItem, CoreError, SearchFilter, CoreLinkRef, CoreHeadingRef} from '../types/canonical';
 import {matchGlob, dirCouldContainMatches, pathMatchesPatterns} from '../core/glob-match';
 import {normalizeTag, matchTag, isWildcardTag} from '../core/tag-utils';
+import {frontmatterTags} from '../core/note-tags';
 import {scoreContent} from '../core/content-score';
 
 const DEFAULT_LIMIT = 50;
@@ -133,8 +134,10 @@ function canGlobMatchAllowedTag(queryRegex: RegExp, allowedTags: string[]): bool
 }
 
 /**
- * Merges inline tags (`cache.tags`) and frontmatter tags (`cache.frontmatter?.tags`)
- * into a single deduplicated list of '#'-prefixed tag strings.
+ * Merges inline tags (`cache.tags`) and frontmatter tags into a single
+ * deduplicated list of '#'-prefixed tag strings. Frontmatter tags come from
+ * every key Obsidian honours (`tags`/`tag`, any case, list or string form) via
+ * the shared frontmatterTags, so search sees the same tags as the tag rules (#81).
  */
 function getFileTags(cache: {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>} | null): string[] {
 	if (!cache) return [];
@@ -142,14 +145,7 @@ function getFileTags(cache: {tags?: {tag: string}[]; frontmatter?: Record<string
 	if (cache.tags) {
 		for (const {tag} of cache.tags) seen.add(tag);
 	}
-	const fmTags = cache.frontmatter?.tags;
-	if (Array.isArray(fmTags)) {
-		for (const raw of fmTags) {
-			if (typeof raw !== 'string') continue;
-			const tag = raw.startsWith('#') ? raw : `#${raw}`;
-			seen.add(tag);
-		}
-	}
+	for (const tag of frontmatterTags(cache.frontmatter)) seen.add(`#${tag}`);
 	return Array.from(seen);
 }
 

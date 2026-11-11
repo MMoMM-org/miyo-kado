@@ -1,7 +1,9 @@
 /**
- * TagEntry — renders a tag row with picker and fixed Read badge.
+ * TagEntry — renders a tag row with picker and a badge.
  *
- * Layout: [-remove] [#tag input] [browse tags] [R badge]
+ * Layout: [-remove] [#tag input] [browse tags] [badge]
+ * The badge defaults to "R" (search tags are read filters); tag rules (#81)
+ * pass "Allow" / "Deny".
  */
 
 import type {App} from 'obsidian';
@@ -17,6 +19,8 @@ export interface TagEntryOptions {
 	onChange: (newTag: string) => void;
 	/** Called when remove button is clicked. */
 	onRemove: () => void;
+	/** Badge text and tooltip. Default: "R" — read-only search filter. */
+	badge?: {text: string; title: string};
 }
 
 export function renderTagEntry(
@@ -55,6 +59,6 @@ export function renderTagEntry(
 		}, options.availableTags).open();
 	});
 
-	// Fixed Read badge
-	row.createDiv({cls: 'kado-tag-read-badge', text: 'R', title: 'Read-only — tags are read filters'});
+	const badge = options.badge ?? {text: 'R', title: 'Read-only — tags are read filters'};
+	row.createDiv({cls: 'kado-tag-read-badge', text: badge.text, title: badge.title});
 }

@@ -498,6 +498,20 @@ export type GateResult =
 	| { allowed: true }
 	| { allowed: false; error: CoreError };
 
+/**
+ * Port (#81): resolves the tags a markdown note carries, for the tag access policy.
+ * All tags are returned without `#`. `null` = unknown (missing, non-markdown,
+ * unreadable or not indexed) — the policy treats that as denied when rules exist.
+ */
+export interface NoteTagSource {
+	/** Tags read from the note's current file content (index-lag safe). For single-note operations. */
+	readTags(path: string): Promise<string[] | null>;
+	/** Tags from the metadata cache, synchronously. For bulk result filters (search, graph, open notes). */
+	cachedTags(path: string): string[] | null;
+	/** Tags in not-yet-written markdown content. For note creation. */
+	tagsOfContent(content: string): string[];
+}
+
 /** A single step in the permission chain that can allow or deny a request. */
 export interface PermissionGate {
 	name: string;
@@ -545,6 +559,10 @@ export interface SecurityConfig {
 	paths: PathPermission[];
 	/** Tags for read-only filtering, stored without '#'. */
 	tags: string[];
+	/** Tag access rule (#81): if non-empty, a note must carry ≥1 matching tag. Stored without '#'. */
+	tagAllow: string[];
+	/** Tag access rule (#81): a note carrying any matching tag is denied. Deny wins. Stored without '#'. */
+	tagDeny: string[];
 	/** Whether the open-notes tool may return the currently active note. Default: false (applied by config-manager on load). */
 	allowActiveNote: boolean;
 	/** Whether the open-notes tool may return non-active open notes. Default: false (applied by config-manager on load). */
@@ -563,6 +581,10 @@ export interface ApiKeyConfig {
 	paths: PathPermission[];
 	/** Subset of global security tags this key can use. */
 	tags: string[];
+	/** Tag access rule (#81), evaluated independently of global: note must carry ≥1 matching tag when non-empty. */
+	tagAllow: string[];
+	/** Tag access rule (#81), evaluated independently of global: any matching tag denies. Deny wins. */
+	tagDeny: string[];
 	/** Whether this key may receive the active note via open-notes. Default: false. Applied as AND with global. */
 	allowActiveNote: boolean;
 	/** Whether this key may receive non-active notes via open-notes. Default: false. Applied as AND with global. */
@@ -657,6 +679,8 @@ export function createDefaultSecurityConfig(): SecurityConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 	};
@@ -675,6 +699,8 @@ export function createDefaultApiKeyConfig(overrides?: Partial<ApiKeyConfig>): Ap
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 		...overrides,
