@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/MMoMM-org/miyo-kado/compare/1.3.3...1.4.0) (2026-11-11)
+
+### Features
+
+* tag access rules — allow-only and deny by tag ([#81](https://github.com/MMoMM-org/miyo-kado/issues/81)) ([#138](https://github.com/MMoMM-org/miyo-kado/issues/138)) ([f177bee](https://github.com/MMoMM-org/miyo-kado/commit/f177bee31ebbf207f8cbff14aafd2e7e67e9a9f2)), closes [#Work](https://github.com/MMoMM-org/miyo-kado/issues/Work) [#137](https://github.com/MMoMM-org/miyo-kado/issues/137)
+
 ## [1.3.3](https://github.com/MMoMM-org/miyo-kado/compare/1.3.2...1.3.3) (2026-11-02)
 
 ### Bug Fixes
