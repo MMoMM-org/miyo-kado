@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/MMoMM-org/miyo-kado/compare/1.4.0...1.4.1) (2026-11-11)
+
+### Bug Fixes
+
+* **security:** don't disclose unreadable descendant paths in folder-rename errors ([#136](https://github.com/MMoMM-org/miyo-kado/issues/136)) ([#141](https://github.com/MMoMM-org/miyo-kado/issues/141)) ([14a7508](https://github.com/MMoMM-org/miyo-kado/commit/14a75085a3c3113483a95cf77fec6a119bd6c347))
+
 ## [1.4.0](https://github.com/MMoMM-org/miyo-kado/compare/1.3.3...1.4.0) (2026-11-11)
 
 ### Features
