@@ -13,6 +13,8 @@ import {createDefaultApiKeyConfig, createDefaultConfig} from '../../src/types/ca
 import type {DataTypePermissions, KadoConfig, NoteTagSource} from '../../src/types/canonical';
 import type {ConfigManager} from '../../src/core/config-manager';
 import {TFile, TFolder} from '../__mocks__/obsidian';
+import {createSearchAdapter} from '../../src/obsidian/search-adapter';
+import {createNoteTagSource} from '../../src/obsidian/note-tag-source';
 
 const KEY_ID = 'kado_tag-key';
 
@@ -219,6 +221,46 @@ describe('tag access — kado-write', () => {
 	});
 });
 
+describe('tag access — other note-level writes and deletes', () => {
+	it('denies a dataview inline-field write on a note outside tag scope', async () => {
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {tagSource: makeTagSource({'n.md': []})});
+		const args = {operation: 'dataview-inline-field', path: 'n.md', content: {status: 'x'}, expectedModified: 5000};
+		expect(errorOf(await handler('kado-write', deps)(args, extra)).message).toBe(TAG_DENIAL_MESSAGE);
+		expect(deps.router).not.toHaveBeenCalled();
+	});
+
+	it('denies a full overwrite of an existing note outside tag scope even if the new body is tagged', async () => {
+		const tagSource = makeTagSource({'n.md': ['Home']});
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {tagSource});
+		const args = {operation: 'note', path: 'n.md', content: '#Work now', expectedModified: 5000};
+		expect(errorOf(await handler('kado-write', deps)(args, extra)).message).toBe(TAG_DENIAL_MESSAGE);
+		expect(tagSource.tagsOfContent).not.toHaveBeenCalled();
+	});
+
+	it('denies removing frontmatter keys from a note carrying a denied tag', async () => {
+		const deps = makeDeps(makeConfig({keyDeny: ['Private']}), {tagSource: makeTagSource({'n.md': ['Private']})});
+		const args = {operation: 'frontmatter', path: 'n.md', keys: ['tags'], expectedModified: 5000};
+		expect(errorOf(await handler('kado-delete', deps)(args, extra)).message).toBe(TAG_DENIAL_MESSAGE);
+		expect(deps.router).not.toHaveBeenCalled();
+	});
+
+	it('allows removing frontmatter keys from a note in tag scope', async () => {
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {
+			tagSource: makeTagSource({'n.md': ['Work']}),
+			router: vi.fn(async () => ({path: 'n.md'})),
+		});
+		const args = {operation: 'frontmatter', path: 'n.md', keys: ['status'], expectedModified: 5000};
+		expect((await handler('kado-delete', deps)(args, extra)).isError).toBeFalsy();
+	});
+
+	it('leaves an empty-folder delete path-only', async () => {
+		const tagSource = makeTagSource({});
+		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {tagSource, router: vi.fn(async () => ({path: 'Empty'}))});
+		expect((await handler('kado-delete', deps)({operation: 'folder', path: 'Empty'}, extra)).isError).toBeFalsy();
+		expect(tagSource.readTags).not.toHaveBeenCalled();
+	});
+});
+
 describe('tag access — kado-delete', () => {
 	it('denies deleting a note outside tag scope', async () => {
 		const deps = makeDeps(makeConfig({keyAllow: ['Work']}), {tagSource: makeTagSource({'n.md': ['Home']})});
@@ -413,5 +455,83 @@ describe('tag access — result filters', () => {
 		const text = ((await handler('kado-open-notes', deps)({scope: 'all'}, extra)).content[0] as {text: string}).text;
 		expect(text).toContain('work.md');
 		expect(text).not.toContain('home.md');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Composition: real search adapter + real NoteTagSource over one fake vault,
+// driven through kado-search — proves the OUTPUT is filtered, not just the
+// predicate handed to the adapter.
+// ---------------------------------------------------------------------------
+
+describe('tag access — kado-search end to end over a fake vault', () => {
+	type Cache = {tags?: {tag: string}[]; frontmatter?: Record<string, unknown>};
+	const notes: Record<string, {cache: Cache; body: string}> = {
+		'v/work.md': {cache: {frontmatter: {tags: ['Work'], status: 'open'}}, body: 'alpha project'},
+		'v/home.md': {cache: {tags: [{tag: '#Home'}], frontmatter: {status: 'open'}}, body: 'alpha secret'},
+		'v/both.md': {cache: {frontmatter: {tag: 'Private', tags: ['Work'], status: 'open'}}, body: 'alpha private'},
+		'v/plain.md': {cache: {frontmatter: {status: 'open'}}, body: 'alpha plain'},
+		'v/nested.md': {cache: {tags: [{tag: '#Work/ProjectA'}]}, body: 'alpha nested'},
+	};
+
+	function makeVaultApp(): App {
+		const files = new Map<string, TFile>();
+		for (const path of Object.keys(notes)) {
+			const f = new TFile();
+			f.path = path;
+			f.name = path.split('/').pop() ?? path;
+			f.basename = f.name.replace(/\.md$/, '');
+			f.extension = 'md';
+			files.set(path, f);
+		}
+		const all = [...files.values()];
+		return {
+			vault: {
+				getMarkdownFiles: vi.fn(() => all),
+				getFiles: vi.fn(() => all),
+				getFileByPath: vi.fn((p: string) => files.get(p) ?? null),
+				getAbstractFileByPath: vi.fn((p: string) => files.get(p) ?? null),
+				read: vi.fn(async (f: TFile) => notes[f.path]?.body ?? ''),
+				cachedRead: vi.fn(async (f: TFile) => notes[f.path]?.body ?? ''),
+			},
+			metadataCache: {getFileCache: vi.fn((f: TFile) => notes[f.path]?.cache ?? null)},
+			workspace: {activeLeaf: null, getLeavesOfType: vi.fn(() => [])},
+		} as unknown as App;
+	}
+
+	async function search(args: Record<string, unknown>): Promise<string[]> {
+		const app = makeVaultApp();
+		const adapter = createSearchAdapter(app);
+		const deps = makeDeps(makeConfig({keyAllow: ['Work'], keyDeny: ['Private']}), {
+			app,
+			tagSource: createNoteTagSource(app),
+			router: vi.fn(async (req) => adapter.search(req as Parameters<typeof adapter.search>[0])),
+		});
+		const result = await handler('kado-search', deps)(args, extra);
+		expect(result.isError).toBeFalsy();
+		const body = JSON.parse((result.content[0] as {text: string}).text) as {items: Array<{path: string}>};
+		return body.items.map((i) => i.path).sort();
+	}
+
+	const allowed = ['v/nested.md', 'v/work.md'];
+
+	it('byContent returns only notes passing the tag rules', async () => {
+		expect(await search({operation: 'byContent', query: 'alpha'})).toEqual(allowed);
+	});
+
+	it('byFrontmatter returns only notes passing the tag rules', async () => {
+		expect(await search({operation: 'byFrontmatter', query: 'status=open'})).toEqual(['v/work.md']);
+	});
+
+	it('byName with filter.tags returns only notes passing the tag rules', async () => {
+		expect(await search({operation: 'byName', query: '*', filter: {tags: ['#Work']}})).toEqual(allowed);
+	});
+
+	it('byTag for an allowed tag works without extra search tags and hides the Private note', async () => {
+		expect(await search({operation: 'byTag', query: '#Work'})).toEqual(['v/work.md']);
+	});
+
+	it('listTags counts only tags of visible notes', async () => {
+		expect(await search({operation: 'listTags'})).toEqual(['#Work', '#Work/ProjectA']);
 	});
 });
