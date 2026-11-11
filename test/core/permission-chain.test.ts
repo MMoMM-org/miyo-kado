@@ -173,11 +173,11 @@ describe('createDefaultGateChain', () => {
 
 	it('returns gates in the required order: authenticate, global-scope, key-scope, datatype-permission, path-access', () => {
 		const chain = createDefaultGateChain();
-		expect(chain[0].name).toBe('authenticate');
-		expect(chain[1].name).toBe('global-scope');
-		expect(chain[2].name).toBe('key-scope');
-		expect(chain[3].name).toBe('datatype-permission');
-		expect(chain[4].name).toBe('path-access');
+		expect(chain[0]!.name).toBe('authenticate');
+		expect(chain[1]!.name).toBe('global-scope');
+		expect(chain[2]!.name).toBe('key-scope');
+		expect(chain[3]!.name).toBe('datatype-permission');
+		expect(chain[4]!.name).toBe('path-access');
 	});
 
 	it('returns a new array instance on each call', () => {

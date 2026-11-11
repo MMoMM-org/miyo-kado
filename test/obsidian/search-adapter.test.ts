@@ -271,17 +271,17 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 		expect(result.items).toHaveLength(5);
 
 		// First 3 items are folders
-		expect(result.items[0].type).toBe('folder');
-		expect(result.items[1].type).toBe('folder');
-		expect(result.items[2].type).toBe('folder');
+		expect(result.items[0]!.type).toBe('folder');
+		expect(result.items[1]!.type).toBe('folder');
+		expect(result.items[2]!.type).toBe('folder');
 
 		// Folder names (sorted)
 		const folderNames = result.items.slice(0, 3).map((i) => i.name);
 		expect(folderNames).toEqual(['EmptyFolder', 'L1', 'OnlySubfolders']);
 
 		// Last 2 items are files
-		expect(result.items[3].type).toBe('file');
-		expect(result.items[4].type).toBe('file');
+		expect(result.items[3]!.type).toBe('file');
+		expect(result.items[4]!.type).toBe('file');
 	});
 
 	it('folder items carry type:folder, size:0, created:0, modified:0, and childCount', async () => {
@@ -1316,7 +1316,7 @@ describe('SearchAdapter — byContent', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'project management', filter: {path: 'notes/'}})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('paginates results', async () => {
@@ -1344,9 +1344,9 @@ describe('SearchAdapter — byContent', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'alpha beta'})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].score).toBeGreaterThan(0);
-		expect(result.items[0].snippets?.[0]?.text).toContain('alpha beta');
-		expect(result.items[0].snippets?.[0]?.line).toBe(2);
+		expect(result.items[0]!.score).toBeGreaterThan(0);
+		expect(result.items[0]!.snippets?.[0]?.text).toContain('alpha beta');
+		expect(result.items[0]!.snippets?.[0]?.line).toBe(2);
 	});
 
 	it('ranks more relevant notes first (higher score before lower)', async () => {
@@ -1366,7 +1366,7 @@ describe('SearchAdapter — byContent', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byContent', query: 'alpha beta'})));
 
 		expect(result.items.map((i) => i.path)).toEqual(['notes/strong.md', 'notes/weak.md']);
-		expect(result.items[0].score!).toBeGreaterThan(result.items[1].score!);
+		expect(result.items[0]!.score!).toBeGreaterThan(result.items[1]!.score!);
 	});
 });
 
@@ -1404,7 +1404,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'status'})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('is case-insensitive on values', async () => {
@@ -1443,7 +1443,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tags=finance'})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('matches array member at non-first position (tags=planning)', async () => {
@@ -1504,7 +1504,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state=pending-approval'})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('dot-notation key-only matches when nested key exists', async () => {
@@ -1520,7 +1520,7 @@ describe('SearchAdapter — byFrontmatter', () => {
 		const result = expectOk(await adapter.search(makeSearchRequest({operation: 'byFrontmatter', query: 'tomo.state'})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('dot-notation returns empty when parent key missing', async () => {
@@ -1672,7 +1672,7 @@ describe('SearchAdapter — scope filtering before pagination', () => {
 		const sr = result as {items: {path: string}[]; total: number};
 		expect(sr.items).toHaveLength(1);
 		expect(sr.total).toBe(1);
-		expect(sr.items[0].path).toBe('allowed/a.md');
+		expect(sr.items[0]!.path).toBe('allowed/a.md');
 	});
 
 	it('cursor is consistent with filtered results', async () => {
@@ -1763,7 +1763,7 @@ describe('SearchAdapter — scope filtering before pagination', () => {
 
 		const sr = result as {items: {path: string}[]; total: number};
 		expect(sr.items).toHaveLength(1);
-		expect(sr.items[0].path).toBe('allowed/a.md');
+		expect(sr.items[0]!.path).toBe('allowed/a.md');
 	});
 
 	it('scope filtering works with listDir operation', async () => {
@@ -1884,7 +1884,7 @@ describe('SearchAdapter — listTags scoped', () => {
 		expect(result).toHaveProperty('items');
 		const items = (result as {items: {name: string}[]}).items;
 		expect(items).toHaveLength(1);
-		expect(items[0].name).toBe('#visible');
+		expect(items[0]!.name).toBe('#visible');
 	});
 
 	it('returns empty when no files match scopePatterns', async () => {
@@ -1952,7 +1952,7 @@ describe('SearchAdapter — listTags scoped', () => {
 
 		const items = (result as {items: {name: string; size: number}[]}).items;
 		expect(items).toHaveLength(1);
-		expect(items[0].size).toBe(2); // only 2 in-scope files, not 3
+		expect(items[0]!.size).toBe(2); // only 2 in-scope files, not 3
 	});
 });
 
@@ -2068,7 +2068,7 @@ describe('SearchAdapter — tag permissions', () => {
 		expect(result).toHaveProperty('items');
 		const items = (result as {items: {path: string}[]}).items;
 		expect(items).toHaveLength(1);
-		expect(items[0].path).toBe('notes/a.md');
+		expect(items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byTag with glob returns empty when no matched tags are permitted', async () => {
@@ -2155,7 +2155,7 @@ describe('SearchAdapter — tag permissions', () => {
 
 		const items = (result as {items: {name: string; size: number}[]}).items;
 		expect(items).toHaveLength(1);
-		expect(items[0].size).toBe(1); // only the in-scope file counts
+		expect(items[0]!.size).toBe(1); // only the in-scope file counts
 	});
 
 	it('byTag with undefined allowedTags applies no tag restriction', async () => {
@@ -2316,7 +2316,7 @@ describe('SearchAdapter — filter.path', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byTag with filter.path narrows results to prefix', async () => {
@@ -2336,7 +2336,7 @@ describe('SearchAdapter — filter.path', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byFrontmatter with filter.path narrows results to prefix', async () => {
@@ -2356,7 +2356,7 @@ describe('SearchAdapter — filter.path', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byContent with filter.path pre-filters files', async () => {
@@ -2378,7 +2378,7 @@ describe('SearchAdapter — filter.path', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 });
 
@@ -2400,7 +2400,7 @@ describe('SearchAdapter — filter.tags', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('filter.tags with glob matches sub-tags', async () => {
@@ -2420,7 +2420,7 @@ describe('SearchAdapter — filter.tags', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('filter.tags ignored for listDir', async () => {
@@ -2468,7 +2468,7 @@ describe('SearchAdapter — filter.frontmatter', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byName with filter.frontmatter key-only keeps files with key', async () => {
@@ -2488,7 +2488,7 @@ describe('SearchAdapter — filter.frontmatter', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('byName with filter.frontmatter dot-notation traverses nested keys', async () => {
@@ -2508,7 +2508,7 @@ describe('SearchAdapter — filter.frontmatter', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 });
 
@@ -2532,7 +2532,7 @@ describe('SearchAdapter — combined filters', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 
 	it('filter.path + filter.frontmatter + filter.tags all combine', async () => {
@@ -2552,7 +2552,7 @@ describe('SearchAdapter — combined filters', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 });
 
@@ -2577,7 +2577,7 @@ describe('SearchAdapter — listTags with filters', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('#project');
+		expect(result.items[0]!.path).toBe('#project');
 	});
 
 	it('filter.tags narrows which files are counted', async () => {
@@ -2617,7 +2617,7 @@ describe('SearchAdapter — listTags with filters', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('#project');
+		expect(result.items[0]!.path).toBe('#project');
 	});
 });
 
@@ -2654,7 +2654,7 @@ describe('SearchAdapter — filter.path edge cases', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 });
 
@@ -2707,7 +2707,7 @@ describe('SearchAdapter — filter.tags with # prefix', () => {
 		})));
 
 		expect(result.items).toHaveLength(1);
-		expect(result.items[0].path).toBe('notes/a.md');
+		expect(result.items[0]!.path).toBe('notes/a.md');
 	});
 });
 

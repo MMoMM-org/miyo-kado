@@ -9,7 +9,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {App} from '../__mocks__/obsidian';
+import {App, asApp} from '../__mocks__/obsidian';
 import {ensureParentFolder} from '../../src/obsidian/ensure-parent-folder';
 
 describe('ensureParentFolder', () => {
@@ -22,7 +22,7 @@ describe('ensureParentFolder', () => {
 	it('creates the parent folder when it does not exist', async () => {
 		vi.mocked(app.vault.adapter.exists).mockResolvedValue(false);
 
-		await ensureParentFolder(app, 'A/B/C/note.md');
+		await ensureParentFolder(asApp(app), 'A/B/C/note.md');
 
 		expect(app.vault.adapter.exists).toHaveBeenCalledWith('A/B/C');
 		expect(app.vault.createFolder).toHaveBeenCalledWith('A/B/C');
@@ -31,14 +31,14 @@ describe('ensureParentFolder', () => {
 	it('does not create the folder when the parent already exists', async () => {
 		vi.mocked(app.vault.adapter.exists).mockResolvedValue(true);
 
-		await ensureParentFolder(app, 'A/B/C/note.md');
+		await ensureParentFolder(asApp(app), 'A/B/C/note.md');
 
 		expect(app.vault.adapter.exists).toHaveBeenCalledWith('A/B/C');
 		expect(app.vault.createFolder).not.toHaveBeenCalled();
 	});
 
 	it('is a no-op for a root-level path (no parent to create)', async () => {
-		await ensureParentFolder(app, 'note.md');
+		await ensureParentFolder(asApp(app), 'note.md');
 
 		expect(app.vault.adapter.exists).not.toHaveBeenCalled();
 		expect(app.vault.createFolder).not.toHaveBeenCalled();
@@ -50,6 +50,6 @@ describe('ensureParentFolder', () => {
 
 		// Must resolve, not reject — a racing writer that already made the folder
 		// is a success from this caller's point of view.
-		await expect(ensureParentFolder(app, 'A/B/note.md')).resolves.toBeUndefined();
+		await expect(ensureParentFolder(asApp(app), 'A/B/note.md')).resolves.toBeUndefined();
 	});
 });

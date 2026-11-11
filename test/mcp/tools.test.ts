@@ -13,6 +13,7 @@ import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {registerTools, filterResultsByScope, computeAllowedTags, computeScopePatterns, kadoSearchShape, kadoReadShape, kadoWriteShape, KADO_SEARCH_TOOL_DESCRIPTION} from '../../src/mcp/tools';
 import type {ToolDependencies} from '../../src/mcp/tools';
 import {createDefaultGateChain} from '../../src/core/permission-chain';
+import {firstText} from '../helpers/mcp-result';
 import type {
 	CoreRequest,
 	CoreRenameRequest,
@@ -215,14 +216,6 @@ function makeDeps(overrides?: Partial<ToolDependencies>): ToolDependencies {
 	};
 }
 
-/**
- * Extracts text from the first content item of a CallToolResult.
- * Casts to text content type to work around the MCP SDK union
- * (content items can be text | image | resource | etc.).
- */
-function getFirstText(result: {content: {type: string; text?: string}[]}): string {
-	return (result.content[0] as {type: string; text: string}).text;
-}
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -309,7 +302,7 @@ describe('kado-read handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(getFirstText(result)).toContain('notes/test.md');
+		expect(firstText(result)).toContain('notes/test.md');
 	});
 
 	it('passes the keyId from extra.authInfo.token to the request mapper', async () => {
@@ -331,7 +324,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -342,7 +335,7 @@ describe('kado-read handler', () => {
 		const result = await handler({operation: 'note', path: 'notes/missing.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('NOT_FOUND');
+		expect(firstText(result)).toContain('NOT_FOUND');
 	});
 
 	it('returns isError:true when extra.authInfo is absent', async () => {
@@ -381,7 +374,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(getFirstText(result)).toContain('notes/w.md');
+		expect(firstText(result)).toContain('notes/w.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -409,7 +402,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns isError:true when concurrency guard fires a CONFLICT', async () => {
@@ -423,7 +416,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('CONFLICT');
+		expect(firstText(result)).toContain('CONFLICT');
 	});
 
 	it('allows write when expectedModified matches current mtime', async () => {
@@ -465,7 +458,7 @@ describe('kado-write handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('INTERNAL_ERROR');
+		expect(firstText(result)).toContain('INTERNAL_ERROR');
 	});
 });
 
@@ -492,7 +485,7 @@ describe('kado-delete handler — folder', () => {
 
 		expect(result.isError).toBeFalsy();
 		expect(router).toHaveBeenCalledOnce();
-		expect(getFirstText(result)).toContain('Projects/Empty');
+		expect(firstText(result)).toContain('Projects/Empty');
 	});
 
 	it('does not run optimistic concurrency for a folder delete (path resolving to a real mtime must not CONFLICT)', async () => {
@@ -516,7 +509,7 @@ describe('kado-delete handler — folder', () => {
 		const result = await handler({operation: 'folder', path: 'Projects/Empty'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 		expect(router).not.toHaveBeenCalled();
 	});
 });
@@ -546,7 +539,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'project'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		expect(getFirstText(result)).toContain('notes/a.md');
+		expect(firstText(result)).toContain('notes/a.md');
 	});
 
 	it('passes keyId from extra.authInfo.token to the request mapper', async () => {
@@ -568,7 +561,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('UNAUTHORIZED');
+		expect(firstText(result)).toContain('UNAUTHORIZED');
 	});
 
 	it('returns isError:true when the router returns a CoreError', async () => {
@@ -579,7 +572,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byTag', query: 'x'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(firstText(result)).toContain('VALIDATION_ERROR');
 	});
 
 	it('injects scopePatterns from key config into the search request', async () => {
@@ -608,7 +601,7 @@ describe('kado-search handler', () => {
 
 		// The router receives the request with scopePatterns injected
 		const routedRequest = (router.mock.calls as unknown as [CoreSearchRequest[]])[0][0];
-		expect(routedRequest.scopePatterns).toEqual(['projects/**']);
+		expect(routedRequest!.scopePatterns).toEqual(['projects/**']);
 	});
 
 	it('passes through adapter-filtered results without re-filtering', async () => {
@@ -638,7 +631,7 @@ describe('kado-search handler', () => {
 		const result = await handler({operation: 'byName', query: 'a'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.items).toHaveLength(1);
 		expect(parsed.total).toBe(1);
 	});
@@ -741,7 +734,7 @@ describe('filterResultsByScope()', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('projects/a.md');
+		expect(filtered[0]!.path).toBe('projects/a.md');
 	});
 });
 
@@ -786,7 +779,7 @@ describe('filterResultsByScope() — folder items', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('Atlas');
+		expect(filtered[0]!.path).toBe('Atlas');
 	});
 
 	// T4.2-case-2: blacklist folder blocking
@@ -805,7 +798,7 @@ describe('filterResultsByScope() — folder items', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('Atlas');
+		expect(filtered[0]!.path).toBe('Atlas');
 	});
 
 	// T4.2-case-4: file items unchanged (regression)
@@ -816,12 +809,12 @@ describe('filterResultsByScope() — folder items', () => {
 
 		const wFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', whitelistConfig);
 		expect(wFiltered).toHaveLength(1);
-		expect(wFiltered[0].path).toBe('Atlas/note.md');
+		expect(wFiltered[0]!.path).toBe('Atlas/note.md');
 
 		const blacklistConfig = makeConfig('blacklist', ['Atlas/**'], 'blacklist', ['Atlas/**']);
 		const bFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', blacklistConfig);
 		expect(bFiltered).toHaveLength(1);
-		expect(bFiltered[0].path).toBe('Other/note.md');
+		expect(bFiltered[0]!.path).toBe('Other/note.md');
 	});
 
 	// T4.2-case-5: defense-in-depth consistency — tools-layer agrees with core helper
@@ -841,7 +834,7 @@ describe('filterResultsByScope() — folder items', () => {
 		// Tools-layer: filterResultsByScope should agree and include Atlas
 		const toolsResult = filterResultsByScope([folderItem], 'key-1', config);
 		expect(toolsResult).toHaveLength(1);
-		expect(toolsResult[0].path).toBe('Atlas');
+		expect(toolsResult[0]!.path).toBe('Atlas');
 	});
 });
 
@@ -1117,7 +1110,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({}, extraWithoutAuth);
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('UNAUTHORIZED');
+		expect(firstText(result)).toContain('UNAUTHORIZED');
 		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
 	});
 
@@ -1131,7 +1124,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.code).toBe('FORBIDDEN');
 		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
 	});
@@ -1149,7 +1142,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		const rawText = getFirstText(result);
+		const rawText = firstText(result);
 		const parsed = JSON.parse(rawText);
 
 		// The response body must not have a path key
@@ -1170,7 +1163,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'active'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(1);
 		expect(parsed.notes[0].active).toBe(true);
 		expect(parsed.notes[0].path).toBe('notes/active.md');
@@ -1188,7 +1181,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'other'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(1);
 		expect(parsed.notes[0].active).toBe(false);
 		expect(parsed.notes[0].path).toBe('notes/other.md');
@@ -1207,7 +1200,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(2);
 		expect(parsed.notes.map((n: OpenNoteDescriptor) => n.path)).not.toContain('private/secret.md');
 	});
@@ -1228,7 +1221,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(1);
 		expect(parsed.notes[0].active).toBe(true);
 	});
@@ -1244,7 +1237,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(0);
 	});
 
@@ -1258,7 +1251,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(0);
 	});
 
@@ -1274,7 +1267,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		// Static redacted message — raw exception must not leak to the client.
 		expect(parsed.message).toBe('An unexpected error occurred');
@@ -1296,7 +1289,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'active'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.notes).toHaveLength(0);
 	});
 
@@ -1316,7 +1309,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'all'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		expect(parsed.code).toBe('FORBIDDEN');
 		// Adapter must not have been called — gate fired before enumeration
 		expect(vi.mocked(enumerateOpenNotes)).not.toHaveBeenCalled();
@@ -1340,7 +1333,7 @@ describe('kado-open-notes handler', () => {
 		const result = await handler({scope: 'other'}, makeExtra());
 
 		expect(result.isError).toBeFalsy();
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 		// Only the non-active permitted note survives; active and filtered are both absent
 		expect(parsed.notes).toHaveLength(1);
 		expect(parsed.notes[0].path).toBe('notes/other.md');
@@ -1381,12 +1374,12 @@ describe('INTERNAL_ERROR message redaction', () => {
 	it('kado-read: static message on unexpected router throw, no exception text in response', async () => {
 		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-read');
 		const result = await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 
 		expect(result.isError).toBe(true);
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		expect(parsed.message).toBe('An unexpected error occurred');
-		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+		expect(firstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 
 	it('kado-write: static message on unexpected router throw, no exception text in response', async () => {
@@ -1395,12 +1388,12 @@ describe('INTERNAL_ERROR message redaction', () => {
 			{operation: 'note', path: 'notes/a.md', content: 'text'},
 			makeExtra(),
 		);
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 
 		expect(result.isError).toBe(true);
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		expect(parsed.message).toBe('An unexpected error occurred');
-		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+		expect(firstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 
 	it('kado-delete: static message on unexpected router throw, no exception text in response', async () => {
@@ -1409,23 +1402,23 @@ describe('INTERNAL_ERROR message redaction', () => {
 			{operation: 'note', path: 'notes/a.md', expectedModified: 1},
 			makeExtra(),
 		);
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 
 		expect(result.isError).toBe(true);
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		expect(parsed.message).toBe('An unexpected error occurred');
-		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+		expect(firstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 
 	it('kado-search: static message on unexpected router throw, no exception text in response', async () => {
 		const handler = getHandlerByName(makeDeps({router: throwingRouter()}), 'kado-search');
 		const result = await handler({operation: 'listTags'}, makeExtra());
-		const parsed = JSON.parse(getFirstText(result));
+		const parsed = JSON.parse(firstText(result));
 
 		expect(result.isError).toBe(true);
 		expect(parsed.code).toBe('INTERNAL_ERROR');
 		expect(parsed.message).toBe('An unexpected error occurred');
-		expect(getFirstText(result)).not.toContain(SENSITIVE_FRAGMENT);
+		expect(firstText(result)).not.toContain(SENSITIVE_FRAGMENT);
 	});
 });
 
@@ -1880,7 +1873,7 @@ describe('kado-rename handler', () => {
 		);
 
 		expect(result.isError).toBeFalsy();
-		expect(getFirstText(result)).toContain('notes/b.md');
+		expect(firstText(result)).toContain('notes/b.md');
 	});
 
 	it('passes keyId and source/target through to the router', async () => {
@@ -1916,7 +1909,7 @@ describe('kado-rename handler', () => {
 
 		expect(result.isError).toBeFalsy();
 		expect(router).toHaveBeenCalledOnce();
-		expect(getFirstText(result)).toContain('Projects/neu');
+		expect(firstText(result)).toContain('Projects/neu');
 	});
 
 	it('denies a folder rename when the gate chain rejects (via folder-policy synthetic note update)', async () => {
@@ -1930,7 +1923,7 @@ describe('kado-rename handler', () => {
 		);
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 		expect(router).not.toHaveBeenCalled();
 	});
 
@@ -1970,7 +1963,7 @@ describe('kado-rename handler', () => {
 		const result = await handler({operation: 'folder', source: 'Projects/alt', target: 'Projects/neu'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(firstText(result)).toContain('VALIDATION_ERROR');
 		expect(router).not.toHaveBeenCalled();
 		// The permission config must be untouched (never migrated).
 		expect(JSON.stringify(config.getConfig())).toBe(before);
@@ -1997,7 +1990,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(firstText(result)).toContain('VALIDATION_ERROR');
 	});
 
 	it('returns isError when permission is denied', async () => {
@@ -2009,7 +2002,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns CONFLICT when the source mtime no longer matches expectedModified', async () => {
@@ -2021,7 +2014,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('CONFLICT');
+		expect(firstText(result)).toContain('CONFLICT');
 		expect(router).not.toHaveBeenCalled();
 	});
 
@@ -2034,7 +2027,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('NOT_FOUND');
+		expect(firstText(result)).toContain('NOT_FOUND');
 	});
 
 	it('returns TIMEOUT when the rename does not complete within renameTimeoutMs', async () => {
@@ -2052,7 +2045,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('TIMEOUT');
+		expect(firstText(result)).toContain('TIMEOUT');
 	});
 
 	it('on timeout, returns success with linkUpdatePending when the file actually moved', async () => {
@@ -2077,7 +2070,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBeFalsy();
-		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean; note?: string};
+		const body = JSON.parse(firstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean; note?: string};
 		expect(body.linkUpdatePending).toBe(true);
 		expect(body.target).toBe('notes/b.md');
 		expect(body.modified).toBe(3000);
@@ -2106,7 +2099,7 @@ describe('kado-rename handler', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBeFalsy();
-		const body = JSON.parse(getFirstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean};
+		const body = JSON.parse(firstText(result)) as {target: string; modified: number; linkUpdatePending?: boolean};
 		expect(body.linkUpdatePending).toBe(true);
 		expect(body.target).toBe('Projects/neu');
 		expect(body.modified).toBe(0); // folder → sentinel 0
@@ -2176,7 +2169,7 @@ describe('kado-rename permission policy', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('allows a cross-folder move with delete on source AND create on target', async () => {
@@ -2205,7 +2198,7 @@ describe('kado-rename permission policy', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('denies a move when delete on the source folder is missing (update alone is not enough)', async () => {
@@ -2220,7 +2213,7 @@ describe('kado-rename permission policy', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	// Root-level files: parentDir('a.md') === '' — exercise the rename-vs-move
@@ -2261,7 +2254,7 @@ describe('kado-rename permission policy', () => {
 			makeExtra(),
 		);
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 });
 
@@ -2277,7 +2270,7 @@ describe('response hints (_hints)', () => {
 	}
 
 	function parseHints(result: {content: {type: string; text?: string}[]}): Array<{do?: string; with?: Record<string, unknown>; why: string}> | undefined {
-		return (JSON.parse(getFirstText(result)) as {_hints?: Array<{do?: string; with?: Record<string, unknown>; why: string}>})._hints;
+		return (JSON.parse(firstText(result)) as {_hints?: Array<{do?: string; with?: Record<string, unknown>; why: string}>})._hints;
 	}
 
 	it('write CONFLICT carries a re-read hint', async () => {
@@ -2332,7 +2325,7 @@ describe('kado-graph handler', () => {
 	}
 
 	function parseGraph(result: {content: {type: string; text?: string}[]}) {
-		return JSON.parse(getFirstText(result)) as {source: string; operation: string; nodes: Array<{path: string; relation: string}>};
+		return JSON.parse(firstText(result)) as {source: string; operation: string; nodes: Array<{path: string; relation: string}>};
 	}
 
 	it('returns mapped graph nodes for an allowed source', async () => {
@@ -2379,7 +2372,7 @@ describe('kado-graph handler', () => {
 		const result = await handler({operation: 'backlinks', path: 'notes/a.md'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('FORBIDDEN');
+		expect(firstText(result)).toContain('FORBIDDEN');
 	});
 
 	it('returns VALIDATION_ERROR for a non-.md source path', async () => {
@@ -2388,7 +2381,7 @@ describe('kado-graph handler', () => {
 		const result = await handler({operation: 'backlinks', path: 'notes/a.png'}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(firstText(result)).toContain('VALIDATION_ERROR');
 	});
 });
 
@@ -2412,7 +2405,7 @@ describe('kado-graph-audit handler', () => {
 	}
 
 	function parseAudit(result: {content: {type: string; text?: string}[]}) {
-		return JSON.parse(getFirstText(result)) as {
+		return JSON.parse(firstText(result)) as {
 			operation: string;
 			orphans: Array<{path: string}>;
 			deadLinks: Array<{source: string; target: string; count: number}>;
@@ -2509,7 +2502,7 @@ describe('kado-graph-audit handler', () => {
 		const result = await handler({include: ['unparented']}, makeExtra());
 
 		expect(result.isError).toBe(true);
-		expect(getFirstText(result)).toContain('VALIDATION_ERROR');
+		expect(firstText(result)).toContain('VALIDATION_ERROR');
 	});
 });
 
@@ -2614,10 +2607,10 @@ describe('result disclosure requires read permission', () => {
 		const handler = getHandler('kado-graph', realDeps(router));
 
 		const result = await handler({operation: 'related', path: 'Public/a.md'}, makeExtra());
-		const body = JSON.parse(getFirstText(result)) as {nodes: Array<{path: string; via?: string[]}>};
+		const body = JSON.parse(firstText(result)) as {nodes: Array<{path: string; via?: string[]}>};
 
 		expect(body.nodes).toEqual([{path: 'Public/c.md', relation: 'related', via: ['Public/b.md']}]);
-		expect(getFirstText(result)).not.toContain('Private/');
+		expect(firstText(result)).not.toContain('Private/');
 	});
 
 	it('kado-graph-audit omits orphans and dead links from denied notes', async () => {
@@ -2632,8 +2625,8 @@ describe('result disclosure requires read permission', () => {
 
 		const result = await handler({}, makeExtra());
 
-		expect(getFirstText(result)).not.toContain('Private/');
-		expect(getFirstText(result)).not.toContain('Secret Target');
+		expect(firstText(result)).not.toContain('Private/');
+		expect(firstText(result)).not.toContain('Secret Target');
 	});
 
 	it('kado-graph-audit returns nothing to a key whose scope disables every CRUD flag', async () => {
@@ -2647,7 +2640,7 @@ describe('result disclosure requires read permission', () => {
 		};
 		const handler = getHandler('kado-graph-audit', realDeps(router, config));
 
-		const body = JSON.parse(getFirstText(await handler({}, makeExtra()))) as {orphans: unknown[]; deadLinks: unknown[]};
+		const body = JSON.parse(firstText(await handler({}, makeExtra()))) as {orphans: unknown[]; deadLinks: unknown[]};
 
 		expect(body.orphans).toEqual([]);
 		expect(body.deadLinks).toEqual([]);

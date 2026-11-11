@@ -231,10 +231,10 @@ describe('audit integration — allowed kado-read call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_test-ke...');
-		expect(entries[0].operation).toBe('note');
-		expect(entries[0].path).toBe('notes/test.md');
+		expect(entries[0]!.decision).toBe('allowed');
+		expect(entries[0]!.apiKeyId).toBe('kado_test-ke...');
+		expect(entries[0]!.operation).toBe('note');
+		expect(entries[0]!.path).toBe('notes/test.md');
 	});
 
 	it('records durationMs greater than zero on allowed read', async () => {
@@ -244,7 +244,7 @@ describe('audit integration — allowed kado-read call', () => {
 		await handler({operation: 'note', path: 'notes/a.md'}, makeExtra());
 		await drain();
 
-		expect(entries[0].durationMs).toBeGreaterThan(0);
+		expect(entries[0]!.durationMs).toBeGreaterThan(0);
 	});
 });
 
@@ -261,9 +261,9 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_writer...');
-		expect(entries[0].path).toBe('notes/w.md');
+		expect(entries[0]!.decision).toBe('allowed');
+		expect(entries[0]!.apiKeyId).toBe('kado_writer...');
+		expect(entries[0]!.path).toBe('notes/w.md');
 	});
 
 	it('records durationMs greater than zero on allowed write', async () => {
@@ -274,7 +274,7 @@ describe('audit integration — allowed kado-write call', () => {
 		await handler({operation: 'note', path: 'notes/a.md', content: 'text'}, makeExtra());
 		await drain();
 
-		expect(entries[0].durationMs).toBeGreaterThan(0);
+		expect(entries[0]!.durationMs).toBeGreaterThan(0);
 	});
 
 	it('marks bodyTouched=false on allowed frontmatter write', async () => {
@@ -289,7 +289,7 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].bodyTouched).toBe(false);
+		expect(entries[0]!.bodyTouched).toBe(false);
 	});
 
 	it('omits bodyTouched on note writes (body is touched — no marker)', async () => {
@@ -304,7 +304,7 @@ describe('audit integration — allowed kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].bodyTouched).toBeUndefined();
+		expect(entries[0]!.bodyTouched).toBeUndefined();
 	});
 
 	it('sets bodyTouched:true and mode on partial note write (append)', async () => {
@@ -390,8 +390,8 @@ describe('audit integration — allowed kado-search call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].apiKeyId).toBe('kado_searche...');
+		expect(entries[0]!.decision).toBe('allowed');
+		expect(entries[0]!.apiKeyId).toBe('kado_searche...');
 	});
 
 	it('logs the query field for search operations', async () => {
@@ -403,7 +403,7 @@ describe('audit integration — allowed kado-search call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].query).toBe('#MiYo-Tomo/proposed');
+		expect(entries[0]!.query).toBe('#MiYo-Tomo/proposed');
 	});
 });
 
@@ -424,9 +424,9 @@ describe('audit integration — denied kado-read call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('denied');
-		expect(entries[0].gate).toBe('key-scope');
-		expect(entries[0].apiKeyId).toBe('kado_test-ke...');
+		expect(entries[0]!.decision).toBe('denied');
+		expect(entries[0]!.gate).toBe('key-scope');
+		expect(entries[0]!.apiKeyId).toBe('kado_test-ke...');
 	});
 });
 
@@ -443,8 +443,8 @@ describe('audit integration — denied kado-write call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('denied');
-		expect(entries[0].gate).toBe('global-scope');
+		expect(entries[0]!.decision).toBe('denied');
+		expect(entries[0]!.gate).toBe('global-scope');
 	});
 });
 
@@ -461,8 +461,8 @@ describe('audit integration — denied kado-search call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('denied');
-		expect(entries[0].gate).toBe('authenticate');
+		expect(entries[0]!.decision).toBe('denied');
+		expect(entries[0]!.gate).toBe('authenticate');
 	});
 
 	it('logs the query field on denied search', async () => {
@@ -477,7 +477,7 @@ describe('audit integration — denied kado-search call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].query).toBe('#secret-tag');
+		expect(entries[0]!.query).toBe('#secret-tag');
 	});
 });
 
@@ -604,8 +604,8 @@ describe('audit integration — kado-open-notes allowed call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('allowed');
-		expect(entries[0].operation).toBe('openNotes');
+		expect(entries[0]!.decision).toBe('allowed');
+		expect(entries[0]!.operation).toBe('openNotes');
 	});
 
 	it('includes scope in the audit entry query field', async () => {
@@ -621,7 +621,7 @@ describe('audit integration — kado-open-notes allowed call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].query).toBe('active');
+		expect(entries[0]!.query).toBe('active');
 	});
 
 	it('includes permittedCount in the audit entry', async () => {
@@ -638,7 +638,7 @@ describe('audit integration — kado-open-notes allowed call', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].permittedCount).toBe(0);
+		expect(entries[0]!.permittedCount).toBe(0);
 	});
 
 	it('does NOT include any note paths in the audit entry', async () => {
@@ -655,7 +655,7 @@ describe('audit integration — kado-open-notes allowed call', () => {
 
 		expect(entries).toHaveLength(1);
 		// path field must be absent — privacy invariant
-		expect(entries[0].path).toBeUndefined();
+		expect(entries[0]!.path).toBeUndefined();
 	});
 });
 
@@ -674,8 +674,8 @@ describe('audit integration — kado-open-notes feature-gate denial', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].decision).toBe('denied');
-		expect(entries[0].operation).toBe('openNotes');
+		expect(entries[0]!.decision).toBe('denied');
+		expect(entries[0]!.operation).toBe('openNotes');
 	});
 
 	it('includes scope and gate=feature-gate in the denial entry', async () => {
@@ -691,8 +691,8 @@ describe('audit integration — kado-open-notes feature-gate denial', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].query).toBe('other');
-		expect(entries[0].gate).toBe('feature-gate');
+		expect(entries[0]!.query).toBe('other');
+		expect(entries[0]!.gate).toBe('feature-gate');
 	});
 
 	it('does not include permittedCount in the denial entry', async () => {
@@ -708,7 +708,7 @@ describe('audit integration — kado-open-notes feature-gate denial', () => {
 		await drain();
 
 		expect(entries).toHaveLength(1);
-		expect(entries[0].permittedCount).toBeUndefined();
+		expect(entries[0]!.permittedCount).toBeUndefined();
 	});
 
 	it('emits exactly one entry per denied call (no duplicate logging)', async () => {

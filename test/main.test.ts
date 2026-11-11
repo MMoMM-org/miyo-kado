@@ -5,6 +5,7 @@
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import KadoPlugin from '../src/main';
+import {App, Plugin, TEST_PLUGIN_MANIFEST, asApp} from './__mocks__/obsidian';
 import {createDefaultConfig} from '../src/types/canonical';
 
 // ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ vi.mock('../src/mcp/server', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-const getMockPlugin = (): KadoPlugin => new KadoPlugin();
+const getMockPlugin = (): KadoPlugin => new KadoPlugin(asApp(new App()), TEST_PLUGIN_MANIFEST);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -120,7 +121,7 @@ describe('KadoPlugin', () => {
 			const plugin = getMockPlugin();
 			await plugin.onload();
 			// Simulate Obsidian calling registered cleanup callbacks
-			plugin._runCleanup();
+			(plugin as unknown as Plugin)._runCleanup();
 			expect(mockMcpStop).toHaveBeenCalledTimes(1);
 		});
 	});

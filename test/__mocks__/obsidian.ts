@@ -4,6 +4,7 @@
  */
 
 import {vi} from 'vitest';
+import type {App as ObsidianApp, PluginManifest} from 'obsidian';
 
 // --- Core types ---
 
@@ -583,3 +584,25 @@ export function createMockCachedMetadata(overrides?: Partial<{
 		frontmatter: overrides?.frontmatter ?? {},
 	};
 }
+
+/**
+ * Hands the mock App to production code typed against the real `obsidian` App.
+ * The mock implements only what the plugin uses, so it is not structurally
+ * assignable; this is the single sanctioned cast point for tests (#134).
+ */
+export function asApp(app: App): ObsidianApp {
+	return app as unknown as ObsidianApp;
+}
+
+/**
+ * Manifest for constructing the plugin in tests. The real Plugin constructor
+ * takes (app, manifest); the mock ignores the manifest and keeps its own.
+ */
+export const TEST_PLUGIN_MANIFEST: PluginManifest = {
+	id: 'miyo-kado',
+	name: 'MiYo Kado',
+	version: '0.0.0-test',
+	minAppVersion: '1.5.7',
+	author: 'test',
+	description: 'test manifest',
+};

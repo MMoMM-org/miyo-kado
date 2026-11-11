@@ -6,6 +6,7 @@
 import {describe, it, expect, vi} from 'vitest';
 import {App} from 'obsidian';
 import KadoPlugin from '../src/main';
+import {TEST_PLUGIN_MANIFEST, asApp, App as MockApp} from './__mocks__/obsidian';
 import {KadoSettingsTab} from '../src/settings/SettingsTab';
 import {ConfigManager} from '../src/core/config-manager';
 import {createDefaultConfig} from '../src/types/canonical';
@@ -24,7 +25,7 @@ const getMockTab = (configOverrides?: Partial<KadoConfig>): {
 	);
 	(configManager as unknown as {config: typeof config}).config = config;
 
-	const plugin = new KadoPlugin();
+	const plugin = new KadoPlugin(asApp(new MockApp()), TEST_PLUGIN_MANIFEST);
 	plugin.configManager = configManager;
 	plugin.settings = configManager.getConfig();
 	plugin.saveSettings = vi.fn(async () => {});

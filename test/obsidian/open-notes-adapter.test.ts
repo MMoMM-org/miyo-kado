@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {App, TFile} from '../__mocks__/obsidian';
+import {App, TFile, asApp} from '../__mocks__/obsidian';
 import {enumerateOpenNotes} from '../../src/obsidian/open-notes-adapter';
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ function makeApp(
 describe('enumerateOpenNotes', () => {
 	it('returns [] when workspace has zero leaves', () => {
 		const app = makeApp({}, null);
-		expect(enumerateOpenNotes(app)).toEqual([]);
+		expect(enumerateOpenNotes(asApp(app))).toEqual([]);
 	});
 
 	it('returns one entry with active: true and correct fields when one markdown leaf is focused', () => {
@@ -57,7 +57,7 @@ describe('enumerateOpenNotes', () => {
 		const leaf = makeLeaf(file, 'markdown');
 		const app = makeApp({markdown: [leaf]}, leaf);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
 		expect(result[0]).toEqual({
@@ -74,11 +74,11 @@ describe('enumerateOpenNotes', () => {
 		const activeLeaf = makeLeaf(file, 'markdown');
 		const app = makeApp({markdown: [inactiveLeaf, activeLeaf]}, activeLeaf);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(true);
-		expect(result[0].path).toBe('notes/shared.md');
+		expect(result[0]!.active).toBe(true);
+		expect(result[0]!.path).toBe('notes/shared.md');
 	});
 
 	it('returns all entries with active: false when workspace.activeLeaf is null (mobile fallback)', () => {
@@ -86,18 +86,18 @@ describe('enumerateOpenNotes', () => {
 		const leaf = makeLeaf(file, 'markdown');
 		const app = makeApp({markdown: [leaf]}, null);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(false);
-		expect(result[0].path).toBe('notes/a.md');
+		expect(result[0]!.active).toBe(false);
+		expect(result[0]!.path).toBe('notes/a.md');
 	});
 
 	it('excludes leaves whose view returns no file', () => {
 		const leaf = makeLeaf(null, 'markdown');
 		const app = makeApp({markdown: [leaf]}, null);
 
-		expect(enumerateOpenNotes(app)).toEqual([]);
+		expect(enumerateOpenNotes(asApp(app))).toEqual([]);
 	});
 
 	it('returns a canvas leaf with type "canvas" when it has a TFile', () => {
@@ -105,7 +105,7 @@ describe('enumerateOpenNotes', () => {
 		const leaf = makeLeaf(file, 'canvas');
 		const app = makeApp({canvas: [leaf]}, null);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
 		expect(result[0]).toEqual({
@@ -124,7 +124,7 @@ describe('enumerateOpenNotes', () => {
 
 		// Only known types are iterated; 'xyz' is unknown so getLeavesOfType('xyz')
 		// is never called and the leaf is not included.
-		expect(enumerateOpenNotes(app)).toEqual([]);
+		expect(enumerateOpenNotes(asApp(app))).toEqual([]);
 	});
 
 	// M9 — non-trivial exclusion check: pass-through of raw view type
@@ -140,12 +140,12 @@ describe('enumerateOpenNotes', () => {
 		const leaf = makeLeaf(file, 'markdown-enhanced-plugin');
 		const app = makeApp({markdown: [leaf]}, null);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		// The leaf IS included (came from getLeavesOfType('markdown')).
 		expect(result).toHaveLength(1);
 		// The type field must carry the raw getViewType() result, not the iteration key.
-		expect(result[0].type).toBe('markdown-enhanced-plugin');
+		expect(result[0]!.type).toBe('markdown-enhanced-plugin');
 	});
 
 	it('handles activeLeaf being null (mobile edge case) without throwing', () => {
@@ -153,9 +153,9 @@ describe('enumerateOpenNotes', () => {
 		const leaf = makeLeaf(file, 'markdown');
 		const app = makeApp({markdown: [leaf]}, null);
 
-		const result = enumerateOpenNotes(app);
+		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(false);
+		expect(result[0]!.active).toBe(false);
 	});
 });

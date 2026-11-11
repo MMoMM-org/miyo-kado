@@ -10,7 +10,8 @@
 ```bash
 npm ci                # Install dependencies
 npm run dev           # Watch mode (hot-reload into test vault)
-npm run build         # TypeScript check + esbuild production build
+npm run build         # TypeScript check (src/ only) + esbuild production build
+npm run typecheck:test # TypeScript check of test files (CI-enforced, not part of build)
 npm test              # Run tests (vitest)
 npm run test:watch    # Watch mode tests
 npm run test:coverage # Coverage report

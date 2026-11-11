@@ -30,6 +30,7 @@ import type {
 	OpenNoteDescriptor,
 } from '../../src/types/canonical';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
+import {firstText} from '../helpers/mcp-result';
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -100,33 +101,33 @@ describe('mapFileResult()', () => {
 		const result = mapFileResult(makeFileResult());
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe('text');
+		expect(result.content[0]!.type).toBe('text');
 	});
 
 	it('includes path in the text content', () => {
 		const result = mapFileResult(makeFileResult({path: 'notes/important.md'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('notes/important.md');
 	});
 
 	it('includes file content in the text output', () => {
 		const result = mapFileResult(makeFileResult({content: 'Hello world'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('Hello world');
 	});
 
 	it('includes created timestamp in the text output', () => {
 		const result = mapFileResult(makeFileResult({created: 1000}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('1000');
 	});
 
 	it('includes modified timestamp in the text output', () => {
 		const result = mapFileResult(makeFileResult({modified: 2000}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('2000');
 	});
@@ -140,7 +141,7 @@ describe('mapFileResult()', () => {
 	it('passes binary (base64 string) content through as-is', () => {
 		const base64 = 'SGVsbG8gV29ybGQ=';
 		const result = mapFileResult(makeFileResult({content: base64}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain(base64);
 	});
@@ -184,19 +185,19 @@ describe('mapWriteResult()', () => {
 		const result = mapWriteResult(makeWriteResult());
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe('text');
+		expect(result.content[0]!.type).toBe('text');
 	});
 
 	it('includes path in the text output', () => {
 		const result = mapWriteResult(makeWriteResult({path: 'notes/saved.md'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('notes/saved.md');
 	});
 
 	it('includes modified timestamp in the text output', () => {
 		const result = mapWriteResult(makeWriteResult({modified: 3000}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('3000');
 	});
@@ -217,13 +218,13 @@ describe('mapSearchResult()', () => {
 		const result = mapSearchResult(makeSearchResult());
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe('text');
+		expect(result.content[0]!.type).toBe('text');
 	});
 
 	it('includes JSON-stringified items in the text output', () => {
 		const item = makeSearchItem({path: 'notes/b.md', name: 'b.md'});
 		const result = mapSearchResult(makeSearchResult({items: [item]}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('notes/b.md');
 		expect(text).toContain('b.md');
@@ -231,7 +232,7 @@ describe('mapSearchResult()', () => {
 
 	it('includes cursor when present', () => {
 		const result = mapSearchResult(makeSearchResult({cursor: 'tok_next'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('tok_next');
 	});
@@ -239,7 +240,7 @@ describe('mapSearchResult()', () => {
 	it('handles empty items array', () => {
 		const result = mapSearchResult(makeSearchResult({items: []}));
 
-		expect(result.content[0].text).toBeDefined();
+		expect(firstText(result)).toBeDefined();
 		expect(result.isError).toBeFalsy();
 	});
 
@@ -265,26 +266,26 @@ describe('mapError()', () => {
 		const result = mapError(makeCoreError());
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe('text');
+		expect(result.content[0]!.type).toBe('text');
 	});
 
 	it('includes the error message in the text output', () => {
 		const result = mapError(makeCoreError({message: 'Note not found'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('Note not found');
 	});
 
 	it('includes the error code in the text output', () => {
 		const result = mapError(makeCoreError({code: 'FORBIDDEN'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).toContain('FORBIDDEN');
 	});
 
 	it('does not leak gate name in error output (SEC-014)', () => {
 		const result = mapError(makeCoreError({gate: 'authenticate'}));
-		const text = result.content[0].text;
+		const text = firstText(result);
 
 		expect(text).not.toContain('authenticate');
 		expect(text).not.toContain('gate');
@@ -294,7 +295,7 @@ describe('mapError()', () => {
 		const result = mapError(makeCoreError({gate: undefined}));
 
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toBeDefined();
+		expect(firstText(result)).toBeDefined();
 	});
 });
 
@@ -308,7 +309,7 @@ describe('mapDeleteResult()', () => {
 		const mapped = mapDeleteResult(result);
 
 		expect(mapped.content).toHaveLength(1);
-		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		const body = JSON.parse(firstText(mapped)) as Record<string, unknown>;
 		expect(body).toEqual({path: 'notes/a.md'});
 		expect('modified' in body).toBe(false);
 	});
@@ -317,7 +318,7 @@ describe('mapDeleteResult()', () => {
 		const result: CoreDeleteResult = {path: 'notes/a.md', modified: 5000};
 		const mapped = mapDeleteResult(result);
 
-		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		const body = JSON.parse(firstText(mapped)) as Record<string, unknown>;
 		expect(body).toEqual({path: 'notes/a.md', modified: 5000});
 	});
 
@@ -325,13 +326,13 @@ describe('mapDeleteResult()', () => {
 		const result: CoreDeleteResult = {path: 'notes/a.md', modified: undefined};
 		const mapped = mapDeleteResult(result);
 
-		const body = JSON.parse(mapped.content[0].text as string) as Record<string, unknown>;
+		const body = JSON.parse(firstText(mapped)) as Record<string, unknown>;
 		expect(body).toEqual({path: 'notes/a.md'});
 	});
 
 	it('result has content type "text"', () => {
 		const mapped = mapDeleteResult({path: 'a.md'});
-		expect(mapped.content[0].type).toBe('text');
+		expect(mapped.content[0]!.type).toBe('text');
 	});
 
 	it('is not flagged as error', () => {
@@ -386,7 +387,7 @@ describe('mapOpenNotesResult()', () => {
 		const result = mapOpenNotesResult(makeOpenNotesResult());
 
 		expect(result.content).toHaveLength(1);
-		expect(result.content[0].type).toBe('text');
+		expect(result.content[0]!.type).toBe('text');
 	});
 
 	it('does not set isError', () => {
@@ -398,12 +399,12 @@ describe('mapOpenNotesResult()', () => {
 	it('produces valid JSON in content[0].text', () => {
 		const result = mapOpenNotesResult(makeOpenNotesResult());
 
-		expect(() => JSON.parse(result.content[0].text as string)).not.toThrow();
+		expect(() => JSON.parse(firstText(result))).not.toThrow();
 	});
 
 	it('JSON shape has top-level "notes" array', () => {
 		const result = mapOpenNotesResult(makeOpenNotesResult());
-		const body = JSON.parse(result.content[0].text as string) as {notes: unknown};
+		const body = JSON.parse(firstText(result)) as {notes: unknown};
 
 		expect(Array.isArray(body.notes)).toBe(true);
 	});
@@ -411,7 +412,7 @@ describe('mapOpenNotesResult()', () => {
 	it('each note descriptor has exactly name, path, active, type keys', () => {
 		const descriptor = makeOpenNoteDescriptor({name: 'b.md', path: 'notes/b.md', active: true, type: 'canvas'});
 		const result = mapOpenNotesResult(makeOpenNotesResult({notes: [descriptor]}));
-		const body = JSON.parse(result.content[0].text as string) as {notes: Array<Record<string, unknown>>};
+		const body = JSON.parse(firstText(result)) as {notes: Array<Record<string, unknown>>};
 		const note = body.notes[0] as Record<string, unknown>;
 
 		expect(Object.keys(note).sort()).toEqual(['active', 'name', 'path', 'type']);
@@ -423,7 +424,7 @@ describe('mapOpenNotesResult()', () => {
 
 	it('handles empty notes array', () => {
 		const result = mapOpenNotesResult(makeOpenNotesResult({notes: []}));
-		const body = JSON.parse(result.content[0].text as string) as {notes: unknown[]};
+		const body = JSON.parse(firstText(result)) as {notes: unknown[]};
 
 		expect(body.notes).toEqual([]);
 	});
@@ -434,7 +435,7 @@ describe('mapOpenNotesResult()', () => {
 			makeOpenNoteDescriptor({name: 'b.md', path: 'notes/b.md', active: false, type: 'canvas'}),
 		];
 		const result = mapOpenNotesResult(makeOpenNotesResult({notes}));
-		const body = JSON.parse(result.content[0].text as string) as {notes: unknown[]};
+		const body = JSON.parse(firstText(result)) as {notes: unknown[]};
 
 		expect(body.notes).toHaveLength(2);
 	});
@@ -442,7 +443,7 @@ describe('mapOpenNotesResult()', () => {
 	it('active flag is a boolean in the JSON output', () => {
 		const descriptor = makeOpenNoteDescriptor({active: true});
 		const result = mapOpenNotesResult(makeOpenNotesResult({notes: [descriptor]}));
-		const body = JSON.parse(result.content[0].text as string) as {notes: Array<Record<string, unknown>>};
+		const body = JSON.parse(firstText(result)) as {notes: Array<Record<string, unknown>>};
 		const note = body.notes[0] as Record<string, unknown>;
 
 		expect(typeof note['active']).toBe('boolean');
