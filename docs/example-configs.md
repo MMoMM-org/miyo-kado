@@ -8,7 +8,18 @@ Practical examples showing how to set up Kado for common workflows. For the full
 
 1. **Global security**: whitelist mode, add `Notes` (read-only) and `AI Inbox` (full CRUD)
 2. **API key**: same paths, notes = read only, AI Inbox = create + read + update
-3. **Tags**: add `project/*` so the AI can search by project tags
+3. **Search tags**: add `project/*` so the AI can search by project tags
+
+## Employer key in a flat, tag-organised vault
+
+**Goal:** One folder (or none), notes organised only by tags. An agent provided by your employer may only see and edit notes tagged `#Work` -- never `#Private`.
+
+1. **Global security**: whitelist `**` (full vault) with the permissions you are willing to grant any key
+2. **API key "Work agent"**: path `**` -- notes read + update + create, **files read off** (attachments have no tags and are not covered by tag rules)
+3. **Tag rules** on the key: *Only notes tagged* = `Work`, *Never notes tagged* = `Private`
+4. Verify in the **Permission Test** tab: a note tagged `#Work` → ALLOWED; untagged or `#Home` → DENIED at `tag-access`; `#Work` + `#Private` → DENIED (deny wins)
+
+New notes the agent creates must contain `#Work` (in frontmatter `tags` or inline), otherwise the create is refused.
 
 ## Shared vault with multiple agents
 
@@ -52,7 +63,7 @@ Legend: `Y` = permission granted, `-` = permission not granted
 #status/*         [R]
 ```
 
-Tags are read-only filters (the `[R]` badge). They restrict which tags are visible in `listTags` and searchable via `byTag`. A pattern like `#status/*` matches `#status/active`, `#status/done`, etc.
+Search tags are read-only filters (the `[R]` badge). They restrict which tags are visible in `listTags` and searchable via `byTag` -- not which notes are accessible (that is what tag rules do). A pattern like `#status/*` matches `#status/active`, `#status/done`, etc.
 
 ### API Key Tab
 

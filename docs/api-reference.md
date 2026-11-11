@@ -1173,7 +1173,7 @@ Each item in `items`:
 
 ### Scope Filtering
 
-Search results only include files the calling key may **read**. Permissions are resolved like a direct read: the global security scope and the key-specific scope are intersected, and within each the most specific matching path entry decides. Markdown files need `note.read`, other files `file.read`. A path that matches a broad pattern (e.g. `**`) but whose more specific entry disables read (e.g. `Private/**`) is excluded. `byContent` never reads such files, and `listTags` never counts their tags.
+Search results only include files the calling key may **read**. Permissions are resolved like a direct read: the global security scope and the key-specific scope are intersected, and within each the most specific matching path entry decides. Markdown files need `note.read`, other files `file.read`. A path that matches a broad pattern (e.g. `**`) but whose more specific entry disables read (e.g. `Private/**`) is excluded. Notes that fail the key's [tag rules](configuration.md#tag-rules) are excluded the same way (using Obsidian's metadata index; a note not indexed yet is excluded until it is). `byContent` never reads such files, and `listTags` never counts their tags.
 
 - **Whitelist mode**: unlisted paths are excluded.
 - **Blacklist mode**: unlisted paths are allowed; a listed entry applies its own CRUD flags (an entry that only blocks `delete` stays searchable).
@@ -1946,7 +1946,7 @@ All errors are returned as MCP tool results with `isError: true` and a JSON body
 | Code | HTTP Equivalent | When it occurs | Example message |
 |---|---|---|---|
 | `UNAUTHORIZED` | 401 | Missing or invalid Bearer token | `"Missing authentication token"` |
-| `FORBIDDEN` | 403 | Permission denied by any gate in the chain | `"Path not in scope"` |
+| `FORBIDDEN` | 403 | Permission denied by any gate in the chain, or by a tag rule | `"Path not in scope"`, `"Denied by tag rule #Private (key)."` |
 | `NOT_FOUND` | 404 | Requested file does not exist in the vault | `"File not found: Calendar/missing.md"` |
 | `CONFLICT` | 409 | `expectedModified` mismatch or missing on update | `"File was updated in the background. Re-read before retrying."` |
 | `VALIDATION_ERROR` | 400 | Invalid parameters or missing required fields | `"mapReadRequest: missing required field \"path\""` |
@@ -2002,4 +2002,11 @@ for the full per-type breakdown.
 
 ### Tag Restrictions
 
-Tag-based search operations (`byTag`, `listTags`) respect the intersection of global and key-level tag lists. If neither level has tags configured, all tags are accessible. If both have tags, only the intersection is permitted.
+Tag-based search operations (`byTag`, `listTags`) respect the intersection of global and key-level search-tag lists.
+This only limits which tags may be queried; which notes are visible at all is decided by path rules and
+[tag rules](configuration.md#tag-rules).
+
+**Tag rules** (`tagAllow` / `tagDeny`, global and per key) are enforced on every note operation after the
+permission chain: a denied note returns `FORBIDDEN` (audited with gate `tag-access`) for `kado-read`,
+`kado-write`, `kado-delete`, `kado-rename` and as the `kado-graph` source; creating a note checks the tags in
+the new content; a folder rename requires every contained note to pass. `file` operations are not affected. If neither level has tags configured, all tags are accessible. If both have tags, only the intersection is permitted.

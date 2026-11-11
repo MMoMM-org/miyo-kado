@@ -29,7 +29,9 @@ Every request passes through five gates in order. The first denial stops the cha
 | 3 | `datatype-permission` | Key must have the required CRUD flag for the data type |
 | 4 | `path-access` | Final path-traversal and validation check |
 
-Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can use **tags** for search operations.
+After the chain allows a note operation, **tag rules** (`tag-access`) filter by the note's tags: *Only notes tagged* and *Never notes tagged*, global and per key, deny wins. They can only remove access, never grant it, and they do not apply to attachments (`file`). See [Configuration -- Tag rules](configuration.md#tag-rules).
+
+Global security and each API key independently configure **whitelist** or **blacklist** mode. Both scopes can also list **search tags**, which only limit which tags `kado-search` may filter by.
 
 ## Enforcement Logic
 

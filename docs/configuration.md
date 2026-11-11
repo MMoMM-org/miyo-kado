@@ -76,8 +76,9 @@ actually performs — `n/a` marks a flag that has no effect (see footnotes):
    its own. A tags read is granted by `note` **R** (returns inline *and* frontmatter tags,
    `returnedTags="All"`) **or** `frontmatter` **R** (frontmatter tags only,
    `returnedTags="FrontmatterOnly"`). There is no create/update/delete for tags. This is separate
-   from the tag allow-list (see [Tags](#tags) below), which only filters *which* tags are visible in
-   search results and is not a CRUD permission.
+   from the search-tag list (see [Search tags](#search-tags) below), which only filters *which* tags are
+   visible in search results and is not a CRUD permission, and from [tag rules](#tag-rules), which
+   decide which notes are accessible by their tags.
 
 Create versus update is decided by the presence of `expectedModified` on the write — see
 [API Reference -- Create vs Update Flow](api-reference.md#create-vs-update-flow).
@@ -100,9 +101,36 @@ The folder picker includes a `** (Full vault)` entry at the top for convenience.
 
 **Note — bare folder vs `folder/**`.** A bare `Calendar` matches both the folder node *and* its contents (it auto-expands to also cover `Calendar/**`). `Calendar/**` matches only the *contents*, not the folder node. This distinction matters when you want a rule to apply to a folder's files but leave the folder node itself governed by a broader rule (e.g. so the folder can still be renamed under that broader rule). The **folder browse picker returns the bare form** — add `/**` by hand when you need the contents-only variant.
 
-### Tags
+### Tag rules
 
-Tags restrict which tags are visible in search operations (`listTags`, `byTag`). When tags are configured, only matching tags appear in results.
+Tag rules restrict **which notes** are accessible by the tags they carry — on top of the path rules. They are a filter: they can only ever *remove* access that the path rules grant, never add it. CRUD permissions stay on the path entries.
+
+- **Only notes tagged** (`tagAllow`) -- when set, a note must carry **at least one** of these tags. Untagged notes and notes with only other tags are blocked. An empty list means no restriction.
+- **Never notes tagged** (`tagDeny`) -- a note carrying **any** of these tags is blocked.
+- **Deny always wins.** A note tagged `#Work` and `#Private` is blocked when `#Private` is denied, even if `#Work` is allowed.
+- **Nested tags match.** `Work` also matches `#Work/ProjectA`; `Work/*` matches only sub-tags.
+- Frontmatter `tags` and inline `#tags` both count (tags inside code blocks do not).
+- **Global and key rules are evaluated independently** -- a note must pass both.
+- **Notes only.** Tag rules apply to notes, frontmatter, Dataview inline fields and the tags read. Attachments (`file` data type) have no tags and stay governed by path rules alone -- for a tag-scoped key, set `file.read = false` or scope files by path.
+
+How operations are checked:
+
+| Operation | Checked against |
+|---|---|
+| read, update, delete, rename (existing note) | the note's **current** tags, read from the file content |
+| create a note | the tags in the **new content** -- with *Only notes tagged* set, the content must carry an allowed tag |
+| folder rename | **every** note in the folder must pass |
+| search, list, graph, graph audit, open notes | notes that fail are left out of the results (and out of `listTags` counts and `listDir` child counts) |
+
+Denials come back as `FORBIDDEN` and are recorded with the gate name `tag-access` in the audit log and the Permission Test.
+
+**Example -- an employer key in a flat, tag-organised vault:** give the key the path `**` with the permissions you want, set **Only notes tagged** to `Work`, and disable `file.read`. The key then sees and edits only notes tagged `#Work` (including `#Work/...`); new notes it creates must carry `#Work`. Add `Private` to **Never notes tagged** to carve out exceptions.
+
+Search results use Obsidian's metadata index. Right after a restart or a bulk external change, a note that is not indexed yet is treated as untagged-and-unknown and left out of results until it is indexed (it is never shown by mistake).
+
+### Search tags
+
+Search tags restrict which tags search operations may filter by (`listTags`, `byTag`). When tags are configured, only matching tags appear in results. They do **not** restrict which notes are accessible -- use tag rules for that.
 
 - Use `*` to grant access to **all tags** in the vault.
 - Tag patterns support wildcards: `project/*` matches `project/alpha`, `project/beta`, etc.
@@ -130,7 +158,8 @@ Each key has:
 
 - **Access mode** -- independent whitelist/blacklist, intersected with global scope
 - **Paths** -- each with their own CRUD permissions per data type. **+ add path** opens a folder browser (Obsidian's native fuzzy picker) limited to folders *within* the global scope: pick a whole global path or any subfolder of one to narrow the key for least-privilege access (e.g. global `Atlas` → key `Atlas/202 Notes`). Just pick the folder -- no need to type `/**`; a folder name already covers everything inside it. A narrowed path's permissions are still capped by its parent global path, so unavailable CRUD cells appear greyed out. When a key has both a broad path and a narrower one inside it, the **most specific entry wins** for the paths it covers -- so a key can have broad access with a tighter island (e.g. `allowed` full CRUD but `allowed/sub` read-only).
-- **Tags** -- subset of global tags, controls which tags the key can search by
+- **Tag rules** -- *Only notes tagged* / *Never notes tagged* for this key, evaluated in addition to the global tag rules (see [Tag rules](#tag-rules))
+- **Search tags** -- subset of global search tags, controls which tags the key can search by
 
 For details on how global and key scopes intersect, see [How It Works -- Scope Intersection](how-it-works.md#scope-intersection).
 
@@ -156,11 +185,12 @@ Pick:
 - **Operation** -- `read`, `create`, `update`, `delete`, `rename / move`, or `search`. (Write is split into create/update because they are gated independently.)
 - **Data type** -- note, frontmatter, file, Dataview inline field, or tags (the choices narrow to what each operation supports; hidden for search).
 - **Path** -- start typing to fuzzy-search files and folders. For a rename you also enter a **Target path**; same folder is treated as a rename (needs `update`), a different folder as a move (needs `delete` on the source **and** `create` on the target).
-- **Tag** *(optional)* -- start typing to fuzzy-search vault tags.
+- **Note tags** *(optional)* -- the tags the note carries, for tag rules. Leave empty to use the note's current tags (a path that does not exist yet counts as untagged); enter them, comma-separated, to test a create.
+- **Search tag** *(optional)* -- start typing to fuzzy-search vault tags.
 
-The result shows **ALLOWED** or **DENIED**; on a denial it names the **deciding gate** (authenticate, global-scope, key-scope, datatype-permission, or path-access) and the reason. This is exactly what the assistant would have seen.
+The result shows **ALLOWED** or **DENIED**; on a denial it names the **deciding gate** (authenticate, global-scope, key-scope, datatype-permission, path-access, or tag-access) and the reason. When tag rules are configured it also shows which note tags were used. This is exactly what the assistant would have seen.
 
-The tag field is an independent, informational readout: it reports whether the tag is within the key's effective tag scope (global ∩ key). Tags currently scope `kado-search byTag` rather than gating path access, so the tag never changes the ALLOWED/DENIED verdict for a path operation.
+The search-tag field is an independent readout: it reports whether the tag is within the key's effective search-tag scope (global ∩ key) for `kado-search byTag`. It never changes the verdict -- note access by tag is decided by the tag rules and the note tags above.
 
 ## Backup & Restore
 

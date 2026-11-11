@@ -28,6 +28,7 @@ If you've ever wanted to say "this assistant can read my project notes but not m
 - **Default-deny security** -- nothing is accessible until explicitly whitelisted
 - **Two-tier access control** -- global security scope defines what is eligible; per-key scope defines what is permitted
 - **Five permission gates** -- authenticate, global-scope, key-scope, datatype-permission, path-access
+- **Tag rules** -- restrict a key (or the whole vault) by note tags on top of path rules: *Only notes tagged* (`#Work` — untagged notes are blocked) and *Never notes tagged* (`#Private`). Deny always wins; rules only ever remove access. Ideal for flat, tag-organised vaults ([#81](https://github.com/MMoMM-org/miyo-kado/issues/81))
 - **Four data types** -- notes (markdown), frontmatter (YAML as JSON), files (binary as base64), Dataview inline fields
 - **Partial note read/write** -- read a slice (`firstXChars`, `firstXWords` for a Unicode-aware word preview, `section` by heading, `range` by line/char) and write in place (`append`/`prepend`, `insertUnderHeading`, `replaceSection`/`replaceRange`) without round-tripping the whole body; omitting the mode is byte-for-byte backward compatible
 - **Rename & move** -- `kado-rename` renames or moves notes and files with backlinks updated automatically; one folder ⇒ rename (needs `update`), across folders ⇒ move (needs `delete` on the source + `create` on the target). Works best with Obsidian's "Automatically update internal links" on (silent, links updated); with it off the tool is hidden unless you opt in, and then each rename prompts Obsidian's link-update dialog (the file still moves, but inbound links update only when you answer)
@@ -74,9 +75,8 @@ types (`src/types/`). See [How It Works](docs/how-it-works.md) for the enforceme
 
 Tracked as GitHub issues:
 
-- **Tag permissions beyond read-only** ([#81](https://github.com/MMoMM-org/miyo-kado/issues/81)) -- deny permission so tags can *exclude* matching items from otherwise-allowed paths.
 - **Granular whitelist / blacklist toggle** ([#82](https://github.com/MMoMM-org/miyo-kado/issues/82)) -- per-section toggle for mixed strategies.
-Shipped: **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)) and **Backup & restore** config export/import ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)); sub-path key scopes (narrower sub-paths inside an allowed parent) landed in v0.15.0.
+Shipped: **Tag rules** (allow-only and deny by tag, [#81](https://github.com/MMoMM-org/miyo-kado/issues/81)), **Permission Test** dry-run panel ([#83](https://github.com/MMoMM-org/miyo-kado/issues/83)) and **Backup & restore** config export/import ([#84](https://github.com/MMoMM-org/miyo-kado/issues/84)); sub-path key scopes (narrower sub-paths inside an allowed parent) landed in v0.15.0.
 
 ## Known edge cases
 
