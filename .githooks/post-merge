@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: v2.2.12
-# tcs-git-helpers-bundle: h3
+# tcs-git-helpers: v2.2.43
+# tcs-git-helpers-bundle: h9
 # post-merge — tcs-git-helpers repo-side stale-branch surfacing hook
 #
 # Runs after `git pull` or `git merge`. Queries GitHub for merged PRs whose
@@ -124,9 +124,8 @@ _main() {
     | jq -r '.[] | [.headRefName, (.number | tostring), .mergedAt] | @tsv' \
     2>/dev/null || true)"
 
-  if [ -z "$merged_list" ]; then
-    return 0
-  fi
+  # An empty merged_list is a successful answer, not a failure: fall through
+  # so step 9 clears the cache (#206).
 
   # 7. Cross-reference: find local branches that appear in merged PRs,
   #    excluding any checked out in a worktree.
@@ -179,19 +178,19 @@ EOF2
     printf 'tcs-git-helpers: run /tcs-git-helpers:git-audit --cleanup to review\n' >&2
   fi
 
-  # 9. Update stale-branch cache atomically via lib-bundle.sh.
-  if [ -n "$stale_rows" ]; then
-    local default_branch
-    default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-      | sed 's|refs/remotes/origin/||' 2>/dev/null)" || default_branch="main"
-    [ -n "$default_branch" ] || default_branch="main"
+  # 9. Update stale-branch cache atomically via lib-bundle.sh. Written even
+  #    when nothing is stale, so rows from an earlier run do not survive
+  #    (#206). Failed queries returned above and leave the cache alone.
+  local default_branch
+  default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's|refs/remotes/origin/||' 2>/dev/null)" || default_branch="main"
+  [ -n "$default_branch" ] || default_branch="main"
 
-    local updated_iso
-    updated_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local updated_iso
+  updated_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-    printf '%s\n' "$stale_rows" \
-      | _write_stale_cache "$updated_iso" "$repo_path" "$default_branch"
-  fi
+  printf '%s\n' "$stale_rows" \
+    | _write_stale_cache "$updated_iso" "$repo_path" "$default_branch"
 }
 
 _main

@@ -39,7 +39,13 @@
 _resolve_data_dir() {
   # 1. User-explicit override wins (lets tests + power users redirect).
   if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-    printf '%s/cache' "$CLAUDE_PLUGIN_DATA"
+    local d="$CLAUDE_PLUGIN_DATA"
+    # Strip trailing slashes. Python's pathlib collapses them and printf does
+    # not, so an override ending in "/" would put the shell writer and the
+    # Python reader in paths that differ only by a slash — the same class of
+    # split this resolver exists to close.
+    while [ "$d" != "/" ] && [ "${d%/}" != "$d" ]; do d="${d%/}"; done
+    printf '%s/cache' "$d"
     return 0
   fi
 
@@ -67,6 +73,28 @@ _emit_skip() {
   local suggestion="$3"
   printf 'tcs-git-helpers: %s skipped — %s. %s.\n' \
     "$action" "$reason" "$suggestion" >&2
+}
+
+# ---------------------------------------------------------------------------
+# _emit_cache_write_skip <reason> <data_dir>
+#
+# A cache-write skip with advice that fits the cause (#160). Inside Claude
+# Code's Bash sandbox the data dir is policy-denied, not mode-restricted, so
+# permissions advice cannot help; the next pull or merge outside the sandbox
+# rewrites the cache (post-merge is the only hook that writes it). SANDBOX_RUNTIME=1 is set only inside that sandbox
+# (observed on Claude Code 2.1.296; not a documented interface).
+# ---------------------------------------------------------------------------
+
+_emit_cache_write_skip() {
+  local reason="$1"
+  local data_dir="$2"
+  if [ "${SANDBOX_RUNTIME:-}" = "1" ]; then
+    _emit_skip "cache-write" \
+      "$reason (Claude Code's Bash sandbox denies $data_dir)" \
+      "Harmless: the next pull or merge outside the sandbox refreshes the cache"
+  else
+    _emit_skip "cache-write" "$reason" "Check write permissions on $data_dir"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -139,9 +167,7 @@ _write_stale_cache() {
 
   # Create the cache dir atomically; fail gracefully if not writable.
   mkdir -p "$data_dir" 2>/dev/null || {
-    _emit_skip "cache-write" \
-      "cache directory could not be created" \
-      "Check write permissions on $data_dir"
+    _emit_cache_write_skip "cache directory could not be created" "$data_dir"
     return 0
   }
 
@@ -156,18 +182,27 @@ _write_stale_cache() {
   local tsv_file="${data_dir}/${repo_hash}-stale-cache.tsv"
   local json_file="${data_dir}/${repo_hash}-stale-cache.json"
 
-  # Write TSV atomically.
-  printf '%s\n' "$tsv_rows" > "${tsv_file}.tmp" 2>/dev/null || {
-    _emit_skip "cache-write" \
-      "TSV write failed" \
-      "Check write permissions on $data_dir"
+  # Write TSV atomically. The header matches scripts/lib/cache.sh; readers
+  # take the cache age from `# updated_iso=` (#208).
+  {
+    {
+      printf '# tcs-git-helpers stale cache v1\n'
+      printf '# updated_iso=%s\n' "$updated_iso"
+      printf '# repo_path=%s\n' "$repo_path"
+      printf '# default_branch=%s\n' "$default_branch"
+      if [ -n "$tsv_rows" ]; then
+        printf '%s\n' "$tsv_rows"
+      fi
+    } > "${tsv_file}.tmp"
+  } 2>/dev/null || {
+    _emit_cache_write_skip "TSV write failed" "$data_dir"
     return 0
   }
   mv "${tsv_file}.tmp" "$tsv_file" 2>/dev/null || true
 
   # Build JSON array from TSV rows and write atomically.
-  _emit_stale_json "$tsv_rows" "$updated_iso" "$default_branch" \
-    > "${json_file}.tmp" 2>/dev/null || {
+  { _emit_stale_json "$tsv_rows" "$updated_iso" "$default_branch" \
+      > "${json_file}.tmp"; } 2>/dev/null || {
     rm -f "${json_file}.tmp" 2>/dev/null || true
     return 0
   }

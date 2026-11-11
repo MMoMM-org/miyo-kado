@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: v2.2.12
-# tcs-git-helpers-bundle: h3
+# tcs-git-helpers: v2.2.43
+# tcs-git-helpers-bundle: h9
 # pre-push — tcs-git-helpers repo-side safety hook
 #
 # Blocks pushes to branches whose GitHub PR is CLOSED or MERGED.
@@ -127,7 +127,7 @@ _inline_write_pr_state_cache() {
     current='{"version":1,"updated_iso":"","branch_state":{}}'
   fi
 
-  printf '%s' "$current" \
+  { printf '%s' "$current" \
     | jq --arg branch "$branch" \
          --arg state "$state" \
          --arg pr_number "$pr_number" \
@@ -139,7 +139,7 @@ _inline_write_pr_state_cache() {
               + (if (($pr_number|tonumber?) // 0) > 0
                  then { number: ($pr_number|tonumber) }
                  else {} end)
-            )' > "${cache_file}.tmp" 2>/dev/null \
+            )' > "${cache_file}.tmp"; } 2>/dev/null \
     && mv "${cache_file}.tmp" "$cache_file" 2>/dev/null || true
 }
 
@@ -223,12 +223,42 @@ _query_gh_pr_state() {
     return 0
   fi
 
-  # Exit 1 — check stderr content.
+  # Exit 1 — inspect what gh said. _gh_with_timeout merges the child's stderr
+  # into its own stdout (`> "$out_file" 2>&1`, then `cat`), so gh's diagnostic
+  # arrives in $gh_out. The `2>/dev/null` on the call above silences the
+  # *wrapper*, not gh — adding a separate stderr capture here would collect
+  # nothing and quietly re-break the match below.
+  #
   # Note: timeout (SIGTERM) yields exit 143 (128+15), handled by the catch-all below.
   if [ "$gh_exit" -ne 0 ]; then
-    # "no GitHub remote" is a silent fail-open (common case: non-GitHub repo).
+    # A repo gh cannot map to a GitHub host is a silent fail-open: it is the
+    # normal state of a non-GitHub repo, and of the common multi-account setup
+    # where the remote is an SSH host alias (git@github-alias:owner/repo.git).
+    #
+    # Match on what gh actually emits (#136):
+    #
+    #   none of the git remotes configured for this repository point to a
+    #   known GitHub host. To tell gh about a new GitHub host, please use
+    #   `gh auth login`
+    #
+    # The older "no GitHub remote" pattern never appeared in that text, so the
+    # branch was unreachable and every push printed the catch-all warning
+    # instead. Both patterns are kept, so a future rewording in either
+    # direction stays silent rather than becoming noise again.
+    #
+    # The sibling case (#184): gh maps the remote fine, but the account it is
+    # authenticated as cannot see the repository — a multi-account setup whose
+    # push credential comes from outside gh. That is a steady state, not a
+    # tooling fault, and GitHub answers "not found" for both "does not exist"
+    # and "you may not see it":
+    #
+    #   GraphQL: Could not resolve to a Repository with the name 'owner/repo'.
+    #
+    # Either way the PR lookup is unavailable here and fail-open is the whole
+    # answer, so it joins the silent branch. Kept to that one wording: the
+    # branch stays narrow, and genuine gh failures keep warning.
     case "$gh_out" in
-      *"no GitHub remote"*)
+      *"known GitHub host"*|*"no GitHub remote"*|*"Could not resolve to a Repository"*)
         printf 'SKIP 0\n'
         return 0
         ;;
