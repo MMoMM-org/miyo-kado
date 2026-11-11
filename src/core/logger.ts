@@ -36,3 +36,8 @@ export function kadoLog(message: string, data?: Record<string, unknown>): void {
 export function kadoError(message: string, data?: Record<string, unknown>): void {
 	console.error(format(message, data));
 }
+
+/** Shortens an API key id for logs (enough to tell keys apart, never the full secret). */
+export function truncateKeyId(keyId: string): string {
+	return keyId.slice(0, 12) + '...';
+}

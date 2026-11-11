@@ -58,9 +58,23 @@ export function computeSearchTagScope(config: KadoConfig, key: ApiKeyConfig): st
 	return dedupePreservingOrder([...searchTags, ...normalizeList(config.security.tagAllow), ...normalizeList(key.tagAllow)]);
 }
 
+/**
+ * A key's normalized tag rules (global + key), compiled once so per-file result
+ * filters do not re-normalize the configured lists for every vault file.
+ */
+export interface CompiledTagRules {
+	readonly scopes: readonly TagRules[];
+}
+
+/** Compiles the tag rules of the global scope and `key`; null when neither defines any rule. */
+export function compileTagRules(config: KadoConfig, key: ApiKeyConfig): CompiledTagRules | null {
+	const scopes = collectRules(config, key);
+	return scopes.some((r) => r.allow.length > 0 || r.deny.length > 0) ? {scopes} : null;
+}
+
 /** True when the global scope or the key defines at least one tag rule. */
 export function hasTagRules(config: KadoConfig, key: ApiKeyConfig): boolean {
-	return collectRules(config, key).some((r) => r.allow.length > 0 || r.deny.length > 0);
+	return compileTagRules(config, key) !== null;
 }
 
 /** Operations that act on (part of) a markdown note and are therefore subject to tag rules. */
@@ -86,8 +100,13 @@ function denied(message: string): GateResult {
  * reason names a matching deny rule whenever one applies.
  */
 export function evaluateTagAccess(tags: string[] | null, config: KadoConfig, key: ApiKeyConfig): GateResult {
-	const rules = collectRules(config, key);
-	if (!rules.some((r) => r.allow.length > 0 || r.deny.length > 0)) return {allowed: true};
+	return evaluateCompiledTagAccess(tags, compileTagRules(config, key));
+}
+
+/** evaluateTagAccess over pre-compiled rules (null = no rules → allowed). */
+export function evaluateCompiledTagAccess(tags: string[] | null, compiled: CompiledTagRules | null): GateResult {
+	if (compiled === null) return {allowed: true};
+	const rules = compiled.scopes;
 	if (tags === null) {
 		return denied('Note tags could not be determined; tag rules deny access until the note is readable/indexed.');
 	}

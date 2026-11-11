@@ -16,7 +16,7 @@ import type {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type {ServerRequest, ServerNotification, CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ConfigManager} from '../core/config-manager';
-import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest, GateResult, NoteTagSource} from '../types/canonical';
+import type {PermissionGate, CoreRequest, CoreError, DataType, CoreOpenNotesRequest, NoteTagSource} from '../types/canonical';
 import {isCoreSearchRequest, isCoreOpenNotesRequest, isCoreWriteRequest, isCoreRenameRequest, isCoreGraphRequest, isCoreGraphAuditRequest} from '../types/canonical';
 import {evaluatePermissions} from '../core/permission-chain';
 import {evaluateRenamePermissions} from '../core/rename-policy';
@@ -37,7 +37,6 @@ import type {
 	CoreGraphResult,
 	CoreGraphAuditResult,
 	CoreSearchItem,
-	CoreWriteRequest,
 	KadoConfig,
 	ApiKeyConfig,
 	OpenNoteDescriptor,
@@ -45,12 +44,13 @@ import type {
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
 import {dirCouldContainMatches} from '../core/glob-match';
-import {computeSearchTagScope, evaluateTagAccess, hasTagRules, isTagGovernedDataType} from '../core/tag-access';
-import {kadoLog} from '../core/logger';
+import {computeSearchTagScope} from '../core/tag-access';
+import {createReadablePredicate, evaluateFolderTagAccess, evaluateNoteTagAccess, isNoteCreate} from './tag-policy';
+import {kadoLog, truncateKeyId} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
 import {authenticateGate} from '../core/gates/authenticate';
-import {resolveTagsReturnScope, canReadPath} from '../core/gates/datatype-permission';
+import {resolveTagsReturnScope} from '../core/gates/datatype-permission';
 import type {RouteResult} from '../core/operation-router';
 
 // ============================================================
@@ -273,15 +273,14 @@ function missingAuthError(): CallToolResult {
  * glob match alone is not enough: a matching entry may still disable read.
  */
 export function isPathPermittedForKey(path: string, key: ApiKeyConfig, config: KadoConfig, tagSource?: NoteTagSource): boolean {
-	if (!canReadPath(path, config, key)) return false;
-	if (!path.endsWith('.md') || !hasTagRules(config, key)) return true;
-	return evaluateTagAccess(tagSource?.cachedTags(path) ?? null, config, key).allowed;
+	return createReadablePredicate(key, config, tagSource)(path);
 }
 
 /** Filters search result items to only include paths within the key's permitted scope. */
 export function filterResultsByScope(items: CoreSearchItem[], keyId: string, config: KadoConfig, tagSource?: NoteTagSource): CoreSearchItem[] {
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return [];
+	const readable = createReadablePredicate(key, config, tagSource);
 
 	return items.filter((item) => {
 		if (item.type === 'folder') {
@@ -289,7 +288,7 @@ export function filterResultsByScope(items: CoreSearchItem[], keyId: string, con
 			const inKey = isFolderInScope(item.path, key.listMode, key.paths.map((p) => p.path));
 			return inGlobal && inKey;
 		}
-		return isPathPermittedForKey(item.path, key, config, tagSource);
+		return readable(item.path);
 	});
 }
 
@@ -363,7 +362,8 @@ function pruneToScopeKind(
  * Delegates to isPathPermittedForKey to share glob-matching logic with filterResultsByScope.
  */
 function filterDescriptorsByAcl(notes: OpenNoteDescriptor[], key: ApiKeyConfig, config: KadoConfig, tagSource?: NoteTagSource): OpenNoteDescriptor[] {
-	return notes.filter((note) => isPathPermittedForKey(note.path, key, config, tagSource));
+	const readable = createReadablePredicate(key, config, tagSource);
+	return notes.filter((note) => readable(note.path));
 }
 
 function extractDataType(request: CoreRequest): DataType {
@@ -376,10 +376,6 @@ function extractDataType(request: CoreRequest): DataType {
 	// Folder delete is authorized and audited as a note operation (folder-policy).
 	if (request.operation === 'folder') return 'note';
 	return request.operation;
-}
-
-function truncateKeyId(keyId: string): string {
-	return keyId.slice(0, 12) + '...';
 }
 
 function debugFields(keyId: string, request: CoreRequest): Record<string, unknown> {
@@ -495,70 +491,6 @@ async function logDenied(
 	}
 }
 
-/**
- * Client-facing tag-rule denials (#81). Deliberately identical for every reason:
- * the detailed reason names a hidden note's tags, its path, or whether it exists
- * at all, none of which the key may learn. The detail goes to the debug log (and
- * the owner-facing Permission Test); the audit log records gate `tag-access`.
- */
-const TAG_DENIAL_MESSAGE = 'Access denied by tag rules.';
-const FOLDER_TAG_DENIAL_MESSAGE = 'Rename blocked: the folder contains notes this key may not access (tag rules).';
-
-/** Replaces a tag-rule denial's detailed reason with `message`, logging the detail for the vault owner. */
-function redactTagDenial(result: GateResult, message: string, keyId: string, path: string): GateResult {
-	if (result.allowed) return result;
-	kadoLog('tag rule denied', {key: truncateKeyId(keyId), path, reason: result.error.message});
-	return {allowed: false, error: {...result.error, message}};
-}
-
-/**
- * Tag access policy (#81) for a single-note operation, run after the gate chain
- * allowed it. With `newContent` (note creation) the tags of the content about to
- * be written are checked; otherwise the note's CURRENT tags, read from its file
- * content. Non-markdown data types and keys without tag rules pass untouched.
- */
-async function evaluateNoteTagAccess(
-	keyId: string,
-	config: KadoConfig,
-	deps: ToolDependencies,
-	path: string,
-	operation: string,
-	newContent?: string,
-): Promise<GateResult> {
-	const key = config.apiKeys.find((k) => k.id === keyId);
-	if (!key || !isTagGovernedDataType(operation) || !hasTagRules(config, key)) return {allowed: true};
-	const source = deps.tagSource;
-	let tags: string[] | null = null;
-	if (source) {
-		tags = newContent !== undefined ? source.tagsOfContent(newContent) : await source.readTags(path);
-	}
-	return redactTagDenial(evaluateTagAccess(tags, config, key), TAG_DENIAL_MESSAGE, keyId, path);
-}
-
-/**
- * Tag access policy (#81) for a folder rename: the rename moves every
- * descendant, so each markdown note in the tree must pass the key's tag rules.
- * Uses cached tags (a whole tree; unindexed notes fail closed).
- */
-function evaluateFolderTagAccess(keyId: string, config: KadoConfig, deps: ToolDependencies, treePaths: string[]): GateResult {
-	const key = config.apiKeys.find((k) => k.id === keyId);
-	if (!key || !hasTagRules(config, key)) return {allowed: true};
-	for (const path of treePaths) {
-		if (!path.endsWith('.md')) continue;
-		const result = evaluateTagAccess(deps.tagSource?.cachedTags(path) ?? null, config, key);
-		if (!result.allowed) return redactTagDenial(result, FOLDER_TAG_DENIAL_MESSAGE, keyId, path);
-	}
-	return {allowed: true};
-}
-
-/** True when a write creates a new markdown note — the only path that brings a note into existence. */
-function isNoteCreate(request: CoreWriteRequest, deps: ToolDependencies): boolean {
-	return request.operation === 'note'
-		&& request.notePartial === undefined
-		&& request.expectedModified === undefined
-		&& deps.getFileMtime(request.path) === undefined;
-}
-
 // ============================================================
 // Public API
 // ============================================================
@@ -601,7 +533,7 @@ function registerReadTool(server: McpServer, deps: ToolDependencies): void {
 		const config = deps.configManager.getConfig();
 		const chainPerm = evaluatePermissions(request, config, deps.gates);
 		const perm = chainPerm.allowed
-			? await evaluateNoteTagAccess(keyId, config, deps, request.path, request.operation)
+			? await evaluateNoteTagAccess(keyId, config, deps.tagSource, request.path, request.operation)
 			: chainPerm;
 		if (!perm.allowed) {
 			await logDenied('kado-read', deps, keyId, request, perm.error.gate);
@@ -651,11 +583,11 @@ function registerWriteTool(server: McpServer, deps: ToolDependencies): void {
 		}
 		const config = deps.configManager.getConfig();
 		const chainPerm = evaluatePermissions(request, config, deps.gates);
-		const newNoteContent = isNoteCreate(request, deps)
+		const newNoteContent = isNoteCreate(request, deps.getFileMtime)
 			? (typeof request.content === 'string' ? request.content : '')
 			: undefined;
 		const perm = chainPerm.allowed
-			? await evaluateNoteTagAccess(keyId, config, deps, request.path, request.operation, newNoteContent)
+			? await evaluateNoteTagAccess(keyId, config, deps.tagSource, request.path, request.operation, newNoteContent)
 			: chainPerm;
 		if (!perm.allowed) {
 			await logDenied('kado-write', deps, keyId, request, perm.error.gate);
@@ -714,7 +646,7 @@ function registerDeleteTool(server: McpServer, deps: ToolDependencies): void {
 			? evaluateFolderDeletePermissions(request, config, deps.gates)
 			: evaluatePermissions(request, config, deps.gates);
 		const perm = chainPerm.allowed
-			? await evaluateNoteTagAccess(keyId, config, deps, request.path, request.operation)
+			? await evaluateNoteTagAccess(keyId, config, deps.tagSource, request.path, request.operation)
 			: chainPerm;
 		if (!perm.allowed) {
 			await logDenied('kado-delete', deps, keyId, request, perm.error.gate);
@@ -776,7 +708,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 			? evaluateFolderRenamePermissions(request, config, deps.gates)
 			: evaluateRenamePermissions(request, config, deps.gates);
 		const perm = chainPerm.allowed
-			? await evaluateNoteTagAccess(keyId, config, deps, request.source, request.operation)
+			? await evaluateNoteTagAccess(keyId, config, deps.tagSource, request.source, request.operation)
 			: chainPerm;
 		if (!perm.allowed) {
 			await logDenied('kado-rename', deps, keyId, request, perm.error.gate);
@@ -795,7 +727,7 @@ function registerRenameTool(server: McpServer, deps: ToolDependencies): void {
 					await logDenied('kado-rename', deps, keyId, request, neutral.error.gate);
 					return mapError(neutral.error, deriveHints({tool: 'kado-rename', request, error: neutral.error}));
 				}
-				const tagPerm = evaluateFolderTagAccess(keyId, config, deps, treePaths);
+				const tagPerm = evaluateFolderTagAccess(keyId, config, deps.tagSource, treePaths);
 				if (!tagPerm.allowed) {
 					await logDenied('kado-rename', deps, keyId, request, tagPerm.error.gate);
 					return mapError(tagPerm.error, deriveHints({tool: 'kado-rename', request, error: tagPerm.error}));
@@ -881,7 +813,7 @@ function registerSearchTool(server: McpServer, deps: ToolDependencies): void {
 		request.scopePatterns = computeScopePatterns(keyId, config);
 		request.allowedTags = computeAllowedTags(keyId, config);
 		const searchKey = config.apiKeys.find((k) => k.id === keyId);
-		request.readablePath = searchKey ? (path) => isPathPermittedForKey(path, searchKey, config, deps.tagSource) : () => false;
+		request.readablePath = searchKey ? createReadablePredicate(searchKey, config, deps.tagSource) : () => false;
 
 		const perm = evaluatePermissions(request, config, deps.gates);
 		if (!perm.allowed) {
@@ -1031,8 +963,9 @@ function registerGraphAuditTool(server: McpServer, deps: ToolDependencies): void
 			// Disclosure guard: an orphan is a real note path — filter by its own path.
 			// A dead link rides on its SOURCE note's visibility (the target is unresolved
 			// text, not a path); include it only if the source is permitted.
-			const orphans = audit.orphans.filter((o) => isPathPermittedForKey(o.path, key, config, deps.tagSource));
-			const deadLinks = audit.deadLinks.filter((d) => isPathPermittedForKey(d.source, key, config, deps.tagSource));
+			const readable = createReadablePredicate(key, config, deps.tagSource);
+			const orphans = audit.orphans.filter((o) => readable(o.path));
+			const deadLinks = audit.deadLinks.filter((d) => readable(d.source));
 
 			const page = paginateAudit(orphans, deadLinks, request.cursor, request.limit);
 			await logAllowed('kado-graph-audit', deps, keyId, request, startMs);
@@ -1060,7 +993,7 @@ function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
 		// Authorize a note read on the source; resolved nodes are scope-filtered below.
 		const chainPerm = evaluateGraphPermissions(request, config, deps.gates);
 		const perm = chainPerm.allowed
-			? await evaluateNoteTagAccess(keyId, config, deps, request.path, 'note')
+			? await evaluateNoteTagAccess(keyId, config, deps.tagSource, request.path, 'note')
 			: chainPerm;
 		if (!perm.allowed) {
 			await logDenied('kado-graph', deps, keyId, request, perm.error.gate);
@@ -1083,7 +1016,7 @@ function registerGraphTool(server: McpServer, deps: ToolDependencies): void {
 			// A related node's `via` names the 1-hop notes it was reached through —
 			// filter those too, and drop the node when no readable hop remains
 			// (otherwise it reveals a link path through a hidden note).
-			const readable = (p: string): boolean => key !== undefined && isPathPermittedForKey(p, key, config, deps.tagSource);
+			const readable = key ? createReadablePredicate(key, config, deps.tagSource) : (): boolean => false;
 			const nodes = graphResult.nodes.flatMap((n) => {
 				if (n.relation === 'dangling') return key ? [n] : [];
 				if (!readable(n.path)) return [];
