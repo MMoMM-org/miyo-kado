@@ -73,4 +73,4 @@ On partial reads, `truncated` is true only when there is something to continue t
 
 <!-- 2026-11-11 -->
 ## Tag rules vs. search tags
-Two different tag concepts per scope (global + key). **Tag rules** (`tagAllow` "Only notes tagged", `tagDeny` "Never notes tagged") decide which *notes* a key may touch — a filter over path permissions, deny wins, notes only (#81). **Search tags** (`tags`) only limit which tags `kado-search` may filter by (byTag, listTags, filter.tags) and never restrict note access. Settings UI labels: "Tag rules" and "Search tags".
+Two different tag concepts per scope (global + key). **Tag rules** (`tagAllow` "Only notes tagged", `tagDeny` "Never notes tagged") decide which *notes* a key may touch — a filter over path permissions, deny wins, notes only (#81). **Search tags** (`tags`) only limit which tags `kado-search` may filter by (byTag, listTags, filter.tags) and never restrict note access; the effective search scope also includes all `tagAllow` patterns (`computeSearchTagScope`). Settings UI labels: "Tag rules" and "Search tags".

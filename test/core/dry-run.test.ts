@@ -228,6 +228,14 @@ describe('runDryRun — tag-scope readout', () => {
 		expect(res.tagScope).toBe('out-of-scope');
 	});
 
+	it('reports "in-scope" for a tag from the key\'s "Only notes tagged" rules (#81)', () => {
+		const config = configWith('Atlas', notePerms({read: true}));
+		config.apiKeys[0]!.tagAllow = ['Work'];
+		const res = runDryRun(
+			{keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md', tag: 'Work/ProjectA', noteTags: ['Work']}, config, gates());
+		expect(res.tagScope).toBe('in-scope');
+	});
+
 	it('normalizes a leading # on the queried tag', () => {
 		const config = configWith('Atlas', notePerms({read: true}), {globalTags: ['project'], keyTags: ['project']});
 		const res = runDryRun(

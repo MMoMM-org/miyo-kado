@@ -912,6 +912,25 @@ describe('computeAllowedTags()', () => {
 		const result = computeAllowedTags('key-1', makeTagConfig(['MiYo-Tomo'], ['MiYo-Tomo/proposed']));
 		expect(result).toEqual(['MiYo-Tomo/proposed']);
 	});
+
+	it('adds the key\'s "Only notes tagged" rules even without search tags (#81)', () => {
+		const config = makeTagConfig([], []);
+		config.apiKeys[0]!.tagAllow = ['#Work'];
+		expect(computeAllowedTags('key-1', config)).toEqual(['Work']);
+	});
+
+	it('adds global "Only notes tagged" rules, deduped, after the search-tag intersection (#81)', () => {
+		const config = makeTagConfig(['project'], ['project']);
+		config.security.tagAllow = ['Work', 'project'];
+		config.apiKeys[0]!.tagAllow = ['Work'];
+		expect(computeAllowedTags('key-1', config)).toEqual(['project', 'Work']);
+	});
+
+	it('does not add "Never notes tagged" rules to the search scope (#81)', () => {
+		const config = makeTagConfig([], []);
+		config.apiKeys[0]!.tagDeny = ['Private'];
+		expect(computeAllowedTags('key-1', config)).toEqual([]);
+	});
 });
 
 // ---------------------------------------------------------------------------

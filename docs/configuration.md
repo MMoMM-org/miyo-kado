@@ -132,9 +132,11 @@ Search results use Obsidian's metadata index. Right after a restart or a bulk ex
 
 Search tags restrict which tags search operations may filter by (`listTags`, `byTag`). When tags are configured, only matching tags appear in results. They do **not** restrict which notes are accessible -- use tag rules for that.
 
+Tags listed in **Only notes tagged** (global or key) are added to the search tags automatically, so a key limited to `#Work` can search by `Work` without entering it twice.
+
 - Use `*` to grant access to **all tags** in the vault.
 - Tag patterns support wildcards: `project/*` matches `project/alpha`, `project/beta`, etc.
-- If no tags are configured, tag-based search operations return no results.
+- If no search tags and no *Only notes tagged* rules are configured, tag-based search operations return no results.
 
 ## API Key Management
 

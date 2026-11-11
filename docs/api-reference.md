@@ -2002,7 +2002,7 @@ for the full per-type breakdown.
 
 ### Tag Restrictions
 
-Tag-based search operations (`byTag`, `listTags`) respect the intersection of global and key-level search-tag lists.
+Tag-based search operations (`byTag`, `listTags`) respect the intersection of global and key-level search-tag lists, plus the *Only notes tagged* (`tagAllow`) patterns of both scopes.
 This only limits which tags may be queried; which notes are visible at all is decided by path rules and
 [tag rules](configuration.md#tag-rules).
 

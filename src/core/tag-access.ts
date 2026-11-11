@@ -19,6 +19,7 @@
 
 import type {ApiKeyConfig, GateResult, KadoConfig} from '../types/canonical';
 import {matchTag, normalizeTag} from './tag-utils';
+import {dedupePreservingOrder} from './note-tags';
 
 /** Gate label reported on tag-rule denials (audit log, status bar, Permission Test). */
 export const TAG_ACCESS_GATE = 'tag-access';
@@ -39,6 +40,22 @@ function collectRules(config: KadoConfig, key: ApiKeyConfig): TagRules[] {
 		{scope: 'global', allow: normalizeList(config.security.tagAllow), deny: normalizeList(config.security.tagDeny)},
 		{scope: 'key', allow: normalizeList(key.tagAllow), deny: normalizeList(key.tagDeny)},
 	];
+}
+
+/**
+ * The tag patterns a key may use for tag-based search (byTag, listTags,
+ * filter.tags): the key's search tags permitted by a global search-tag pattern
+ * (both lists must be non-empty), plus every "Only notes tagged" pattern of the
+ * global scope and the key. Adding tagAllow is safe — result filters still apply
+ * the tag rules — and spares users from entering the same tag twice.
+ */
+export function computeSearchTagScope(config: KadoConfig, key: ApiKeyConfig): string[] {
+	const globalTags = config.security.tags ?? [];
+	const keyTags = key.tags ?? [];
+	const searchTags = globalTags.length === 0 || keyTags.length === 0
+		? []
+		: keyTags.filter((kt) => globalTags.some((gt) => matchTag(kt, gt)));
+	return dedupePreservingOrder([...searchTags, ...normalizeList(config.security.tagAllow), ...normalizeList(key.tagAllow)]);
 }
 
 /** True when the global scope or the key defines at least one tag rule. */

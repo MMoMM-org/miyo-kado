@@ -91,7 +91,7 @@ export function renderGlobalSecurityTab(containerEl: HTMLElement, plugin: KadoPl
 	containerEl.createDiv({cls: 'kado-section-label', text: 'Search tags'});
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'Tags that search may filter by. They do not restrict which notes are accessible — use tag rules for that.',
+		text: 'Tags that search may filter by. They do not restrict which notes are accessible — use tag rules for that. Allowed tags from the tag rules are included automatically.',
 	});
 
 	const tagsContainer = containerEl.createDiv();

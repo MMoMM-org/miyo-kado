@@ -45,8 +45,7 @@ import type {
 import type {AuditLogger} from '../core/audit-logger';
 import {createAuditEntry} from '../core/audit-logger';
 import {dirCouldContainMatches} from '../core/glob-match';
-import {matchTag} from '../core/tag-utils';
-import {evaluateTagAccess, hasTagRules, isTagGovernedDataType} from '../core/tag-access';
+import {computeSearchTagScope, evaluateTagAccess, hasTagRules, isTagGovernedDataType} from '../core/tag-access';
 import {kadoLog} from '../core/logger';
 import {enumerateOpenNotes} from '../obsidian/open-notes-adapter';
 import {gateOpenNoteScope} from '../core/gates/open-notes-gate';
@@ -334,27 +333,14 @@ export function computeScopePatterns(keyId: string, config: KadoConfig): string[
 }
 
 /**
- * Returns the effective tag patterns a key may use for tag-based operations.
- * The result is the intersection of global security tags and the key's own tags.
- * Returns undefined when neither global nor key have tags configured (unrestricted).
- * Returns [] when there is an explicit empty intersection (no access).
+ * Returns the effective tag patterns a key may use for tag-based operations:
+ * global ∩ key search tags plus the "Only notes tagged" rules (#81) — see
+ * computeSearchTagScope. Returns [] for an unknown key or an empty scope (no access).
  */
 export function computeAllowedTags(keyId: string, config: KadoConfig): string[] | undefined {
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return [];
-
-	const globalTags = config.security.tags ?? [];
-	const keyTags = key.tags ?? [];
-
-	// Whitelist semantics: empty list = no access (not unrestricted)
-	if (globalTags.length === 0 && keyTags.length === 0) return [];
-	if (globalTags.length === 0) return [];
-	if (keyTags.length === 0) return [];
-
-	// Both non-empty → intersection (key tag must be permitted by at least one global pattern)
-	return keyTags.filter((kt) =>
-		globalTags.some((gt) => matchTag(kt, gt)),
-	);
+	return computeSearchTagScope(config, key);
 }
 
 /**

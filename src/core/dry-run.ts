@@ -32,7 +32,7 @@ import type {
 import {evaluatePermissions} from './permission-chain';
 import {evaluateRenamePermissions} from './rename-policy';
 import {matchTag, normalizeTag} from './tag-utils';
-import {evaluateTagAccess, isTagGovernedDataType} from './tag-access';
+import {computeSearchTagScope, evaluateTagAccess, isTagGovernedDataType} from './tag-access';
 
 /** High-level operations a dry-run can evaluate. `write` is split into create/update for CRUD precision. */
 export type DryRunOperation = 'read' | 'create' | 'update' | 'delete' | 'rename' | 'search';
@@ -199,12 +199,7 @@ function evaluateTagScope(rawTag: string | undefined, keyId: string, config: Kad
 	const key = config.apiKeys.find((k) => k.id === keyId);
 	if (!key) return 'out-of-scope';
 
-	const globalTags = config.security.tags ?? [];
-	const keyTags = key.tags ?? [];
-	if (globalTags.length === 0 || keyTags.length === 0) return 'out-of-scope';
-
-	// Effective scope = key tags that are also permitted by a global tag pattern.
-	const allowed = keyTags.filter((kt) => globalTags.some((gt) => matchTag(kt, gt)));
-	const inScope = allowed.some((pattern) => matchTag(tag, pattern));
+	// Same scope the search tool enforces (global ∩ key search tags + tagAllow).
+	const inScope = computeSearchTagScope(config, key).some((pattern) => matchTag(tag, pattern));
 	return inScope ? 'in-scope' : 'out-of-scope';
 }
