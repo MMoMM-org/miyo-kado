@@ -277,3 +277,66 @@ describe('runDryRun — folder subtree probe (regression)', () => {
 		expect(probed.allowed).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Tag access rules (#81) — participate in the verdict after the path chain
+// ---------------------------------------------------------------------------
+
+describe('runDryRun — tag access rules', () => {
+	function tagRuleConfig(keyAllow: string[], keyDeny: string[] = []): KadoConfig {
+		const config = configWith('Atlas', notePerms({read: true, create: true, update: true, delete: true}));
+		config.apiKeys[0]!.tagAllow = keyAllow;
+		config.apiKeys[0]!.tagDeny = keyDeny;
+		return config;
+	}
+
+	it('ALLOWS when the note carries an allowed tag', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md', noteTags: ['Work']}, tagRuleConfig(['Work']), gates());
+		expect(res.allowed).toBe(true);
+	});
+
+	it('DENIES at tag-access when the note lacks an allowed tag', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'update', dataType: 'note', path: 'Atlas/n.md', noteTags: []}, tagRuleConfig(['Work']), gates());
+		expect(res.allowed).toBe(false);
+		expect(res.gate).toBe('tag-access');
+		expect(res.code).toBe('FORBIDDEN');
+	});
+
+	it('DENIES at tag-access naming the deny rule (deny wins)', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md', noteTags: ['Work', 'Private']}, tagRuleConfig(['Work'], ['Private']), gates());
+		expect(res.gate).toBe('tag-access');
+		expect(res.reason).toContain('#Private');
+	});
+
+	it('treats missing noteTags as unknown (fail-closed) when rules exist', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md'}, tagRuleConfig(['Work']), gates());
+		expect(res.gate).toBe('tag-access');
+	});
+
+	it('checks the source note for rename', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'rename', dataType: 'note', path: 'Atlas/a.md', target: 'Atlas/b.md', noteTags: ['Home']}, tagRuleConfig(['Work']), gates());
+		expect(res.gate).toBe('tag-access');
+	});
+
+	it('reports the path gate first when the path chain already denies', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Journal/n.md', noteTags: []}, tagRuleConfig(['Work']), gates());
+		expect(res.gate).toBe('global-scope');
+	});
+
+	it.each([
+		['file', {operation: 'read' as const, dataType: 'file' as const, path: 'Atlas/a.png'}],
+		['search', {operation: 'search' as const, dataType: 'note' as const, path: ''}],
+		['folder probe', {operation: 'read' as const, dataType: 'note' as const, path: 'Atlas/'}],
+	])('skips tag rules for %s', (_label, input) => {
+		const config = tagRuleConfig(['Work']);
+		config.security.paths[0]!.permissions = createAllPermissions();
+		config.apiKeys[0]!.paths[0]!.permissions = createAllPermissions();
+		const res = runDryRun({keyId: KEY_ID, ...input}, config, gates());
+		expect(res.allowed).toBe(true);
+	});
+
+	it('ignores noteTags when no rules are configured', () => {
+		const res = runDryRun({keyId: KEY_ID, operation: 'read', dataType: 'note', path: 'Atlas/n.md'}, tagRuleConfig([]), gates());
+		expect(res.allowed).toBe(true);
+	});
+});
