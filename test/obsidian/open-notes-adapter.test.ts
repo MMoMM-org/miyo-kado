@@ -77,8 +77,8 @@ describe('enumerateOpenNotes', () => {
 		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(true);
-		expect(result[0].path).toBe('notes/shared.md');
+		expect(result[0]!.active).toBe(true);
+		expect(result[0]!.path).toBe('notes/shared.md');
 	});
 
 	it('returns all entries with active: false when workspace.activeLeaf is null (mobile fallback)', () => {
@@ -89,8 +89,8 @@ describe('enumerateOpenNotes', () => {
 		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(false);
-		expect(result[0].path).toBe('notes/a.md');
+		expect(result[0]!.active).toBe(false);
+		expect(result[0]!.path).toBe('notes/a.md');
 	});
 
 	it('excludes leaves whose view returns no file', () => {
@@ -145,7 +145,7 @@ describe('enumerateOpenNotes', () => {
 		// The leaf IS included (came from getLeavesOfType('markdown')).
 		expect(result).toHaveLength(1);
 		// The type field must carry the raw getViewType() result, not the iteration key.
-		expect(result[0].type).toBe('markdown-enhanced-plugin');
+		expect(result[0]!.type).toBe('markdown-enhanced-plugin');
 	});
 
 	it('handles activeLeaf being null (mobile edge case) without throwing', () => {
@@ -156,6 +156,6 @@ describe('enumerateOpenNotes', () => {
 		const result = enumerateOpenNotes(asApp(app));
 
 		expect(result).toHaveLength(1);
-		expect(result[0].active).toBe(false);
+		expect(result[0]!.active).toBe(false);
 	});
 });

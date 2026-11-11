@@ -23,9 +23,10 @@ import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import {createFrontmatterAdapter} from '../../src/obsidian/frontmatter-adapter';
 import {createInlineFieldAdapter} from '../../src/obsidian/inline-field-adapter';
 import {createSearchAdapter} from '../../src/obsidian/search-adapter';
-import {createNoteDeleteAdapter, createFileDeleteAdapter, createFrontmatterDeleteAdapter} from '../../src/obsidian/delete-adapter';
+import {createNoteDeleteAdapter, createFileDeleteAdapter, createFrontmatterDeleteAdapter, createFolderDeleteAdapter} from '../../src/obsidian/delete-adapter';
 import {createRenameAdapter} from '../../src/obsidian/rename-adapter';
-import type {KadoConfig, CoreError, CoreFileResult, CoreWriteResult, CoreSearchResult, CoreDeleteResult, CoreRenameResult} from '../../src/types/canonical';
+import type {KadoConfig, CoreError, CoreRenameResult, CoreWriteResult} from '../../src/types/canonical';
+import type {AdapterRegistry, RouteResult} from '../../src/core/operation-router';
 
 // ============================================================
 // Config factory
@@ -168,7 +169,13 @@ function wireVaultTree(app: App, files: TFile[]): void {
 	});
 }
 
-function makeAdapters(app: ReturnType<typeof makeApp>) {
+/** Round-trip tests never route graph requests; the graph slot only satisfies the registry type. */
+const unusedGraphAdapter: AdapterRegistry['graph'] = {
+	graph: async () => { throw new Error('graph adapter not used in tool round-trip tests'); },
+	audit: async () => { throw new Error('graph adapter not used in tool round-trip tests'); },
+};
+
+function makeAdapters(app: ReturnType<typeof makeApp>): AdapterRegistry {
 	return {
 		note: createNoteAdapter(app as never),
 		frontmatter: createFrontmatterAdapter(app as never),
@@ -179,8 +186,10 @@ function makeAdapters(app: ReturnType<typeof makeApp>) {
 			note: createNoteDeleteAdapter(app as never),
 			file: createFileDeleteAdapter(app as never),
 			frontmatter: createFrontmatterDeleteAdapter(app as never),
+			folder: createFolderDeleteAdapter(app as never),
 		},
 		rename: createRenameAdapter(app as never),
+		graph: unusedGraphAdapter,
 	};
 }
 
@@ -254,7 +263,7 @@ async function runPipeline(
 	// Step 4: route to adapter.
 	// Mirrors tools.ts: adapter throws (NoteAdapterError, FrontmatterAdapterError, …)
 	// carry a `code` field and must be mapped to the appropriate error result.
-	let result: CoreFileResult | CoreWriteResult | CoreSearchResult | CoreDeleteResult | CoreRenameResult | CoreError;
+	let result: RouteResult;
 	try {
 		result = await router(request);
 	} catch (err: unknown) {
@@ -279,7 +288,8 @@ async function runPipeline(
 		return mapFileResult(result);
 	}
 	if ('source' in result) {
-		return mapRenameResult(result);
+		// Round-trip tests route rename (never graph), so a `source` result is a rename result.
+		return mapRenameResult(result as CoreRenameResult);
 	}
 	return mapWriteResult(result as CoreWriteResult);
 }

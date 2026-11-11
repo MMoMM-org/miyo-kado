@@ -103,7 +103,7 @@ describe('parseInlineFields', () => {
 	it('returns line, start, and end positions on the InlineField', () => {
 		const fields = parseInlineFields('rating:: 8');
 		expect(fields[0]).toMatchObject({line: 0, start: 0});
-		expect(typeof fields[0].end).toBe('number');
+		expect(typeof fields[0]!.end).toBe('number');
 	});
 
 	it('does not parse fields inside non-opening frontmatter block mid-document', () => {

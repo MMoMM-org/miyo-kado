@@ -81,7 +81,7 @@ describe('TagPickerModal — selection', () => {
 
 		const items = modal.contentEl.querySelectorAll('.kado-picker-item');
 		expect(items).toHaveLength(1);
-		expect(items[0].textContent).toContain('work/urgent');
+		expect(items[0]!.textContent).toContain('work/urgent');
 	});
 
 	it('restricts the list to availableTags when provided', () => {

@@ -601,7 +601,7 @@ describe('kado-search handler', () => {
 
 		// The router receives the request with scopePatterns injected
 		const routedRequest = (router.mock.calls as unknown as [CoreSearchRequest[]])[0][0];
-		expect(routedRequest.scopePatterns).toEqual(['projects/**']);
+		expect(routedRequest!.scopePatterns).toEqual(['projects/**']);
 	});
 
 	it('passes through adapter-filtered results without re-filtering', async () => {
@@ -734,7 +734,7 @@ describe('filterResultsByScope()', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('projects/a.md');
+		expect(filtered[0]!.path).toBe('projects/a.md');
 	});
 });
 
@@ -779,7 +779,7 @@ describe('filterResultsByScope() — folder items', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('Atlas');
+		expect(filtered[0]!.path).toBe('Atlas');
 	});
 
 	// T4.2-case-2: blacklist folder blocking
@@ -798,7 +798,7 @@ describe('filterResultsByScope() — folder items', () => {
 		const filtered = filterResultsByScope(items, 'key-1', config);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].path).toBe('Atlas');
+		expect(filtered[0]!.path).toBe('Atlas');
 	});
 
 	// T4.2-case-4: file items unchanged (regression)
@@ -809,12 +809,12 @@ describe('filterResultsByScope() — folder items', () => {
 
 		const wFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', whitelistConfig);
 		expect(wFiltered).toHaveLength(1);
-		expect(wFiltered[0].path).toBe('Atlas/note.md');
+		expect(wFiltered[0]!.path).toBe('Atlas/note.md');
 
 		const blacklistConfig = makeConfig('blacklist', ['Atlas/**'], 'blacklist', ['Atlas/**']);
 		const bFiltered = filterResultsByScope([fileInScope, fileOutOfScope], 'key-1', blacklistConfig);
 		expect(bFiltered).toHaveLength(1);
-		expect(bFiltered[0].path).toBe('Other/note.md');
+		expect(bFiltered[0]!.path).toBe('Other/note.md');
 	});
 
 	// T4.2-case-5: defense-in-depth consistency — tools-layer agrees with core helper
@@ -834,7 +834,7 @@ describe('filterResultsByScope() — folder items', () => {
 		// Tools-layer: filterResultsByScope should agree and include Atlas
 		const toolsResult = filterResultsByScope([folderItem], 'key-1', config);
 		expect(toolsResult).toHaveLength(1);
-		expect(toolsResult[0].path).toBe('Atlas');
+		expect(toolsResult[0]!.path).toBe('Atlas');
 	});
 });
 
