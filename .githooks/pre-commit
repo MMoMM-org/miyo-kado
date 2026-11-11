@@ -1,6 +1,6 @@
 #!/bin/bash
-# tcs-git-helpers: v2.2.12
-# tcs-git-helpers-bundle: h3
+# tcs-git-helpers: v2.2.43
+# tcs-git-helpers-bundle: h9
 # pre-commit — tcs-git-helpers repo-side safety hook
 #
 # Blocks:
