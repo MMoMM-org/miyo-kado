@@ -4,6 +4,7 @@
  */
 
 import {vi} from 'vitest';
+import type {App as ObsidianApp} from 'obsidian';
 
 // --- Core types ---
 
@@ -582,4 +583,13 @@ export function createMockCachedMetadata(overrides?: Partial<{
 		tags: overrides?.tags ?? [],
 		frontmatter: overrides?.frontmatter ?? {},
 	};
+}
+
+/**
+ * Hands the mock App to production code typed against the real `obsidian` App.
+ * The mock implements only what the plugin uses, so it is not structurally
+ * assignable; this is the single sanctioned cast point for tests (#134).
+ */
+export function asApp(app: App): ObsidianApp {
+	return app as unknown as ObsidianApp;
 }

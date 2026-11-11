@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {App, TFile, MarkdownView, Notice} from '../__mocks__/obsidian';
+import {App, TFile, MarkdownView, Notice, asApp} from '../__mocks__/obsidian';
 import type {HeadingCache} from '../__mocks__/obsidian';
 import {createNoteAdapter} from '../../src/obsidian/note-adapter';
 import type {CoreReadRequest, CoreWriteRequest, NoteReadPartial, NoteWritePartial} from '../../src/types/canonical';
@@ -76,7 +76,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('# Hello World');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeReadRequest());
 
 			expect(result).toEqual({
@@ -91,7 +91,7 @@ describe('NoteAdapter', () => {
 		it('throws a NOT_FOUND CoreError when file does not exist', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(adapter.read(makeReadRequest('notes/missing.md'))).rejects.toMatchObject({
 				code: 'NOT_FOUND',
@@ -106,7 +106,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write(makeWriteRequest({content: '# Hello'}));
 
 			expect(app.vault.create).toHaveBeenCalledWith('notes/test.md', '# Hello');
@@ -121,7 +121,7 @@ describe('NoteAdapter', () => {
 			const existingFile = makeTFile();
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(existingFile);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(adapter.write(makeWriteRequest())).rejects.toMatchObject({
 				code: 'CONFLICT',
@@ -136,7 +136,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.adapter.exists).mockResolvedValue(false);
 			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makeWriteRequest({path: 'A/B/C/note.md'}));
 
 			expect(app.vault.createFolder).toHaveBeenCalledWith('A/B/C');
@@ -153,7 +153,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.adapter.exists).mockResolvedValue(true);
 			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makeWriteRequest({path: 'A/note.md'}));
 
 			expect(app.vault.createFolder).not.toHaveBeenCalled();
@@ -172,7 +172,7 @@ describe('NoteAdapter', () => {
 				return next;
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write(
 				makeWriteRequest({content: 'updated content', expectedModified: 2000}),
 			);
@@ -191,7 +191,7 @@ describe('NoteAdapter', () => {
 		it('returns NOT_FOUND CoreError when file does not exist on update', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makeWriteRequest({expectedModified: 2000})),
@@ -221,7 +221,7 @@ describe('NoteAdapter', () => {
 				frontmatter: {tags: ['alpha', 'beta']},
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect(result.path).toBe('notes/tagged.md');
@@ -240,7 +240,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.read).mockResolvedValue('---\ntags: [b, a]\n---\nbody #a #c #b');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({frontmatter: {tags: ['b', 'a']}});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect((result.content as Record<string, unknown>).all).toEqual(['b', 'a', 'c']);
@@ -252,7 +252,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.read).mockResolvedValue('body #x');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const request: CoreReadRequest = {apiKeyId: 'k', operation: 'tags', path: 'notes/tagged.md'};
 			const result = await adapter.read(request);
 
@@ -267,7 +267,7 @@ describe('NoteAdapter', () => {
 				frontmatter: {tags: ['alpha', 'beta']},
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest('notes/tagged.md', 'frontmatter-only'));
 
 			expect(result.content).toEqual({
@@ -283,7 +283,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({frontmatter: {tags: ['a']}});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.read(makeTagsRequest('notes/tagged.md', 'frontmatter-only'));
 
 			expect(app.vault.read).not.toHaveBeenCalled();
@@ -297,7 +297,7 @@ describe('NoteAdapter', () => {
 				frontmatter: {tags: 'alpha beta'},
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect(result.content).toEqual({
@@ -316,7 +316,7 @@ describe('NoteAdapter', () => {
 				frontmatter: {tags: 'alpha, beta, #gamma'},
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect(result.content).toEqual({
@@ -333,7 +333,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.read).mockResolvedValue('plain body with no tags');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect(result.content).toEqual({frontmatter: [], inline: [], all: [], returnedTags: 'All'});
@@ -345,7 +345,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.read).mockResolvedValue('Just body with #one and #two.');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeTagsRequest());
 
 			expect(result.content).toEqual({
@@ -358,7 +358,7 @@ describe('NoteAdapter', () => {
 
 		it('throws NOT_FOUND when the file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(adapter.read(makeTagsRequest('notes/missing.md'))).rejects.toMatchObject({
 				code: 'NOT_FOUND',
 				message: expect.stringContaining('notes/missing.md'),
@@ -372,7 +372,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 			vi.mocked(app.vault.create).mockResolvedValue(createdFile);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write({
 				apiKeyId: 'kado_test-key',
 				operation: 'note',
@@ -397,7 +397,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('old disk content');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makeWriteRequest({content: 'new MCP content', expectedModified: 2000})),
@@ -422,7 +422,7 @@ describe('NoteAdapter', () => {
 				file.stat = {ctime: 1000, mtime: 3000, size: 3};
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
 			expect(app.vault.process).toHaveBeenCalledOnce();
@@ -437,7 +437,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			vi.mocked(app.vault.process).mockImplementation(async () => {});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
 			expect(app.vault.cachedRead).not.toHaveBeenCalled();
@@ -452,7 +452,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.process).mockImplementation(async () => {});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
 			expect(view.save).not.toHaveBeenCalled();
@@ -477,7 +477,7 @@ describe('NoteAdapter', () => {
 				file.stat = {ctime: 1000, mtime: 3000, size: 3};
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000}));
 
 			expect(app.vault.process).toHaveBeenCalledOnce();
@@ -494,7 +494,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue(diskContent);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000})),
@@ -512,7 +512,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue(diskContent);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makeWriteRequest({content: 'new', expectedModified: 2000})),
@@ -562,7 +562,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hello, World! This is more text.');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makePartialReadRequest({mode: 'firstXChars', limit: 5}));
 
 			expect(result.content).toBe('Hello');
@@ -575,7 +575,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hi');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makePartialReadRequest({mode: 'firstXChars', limit: 100}));
 
 			expect(result.content).toBe('Hi');
@@ -589,7 +589,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hello world, this is more text.');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makePartialReadRequest({mode: 'firstXWords', limit: 2}));
 
 			expect(result.content).toBe('Hello world');
@@ -602,7 +602,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hi there');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makePartialReadRequest({mode: 'firstXWords', limit: 100}));
 
 			expect(result.content).toBe('Hi there');
@@ -631,7 +631,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'section', heading: 'Tasks'}),
 			);
@@ -652,7 +652,7 @@ describe('NoteAdapter', () => {
 				headings: [makeHeading('Only', 1, 0)],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'section', heading: 'Only'}),
 			);
@@ -673,7 +673,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'section', heading: 'Notes'}),
 			);
@@ -690,7 +690,7 @@ describe('NoteAdapter', () => {
 				headings: [makeHeading('Title', 1, 0)],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.read(makePartialReadRequest({mode: 'section', heading: 'Missing'})),
 			).rejects.toMatchObject({
@@ -705,7 +705,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.read).mockResolvedValue('# Title\nIntro.\n## Tasks\nDo stuff.');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.read(makePartialReadRequest({mode: 'section', heading: 'Tasks'})),
 			).rejects.toMatchObject({
@@ -740,7 +740,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			// Target the SECOND "Tasks" under "Work"
 			const result = await adapter.read(
@@ -761,7 +761,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.read(makePartialReadRequest({mode: 'section', headingPath: ['Project', 'NoSuchSection']})),
 			).rejects.toMatchObject({
@@ -779,7 +779,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'range', basis: 'line', start: 2, end: 3}),
 			);
@@ -793,7 +793,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue(CONTENT);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'range', basis: 'line', start: 4, end: 999}),
 			);
@@ -809,7 +809,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hello, World!');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'range', basis: 'char', start: 0, end: 5}),
 			);
@@ -823,7 +823,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Hi');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(
 				makePartialReadRequest({mode: 'range', basis: 'char', start: 0, end: 9999}),
 			);
@@ -839,7 +839,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 			vi.mocked(app.vault.read).mockResolvedValue('Full note content here.');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.read(makeReadRequest());
 
 			expect(result.content).toBe('Full note content here.');
@@ -875,7 +875,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, 'existing body', captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'append'}, 'new line'));
 
 			expect(captured.value).toBe('existing body\nnew line');
@@ -888,7 +888,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, 'existing body\n', captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'append'}, 'new line'));
 
 			expect(captured.value).toBe('existing body\nnew line');
@@ -900,7 +900,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			setupVaultProcess(file, 'body');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			const result = await adapter.write(makePartialWriteRequest({mode: 'append'}, 'more'));
 
 			expect(result).toEqual({path: 'notes/test.md', created: 1000, modified: 9999});
@@ -913,7 +913,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('old disk content');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'append'}, 'new')),
@@ -926,7 +926,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'append'}, 'new')),
@@ -945,7 +945,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, data, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
 
 			// Frontmatter prefix preserved, content inserted before body
@@ -959,7 +959,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, 'existing content', captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new first line'));
 
 			expect(captured.value).toBe('new first line\nexisting content');
@@ -973,7 +973,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, data, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'inserted'));
 
 			// Exact output: FM block intact, content after the closing fence.
@@ -987,7 +987,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, '---\ntitle: Test\n---\n', captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
 
 			expect(captured.value).toBe('---\ntitle: Test\n---\nprepended\n');
@@ -1002,7 +1002,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, '---\ntitle: Test\n---', captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'prepended'));
 
 			expect(captured.value).toBe('---\ntitle: Test\n---\nprepended\n');
@@ -1016,7 +1016,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new')),
@@ -1027,7 +1027,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'prepend'}, 'new')),
@@ -1063,7 +1063,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, '- new task'));
 
 			// Content inserted at end of Tasks section (before "## Notes" at line 4)
@@ -1079,7 +1079,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, '- new task'));
 
 			// "## Notes\nSome notes." unchanged at end
@@ -1096,7 +1096,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Notes'}, 'extra note'));
 
 			// Notes is the last section; content appended at EOF
@@ -1109,7 +1109,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'NoSuchHeading'}, 'content')),
@@ -1124,7 +1124,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeTasksHeadings()});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, 'content')),
@@ -1135,7 +1135,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, 'content')),
@@ -1150,7 +1150,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', heading: 'Tasks'}, ''));
 
 			// Empty content must not insert a stray blank line — body is unchanged
@@ -1179,7 +1179,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, DOC, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', headingPath: ['Title', 'Tasks']}, '- new task'));
 
 			expect(captured.value).toBe('# Title\nIntro.\n## Tasks\n- existing\n- new task\n## Notes\nnote text');
@@ -1196,7 +1196,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'insertUnderHeading', headingPath: ['Title', 'NoSuchSection']}, 'x')),
@@ -1232,7 +1232,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, '- replaced task'));
 
 			// "## Tasks" heading preserved, body replaced, other sections unchanged
@@ -1247,7 +1247,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, ''));
 
 			// Section body deleted — heading line stays, no extra blank lines between headings
@@ -1260,7 +1260,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'NonExistent'}, 'x')),
@@ -1275,7 +1275,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 			vi.mocked(app.metadataCache.getFileCache).mockReturnValue({headings: makeHeadings()});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'x')),
@@ -1286,7 +1286,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'x')),
@@ -1316,7 +1316,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, DOC, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			// Target the SECOND "Tasks" under "Work" via headingPath
 			await adapter.write(makePartialWriteRequest({mode: 'replaceSection', headingPath: ['Work', 'Tasks']}, '- replaced'));
 
@@ -1335,7 +1335,7 @@ describe('NoteAdapter', () => {
 				],
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', headingPath: ['Project', 'Missing']}, 'x')),
@@ -1356,7 +1356,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 2, end: 3}, 'replaced'));
 
 			expect(captured.value).toBe('line1\nreplaced\nline4\nline5');
@@ -1369,7 +1369,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 2, end: 3}, ''));
 
 			expect(captured.value).toBe('line1\nline4\nline5');
@@ -1382,7 +1382,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 1, end: 2}, 'x')),
@@ -1393,7 +1393,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 1, end: 2}, 'x')),
@@ -1414,7 +1414,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 7, end: 12}, 'Kado'));
 
 			expect(captured.value).toBe('Hello, Kado!');
@@ -1427,7 +1427,7 @@ describe('NoteAdapter', () => {
 			const captured = {value: ''};
 			setupVaultProcess(file, CONTENT, captured);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 5, end: 7}, ''));
 
 			expect(captured.value).toBe('HelloWorld!');
@@ -1440,7 +1440,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([{view} as unknown as never]);
 			vi.mocked(app.vault.cachedRead).mockResolvedValue('disk content differs');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 5}, 'x')),
@@ -1451,7 +1451,7 @@ describe('NoteAdapter', () => {
 		it('raises NOT_FOUND when file is missing', async () => {
 			vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 0, end: 5}, 'x')),
@@ -1474,7 +1474,7 @@ describe('NoteAdapter', () => {
 			});
 			setupVaultProcess(file, '# Title\nintro\nmore intro\n## Tasks\nx');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceSection', heading: 'Tasks'}, 'y')),
 			).rejects.toMatchObject({code: 'CONFLICT'});
@@ -1486,7 +1486,7 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			setupVaultProcess(file, 'a\nb\nc');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'line', start: 10, end: 12}, 'x')),
 			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
@@ -1498,14 +1498,14 @@ describe('NoteAdapter', () => {
 			vi.mocked(app.workspace.getLeavesOfType).mockReturnValue([]);
 			setupVaultProcess(file, 'abc');
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'replaceRange', basis: 'char', start: 10, end: 12}, 'x')),
 			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
 		});
 
 		it('raises VALIDATION_ERROR when partial write content is not a string (M2)', async () => {
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			await expect(
 				adapter.write(makePartialWriteRequest({mode: 'append'}, 42 as unknown as string)),
 			).rejects.toMatchObject({code: 'VALIDATION_ERROR'});
@@ -1524,7 +1524,7 @@ describe('NoteAdapter', () => {
 				file.stat = {ctime: 1000, mtime: 5000, size: 10};
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 			// No expectedModified — without routing fix this would go to createNote
 			const result = await adapter.write(makePartialWriteRequest({mode: 'append'}, 'added'));
 
@@ -1544,7 +1544,7 @@ describe('NoteAdapter', () => {
 				file.stat = {ctime: 1000, mtime: 5000, size: 4};
 			});
 
-			const adapter = createNoteAdapter(app);
+			const adapter = createNoteAdapter(asApp(app));
 
 			// Should NOT throw "already exists" — must go through partial path
 			await expect(

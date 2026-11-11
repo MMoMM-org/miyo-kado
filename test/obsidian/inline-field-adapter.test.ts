@@ -7,7 +7,7 @@
  */
 
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {App, TFile} from '../__mocks__/obsidian';
+import {App, TFile, asApp} from '../__mocks__/obsidian';
 import {parseInlineFields, createInlineFieldAdapter} from '../../src/obsidian/inline-field-adapter';
 import type {CoreReadRequest, CoreWriteRequest} from '../../src/types/canonical';
 
@@ -131,7 +131,7 @@ describe('InlineFieldAdapter read()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		vi.mocked(app.vault.read).mockResolvedValue('rating:: 8\n[status:: done]');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		const result = await adapter.read(makeReadRequest());
 
 		expect(result.path).toBe('notes/test.md');
@@ -145,7 +145,7 @@ describe('InlineFieldAdapter read()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		vi.mocked(app.vault.read).mockResolvedValue('# Just a heading\n\nSome regular text.');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		const result = await adapter.read(makeReadRequest());
 
 		expect(result.content).toEqual({});
@@ -156,7 +156,7 @@ describe('InlineFieldAdapter read()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		vi.mocked(app.vault.read).mockResolvedValue('[tag:: a] [tag:: b]');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		const result = await adapter.read(makeReadRequest());
 
 		expect(result.content).toEqual({tag: ['a', 'b']});
@@ -165,7 +165,7 @@ describe('InlineFieldAdapter read()', () => {
 	it('throws NOT_FOUND when file does not exist', async () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 
 		await expect(adapter.read(makeReadRequest('notes/missing.md'))).rejects.toMatchObject({
 			code: 'NOT_FOUND',
@@ -201,7 +201,7 @@ describe('InlineFieldAdapter write()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		const captured = stubProcess('rating:: 8\nother text');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		await adapter.write(makeWriteRequest({content: {rating: '10'}}));
 
 		const written = captured.captured() ?? '';
@@ -214,7 +214,7 @@ describe('InlineFieldAdapter write()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		const captured = stubProcess('Text [status:: done] more');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		await adapter.write(makeWriteRequest({content: {status: 'in-progress'}}));
 
 		const written = captured.captured() ?? '';
@@ -228,7 +228,7 @@ describe('InlineFieldAdapter write()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		const captured = stubProcess('Text (priority:: low) more');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		await adapter.write(makeWriteRequest({content: {priority: 'high'}}));
 
 		const written = captured.captured() ?? '';
@@ -240,7 +240,7 @@ describe('InlineFieldAdapter write()', () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 		stubProcess('rating:: 8');
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 		const result = await adapter.write(makeWriteRequest({content: {rating: '9'}}));
 
 		expect(result).toEqual({
@@ -253,7 +253,7 @@ describe('InlineFieldAdapter write()', () => {
 	it('throws NOT_FOUND when file does not exist', async () => {
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(null);
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 
 		await expect(
 			adapter.write(makeWriteRequest({path: 'notes/missing.md', content: {key: 'val'}})),
@@ -268,7 +268,7 @@ describe('InlineFieldAdapter write()', () => {
 		const file = makeTFile();
 		vi.mocked(app.vault.getFileByPath).mockReturnValue(file);
 
-		const adapter = createInlineFieldAdapter(app);
+		const adapter = createInlineFieldAdapter(asApp(app));
 
 		await expect(
 			adapter.write(makeWriteRequest({content: 'plain string'})),
