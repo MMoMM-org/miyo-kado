@@ -122,7 +122,7 @@ How operations are checked:
 | folder rename | **every** note in the folder must pass |
 | search, list, graph, graph audit, open notes | notes that fail are left out of the results (and out of `listTags` counts and `listDir` child counts) |
 
-Denials come back as `FORBIDDEN` and are recorded with the gate name `tag-access` in the audit log and the Permission Test.
+Denials come back as `FORBIDDEN` with one fixed message, whatever the reason -- the assistant is never told which tag blocked a note, which note in a folder blocked a rename, or whether a hidden note exists. The audit log records the gate name `tag-access`; the **Permission Test** shows the detailed reason. One thing cannot be hidden: a refused folder rename tells the assistant that the folder holds *some* note it may not access (never which one).
 
 **Example -- an employer key in a flat, tag-organised vault:** give the key the path `**` with the permissions you want, set **Only notes tagged** to `Work`, and disable `file.read`. The key then sees and edits only notes tagged `#Work` (including `#Work/...`); new notes it creates must carry `#Work`. Add `Private` to **Never notes tagged** to carve out exceptions.
 

@@ -16,6 +16,10 @@ import {TFile, TFolder} from '../__mocks__/obsidian';
 
 const KEY_ID = 'kado_tag-key';
 
+/** Client-facing denial texts: identical for every reason, so they disclose nothing about hidden notes. */
+const TAG_DENIAL_MESSAGE = 'Access denied by tag rules.';
+const FOLDER_TAG_DENIAL_MESSAGE = 'Rename blocked: the folder contains notes this key may not access (tag rules).';
+
 type Handler = (args: Record<string, unknown>, extra: unknown) => Promise<CallToolResult>;
 
 function allPermissions(): DataTypePermissions {
@@ -110,7 +114,8 @@ describe('tag access — kado-read', () => {
 	it('denies a note with a denied tag even when allowed (deny wins)', async () => {
 		const deps = makeDeps(makeConfig({keyAllow: ['Work'], globalDeny: ['Private']}), {tagSource: makeTagSource({'n.md': ['Work', 'Private']})});
 		const err = errorOf(await handler('kado-read', deps)({operation: 'frontmatter', path: 'n.md'}, extra));
-		expect(err.message).toContain('#Private');
+		expect(err.message).toBe(TAG_DENIAL_MESSAGE);
+		expect(err.message).not.toContain('Private');
 	});
 
 	it('applies to the tags read operation', async () => {
@@ -138,6 +143,24 @@ describe('tag access — kado-read', () => {
 	it('fails closed when rules exist but no tag source is wired', async () => {
 		const deps = makeDeps(makeConfig({keyDeny: ['Private']}));
 		expect(errorOf(await handler('kado-read', deps)({operation: 'note', path: 'n.md'}, extra)).code).toBe('FORBIDDEN');
+		expect(deniedGate(deps)).toBe('tag-access');
+	});
+});
+
+describe('tag access — no disclosure in client messages', () => {
+	it('returns the same message for a missing note, an untagged note and a denied tag', async () => {
+		const config = makeConfig({keyAllow: ['Work'], keyDeny: ['Private']});
+		const deps = makeDeps(config, {tagSource: makeTagSource({'untagged.md': [], 'private.md': ['Work', 'Private']})});
+		const read = handler('kado-read', deps);
+		const messages = await Promise.all(['missing.md', 'untagged.md', 'private.md'].map(
+			async (path) => errorOf(await read({operation: 'note', path}, extra)).message,
+		));
+		expect(new Set(messages)).toEqual(new Set([TAG_DENIAL_MESSAGE]));
+	});
+
+	it('still records the tag-access gate for the audit log', async () => {
+		const deps = makeDeps(makeConfig({keyDeny: ['Private']}), {tagSource: makeTagSource({'p.md': ['Private']})});
+		await handler('kado-read', deps)({operation: 'note', path: 'p.md'}, extra);
 		expect(deniedGate(deps)).toBe('tag-access');
 	});
 });
@@ -251,7 +274,8 @@ describe('tag access — kado-rename', () => {
 		});
 		const err = errorOf(await handler('kado-rename', deps)({operation: 'folder', source: 'F', target: 'G'}, extra));
 		expect(deniedGate(deps)).toBe('tag-access');
-		expect(err.message).toContain('F/b.md');
+		expect(err.message).toBe(FOLDER_TAG_DENIAL_MESSAGE);
+		expect(err.message).not.toContain('F/b.md');
 	});
 
 	it('allows a folder rename when every descendant note passes (non-markdown ignored)', async () => {

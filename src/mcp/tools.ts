@@ -496,6 +496,22 @@ async function logDenied(
 }
 
 /**
+ * Client-facing tag-rule denials (#81). Deliberately identical for every reason:
+ * the detailed reason names a hidden note's tags, its path, or whether it exists
+ * at all, none of which the key may learn. The detail goes to the debug log (and
+ * the owner-facing Permission Test); the audit log records gate `tag-access`.
+ */
+const TAG_DENIAL_MESSAGE = 'Access denied by tag rules.';
+const FOLDER_TAG_DENIAL_MESSAGE = 'Rename blocked: the folder contains notes this key may not access (tag rules).';
+
+/** Replaces a tag-rule denial's detailed reason with `message`, logging the detail for the vault owner. */
+function redactTagDenial(result: GateResult, message: string, keyId: string, path: string): GateResult {
+	if (result.allowed) return result;
+	kadoLog('tag rule denied', {key: truncateKeyId(keyId), path, reason: result.error.message});
+	return {allowed: false, error: {...result.error, message}};
+}
+
+/**
  * Tag access policy (#81) for a single-note operation, run after the gate chain
  * allowed it. With `newContent` (note creation) the tags of the content about to
  * be written are checked; otherwise the note's CURRENT tags, read from its file
@@ -516,7 +532,7 @@ async function evaluateNoteTagAccess(
 	if (source) {
 		tags = newContent !== undefined ? source.tagsOfContent(newContent) : await source.readTags(path);
 	}
-	return evaluateTagAccess(tags, config, key);
+	return redactTagDenial(evaluateTagAccess(tags, config, key), TAG_DENIAL_MESSAGE, keyId, path);
 }
 
 /**
@@ -530,9 +546,7 @@ function evaluateFolderTagAccess(keyId: string, config: KadoConfig, deps: ToolDe
 	for (const path of treePaths) {
 		if (!path.endsWith('.md')) continue;
 		const result = evaluateTagAccess(deps.tagSource?.cachedTags(path) ?? null, config, key);
-		if (!result.allowed) {
-			return {allowed: false, error: {...result.error, message: `Folder contains ${path}: ${result.error.message}`}};
-		}
+		if (!result.allowed) return redactTagDenial(result, FOLDER_TAG_DENIAL_MESSAGE, keyId, path);
 	}
 	return {allowed: true};
 }
