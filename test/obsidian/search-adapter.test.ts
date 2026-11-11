@@ -966,6 +966,29 @@ describe('SearchAdapter — listDir (TFolder walk)', () => {
 // byTag
 // ---------------------------------------------------------------------------
 
+describe('SearchAdapter — frontmatter tag keys (#81 consistency)', () => {
+	it('byTag finds notes tagged via the singular `tag` key, the string form and a capitalised key', async () => {
+		const a = makeTFile({path: 'a.md'});
+		const b = makeTFile({path: 'b.md'});
+		const c = makeTFile({path: 'c.md'});
+		const app = makeApp({
+			markdownFiles: [a, b, c],
+			cacheMap: new Map([[a, {frontmatter: {tag: 'private'}}], [b, {frontmatter: {tags: 'work, private'}}], [c, {frontmatter: {Tags: ['private']}}]]),
+		});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({
+			operation: 'byTag', query: '#private', allowedTags: ['*'],
+		})));
+		expect(result.items.map((i) => i.path).sort()).toEqual(['a.md', 'b.md', 'c.md']);
+	});
+
+	it('listTags counts tags from every frontmatter tag key', async () => {
+		const a = makeTFile({path: 'a.md'});
+		const app = makeApp({markdownFiles: [a], cacheMap: new Map([[a, {frontmatter: {tag: 'private', tags: ['work']}}]])});
+		const result = expectOk(await createSearchAdapter(app as never).search(makeSearchRequest({operation: 'listTags', allowedTags: ['*']})));
+		expect(result.items.map((i) => i.path).sort()).toEqual(['#private', '#work']);
+	});
+});
+
 describe('SearchAdapter — byTag', () => {
 	it('returns notes matching query tag using metadataCache', async () => {
 		const fileA = makeTFile({path: 'notes/a.md', name: 'a.md', ctime: 10, mtime: 20, size: 5});
