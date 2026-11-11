@@ -16,7 +16,8 @@
 - Bugs/fixes → docs/ai/memory/troubleshooting.md
 
 ## Build & Dev Commands
-- `npm run build` — TypeScript check + esbuild production build
+- `npm run build` — TypeScript check (src/ only) + esbuild production build
+- `npm run typecheck:test` — TypeScript check of test files (CI-enforced; build does not cover tests)
 - `npm run dev` — esbuild dev/watch mode
 - `npm run lint` — ESLint
 

@@ -27,5 +27,7 @@ jobs:
                   cache: "npm"
             - run: npm ci
             - run: npm run build --if-present
+            # build only typechecks src/; test files are checked separately (#134)
+            - run: npm run typecheck:test
             - run: npm test
             - run: npm run lint

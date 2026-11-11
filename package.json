@@ -11,6 +11,7 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"test:live": "vitest run --config vitest.live.config.ts",
+		"typecheck:test": "tsc --noEmit -p tsconfig.test.json",
 		"lint": "eslint src/ && stylelint styles.css",
 		"lint:css": "stylelint styles.css"
 	},
