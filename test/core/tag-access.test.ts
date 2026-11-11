@@ -120,7 +120,7 @@ describe('isTagGovernedDataType', () => {
 		expect(isTagGovernedDataType(op)).toBe(true);
 	});
 
-	it('does not govern file (attachments stay path-only)', () => {
-		expect(isTagGovernedDataType('file')).toBe(false);
+	it.each(['file', 'folder'])('does not govern %s', (op) => {
+		expect(isTagGovernedDataType(op)).toBe(false);
 	});
 });

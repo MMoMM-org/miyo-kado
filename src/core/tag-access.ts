@@ -46,9 +46,16 @@ export function hasTagRules(config: KadoConfig, key: ApiKeyConfig): boolean {
 	return collectRules(config, key).some((r) => r.allow.length > 0 || r.deny.length > 0);
 }
 
-/** True for data types that live inside a markdown note and are therefore subject to tag rules. */
+/** Operations that act on (part of) a markdown note and are therefore subject to tag rules. */
+const TAG_GOVERNED_OPERATIONS: ReadonlySet<string> = new Set(['note', 'frontmatter', 'dataview-inline-field', 'tags']);
+
+/**
+ * True for data types that live inside a markdown note. `file` (attachments)
+ * and `folder` (empty-folder delete; folder rename is checked per descendant)
+ * are not governed.
+ */
 export function isTagGovernedDataType(operation: string): boolean {
-	return operation !== 'file';
+	return TAG_GOVERNED_OPERATIONS.has(operation);
 }
 
 function denied(message: string): GateResult {
