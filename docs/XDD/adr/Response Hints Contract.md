@@ -72,5 +72,5 @@ Stateless, always-on, typed, unit-tested, ignorable. Minimal surface; cannot bre
 
 - ADR-001 (stateless per-request MCP server) — the reason a state machine would be dead weight
 - Survey: `aaronsb/obsidian-mcp-plugin` semantic-operations / workflow-hints (the anti-patterns avoided: per-call router state, empty default config)
-- Implementation: `src/mcp/hints.ts` (`deriveHints`), `src/mcp/response-mapper.ts` (`withHints`), `src/mcp/tools.ts` (handler wiring)
+- Implementation: `src/mcp/hints.ts` (`deriveHints`), `src/mcp/response-mapper.ts` (`withHints`), `src/mcp/tool-*.ts` (handler wiring)
 - `docs/api-reference.md` — client-facing `_hints` documentation

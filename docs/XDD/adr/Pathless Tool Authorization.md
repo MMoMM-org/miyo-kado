@@ -80,5 +80,5 @@ Option 4 above is unchanged in shape (authenticate, filter each node, post-ACL t
 - ADR-002 (kado-graph link-disclosure guard): the per-path counterpart; dangling-as-source-content rule reused for dead links
 - `decisions.md` 2026-04-20: `kado-open-notes` silent path-ACL filtering and authenticate-gate precedent
 - `decisions.md` 2026-06-04: `listNotes` source-note disclosure boundary
-- Implementation: `src/mcp/tools.ts` (`registerGraphAuditTool`, `paginateAudit`, `isPathPermittedForKey`), `src/obsidian/graph-adapter.ts` (`audit`), `CoreGraphAuditRequest` in `src/types/canonical.ts`
+- Implementation: `src/mcp/tool-graph.ts` (`registerGraphAuditTool`, `paginateAudit`), `src/mcp/scope-filters.ts` (`isPathPermittedForKey`), `src/obsidian/graph-adapter.ts` (`audit`), `CoreGraphAuditRequest` in `src/types/canonical.ts`
 - Client docs: `docs/api-reference.md` § Tool: kado-graph-audit
