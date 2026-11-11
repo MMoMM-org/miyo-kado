@@ -113,6 +113,8 @@ describe('ConfigManager.load()', () => {
 			listMode: 'whitelist',
 			paths: [],
 			tags: [],
+			tagAllow: [],
+			tagDeny: [],
 			allowActiveNote: false,
 			allowOtherNotes: false,
 		};
@@ -299,6 +301,8 @@ describe('ConfigManager.load() migration: "/" → "**"', () => {
 			listMode: 'whitelist',
 			paths: [makePathPermission({path: '/'})],
 			tags: [],
+			tagAllow: [],
+			tagDeny: [],
 			allowActiveNote: false,
 			allowOtherNotes: false,
 		};
@@ -421,6 +425,8 @@ describe('ConfigManager.load() migration: open-notes flags', () => {
 			listMode: 'whitelist',
 			paths: [],
 			tags: [],
+			tagAllow: [],
+			tagDeny: [],
 			allowActiveNote: true,
 			allowOtherNotes: true,
 		};
@@ -484,5 +490,33 @@ describe('ConfigManager round-trip save → load', () => {
 		expect(config2.security.paths[0]?.path).toBe('rt-path/**');
 		expect(config2.apiKeys).toHaveLength(1);
 		expect(config2.apiKeys[0]?.label).toBe('Round-trip key');
+	});
+});
+
+describe('ConfigManager.load() migration: tag rules (#81)', () => {
+	it('defaults tagAllow and tagDeny to [] on global security and keys when absent', async () => {
+		const {manager} = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [], tags: []},
+			apiKeys: [{id: 'kado_old', label: 'Old', enabled: true, createdAt: 1, listMode: 'whitelist', paths: [], tags: []}],
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.tagAllow).toEqual([]);
+		expect(config.security.tagDeny).toEqual([]);
+		expect(config.apiKeys[0]?.tagAllow).toEqual([]);
+		expect(config.apiKeys[0]?.tagDeny).toEqual([]);
+	});
+
+	it('preserves configured tag rules and drops non-string entries', async () => {
+		const {manager} = makeConfigManager({
+			security: {listMode: 'whitelist', paths: [], tags: [], tagAllow: ['Work'], tagDeny: ['Private', 42]},
+			apiKeys: [{id: 'kado_k', label: 'K', enabled: true, createdAt: 1, listMode: 'whitelist', paths: [], tags: [], tagAllow: 'Work', tagDeny: ['Secret']}],
+		});
+		await manager.load();
+		const config = manager.getConfig();
+		expect(config.security.tagAllow).toEqual(['Work']);
+		expect(config.security.tagDeny).toEqual(['Private']);
+		expect(config.apiKeys[0]?.tagAllow).toEqual([]);
+		expect(config.apiKeys[0]?.tagDeny).toEqual(['Secret']);
 	});
 });

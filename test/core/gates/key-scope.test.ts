@@ -48,6 +48,8 @@ function makeApiKey(overrides?: Partial<ApiKeyConfig>): ApiKeyConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 		...overrides,

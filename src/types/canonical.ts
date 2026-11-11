@@ -545,6 +545,10 @@ export interface SecurityConfig {
 	paths: PathPermission[];
 	/** Tags for read-only filtering, stored without '#'. */
 	tags: string[];
+	/** Tag access rule (#81): if non-empty, a note must carry ≥1 matching tag. Stored without '#'. */
+	tagAllow: string[];
+	/** Tag access rule (#81): a note carrying any matching tag is denied. Deny wins. Stored without '#'. */
+	tagDeny: string[];
 	/** Whether the open-notes tool may return the currently active note. Default: false (applied by config-manager on load). */
 	allowActiveNote: boolean;
 	/** Whether the open-notes tool may return non-active open notes. Default: false (applied by config-manager on load). */
@@ -563,6 +567,10 @@ export interface ApiKeyConfig {
 	paths: PathPermission[];
 	/** Subset of global security tags this key can use. */
 	tags: string[];
+	/** Tag access rule (#81), evaluated independently of global: note must carry ≥1 matching tag when non-empty. */
+	tagAllow: string[];
+	/** Tag access rule (#81), evaluated independently of global: any matching tag denies. Deny wins. */
+	tagDeny: string[];
 	/** Whether this key may receive the active note via open-notes. Default: false. Applied as AND with global. */
 	allowActiveNote: boolean;
 	/** Whether this key may receive non-active notes via open-notes. Default: false. Applied as AND with global. */
@@ -657,6 +665,8 @@ export function createDefaultSecurityConfig(): SecurityConfig {
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 	};
@@ -675,6 +685,8 @@ export function createDefaultApiKeyConfig(overrides?: Partial<ApiKeyConfig>): Ap
 		listMode: 'whitelist',
 		paths: [],
 		tags: [],
+		tagAllow: [],
+		tagDeny: [],
 		allowActiveNote: false,
 		allowOtherNotes: false,
 		...overrides,

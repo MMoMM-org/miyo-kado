@@ -23,7 +23,7 @@ function makeRequest(): CoreRequest {
 function makeConfig(): KadoConfig {
 	return {
 		server: {enabled: false, host: '127.0.0.1', port: 23026, connectionType: 'local' as const, rateLimitMaxRequests: 20, rateLimitWindowSeconds: 5},
-		security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+		security: {listMode: 'whitelist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		apiKeys: [],
 		audit: {enabled: true, logDirectory: 'logs', logFileName: 'kado-audit.log', maxSizeBytes: 10485760, maxRetainedLogs: 3},
 		debugLogging: false,
@@ -203,6 +203,8 @@ describe('evaluatePermissions — single key resolution (M6)', () => {
 				listMode: 'blacklist',
 				paths: [],
 				tags: [],
+				tagAllow: [],
+				tagDeny: [],
 				allowActiveNote: false,
 				allowOtherNotes: false,
 			},
@@ -287,6 +289,8 @@ describe('subfolder narrowing — global-scope AND key-scope', () => {
 			listMode: 'whitelist',
 			paths: [{path: 'Atlas/202 Notes', permissions: createAllPermissions()}],
 			tags: [],
+			tagAllow: [],
+			tagDeny: [],
 			allowActiveNote: false,
 			allowOtherNotes: false,
 		}];

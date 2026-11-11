@@ -67,6 +67,8 @@ describe('renderGlobalSecurityTab — rendering', () => {
 					},
 				],
 				tags: [],
+				tagAllow: [],
+				tagDeny: [],
 				allowActiveNote: false,
 				allowOtherNotes: false,
 			},
@@ -155,7 +157,7 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 	it('Open Notes toggle descriptions use blacklist wording when listMode is blacklist', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin({
-			security: {listMode: 'blacklist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+			security: {listMode: 'blacklist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		});
 
 		renderGlobalSecurityTab(container, plugin, vi.fn());
@@ -168,7 +170,7 @@ describe('renderGlobalSecurityTab — Open Notes section (T3.3)', () => {
 	it('Open Notes toggle descriptions use whitelist wording when listMode is whitelist', () => {
 		const container = renderSandbox();
 		const {plugin} = mockPlugin({
-			security: {listMode: 'whitelist', paths: [], tags: [], allowActiveNote: false, allowOtherNotes: false},
+			security: {listMode: 'whitelist', paths: [], tags: [], tagAllow: [], tagDeny: [], allowActiveNote: false, allowOtherNotes: false},
 		});
 
 		renderGlobalSecurityTab(container, plugin, vi.fn());
@@ -228,6 +230,8 @@ describe('renderGlobalSecurityTab — interactivity', () => {
 					},
 				],
 				tags: [],
+				tagAllow: [],
+				tagDeny: [],
 				allowActiveNote: false,
 				allowOtherNotes: false,
 			},

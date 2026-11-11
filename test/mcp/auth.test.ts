@@ -59,6 +59,8 @@ const ENABLED_KEY = {
 	listMode: 'whitelist' as const,
 	paths: [],
 	tags: [],
+	tagAllow: [],
+	tagDeny: [],
 	allowActiveNote: false,
 	allowOtherNotes: false,
 };
@@ -71,6 +73,8 @@ const DISABLED_KEY = {
 	listMode: 'whitelist' as const,
 	paths: [],
 	tags: [],
+	tagAllow: [],
+	tagDeny: [],
 	allowActiveNote: false,
 	allowOtherNotes: false,
 };
