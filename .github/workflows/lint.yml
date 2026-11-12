@@ -1,8 +1,10 @@
 name: CI
 
+# Runs on pull requests (every target branch) and on pushes to master, i.e. merges.
+# Plain pushes to feature branches do not trigger CI; open a PR to get checks.
 on:
     push:
-        branches: ["**"]
+        branches: [master]
     pull_request:
         branches: ["**"]
 
