@@ -59,13 +59,12 @@ Config file locations:
 - **Global:** `~/.cursor/mcp.json`
 - **Per-project:** `.cursor/mcp.json` in the project root
 
-Also configurable via **Settings > Features > MCP** in the UI.
+Also manageable from the **Customize** page in the Cursor sidebar.
 
 ```json
 {
   "mcpServers": {
     "kado": {
-      "type": "sse",
       "url": "http://127.0.0.1:23026/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
@@ -74,6 +73,8 @@ Also configurable via **Settings > Features > MCP** in the UI.
   }
 }
 ```
+
+> **Note:** Cursor needs no `type` field for remote servers; a `url` entry connects to Kado's Streamable HTTP endpoint.
 
 ## Windsurf
 
@@ -103,7 +104,7 @@ Also configurable via **Settings > Cascade > MCP** in the UI.
 
 Any MCP-compatible client can connect to Kado. The generic pattern:
 
-- **Transport:** Streamable HTTP (or SSE for older clients)
+- **Transport:** Streamable HTTP (the legacy SSE transport is not supported -- SSE-only clients need the `mcp-remote` bridge below)
 - **Endpoint:** `http://127.0.0.1:23026/mcp`
 - **Auth:** HTTP header `Authorization: Bearer YOUR_API_KEY`
 
@@ -140,5 +141,5 @@ You can register Kado multiple times with different API keys for different permi
 |--------|-------------------|-----------|------------|
 | Claude Code | `.mcp.json` | `url` | `"http"` |
 | Claude Desktop | `~/Library/.../claude_desktop_config.json` | none (stdio via `mcp-remote`) | none (`command` + `args`) |
-| Cursor | `~/.cursor/mcp.json` | `url` | `"sse"` |
+| Cursor | `~/.cursor/mcp.json` | `url` | not needed |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `serverUrl` | not needed |
