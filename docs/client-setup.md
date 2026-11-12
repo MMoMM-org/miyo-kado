@@ -4,6 +4,10 @@ How to connect your AI assistant to Kado. Each client needs the Kado server URL 
 
 **Prerequisites:** Kado is [installed](installation.md) and you have [created an API key](configuration.md#creating-a-key) in the settings.
 
+**Good to know:**
+- Kado runs inside Obsidian. The server is only reachable while Obsidian is running with the vault open -- if Obsidian is closed, the client reports a connection error.
+- Kado never exposes hidden files or folders (any path segment starting with `.`, e.g. `.obsidian/`, `.claude/`, `.agents/`). Content a client should read must live in a regular vault folder.
+
 ## Claude Code
 
 Config file: `.mcp.json` in your project root (or `~/.claude/mcp.json` for global)
@@ -31,15 +35,15 @@ Config file locations:
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
+`claude_desktop_config.json` only launches local **stdio** servers (`command` + `args`); it has no `url`/`headers` form. Connect Kado through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge, which Claude Desktop starts as a stdio server and which forwards to Kado's Streamable HTTP endpoint (requires Node.js for `npx`):
+
 ```json
 {
   "mcpServers": {
     "kado": {
-      "type": "sse",
-      "url": "http://127.0.0.1:23026/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY"
-      }
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:23026/mcp",
+               "--header", "Authorization:Bearer YOUR_API_KEY"]
     }
   }
 }
@@ -47,20 +51,7 @@ Config file locations:
 
 Restart Claude Desktop after editing the config file.
 
-> **Why not the "Add custom connector" UI?** Claude Desktop has a built-in dialog for adding MCP servers (Settings > Custom Connectors), but it only supports OAuth authentication -- there is no field for custom headers like `Authorization: Bearer`. Since Kado uses Bearer tokens, you must use the config file instead. The dialog will not work with Kado.
-
-> **Note:** Older Claude Desktop versions (pre-2025) only supported `stdio` transport. If `"type": "sse"` doesn't work, update your Claude Desktop or use the stdio proxy workaround:
-> ```json
-> {
->   "mcpServers": {
->     "kado": {
->       "command": "npx",
->       "args": ["-y", "mcp-remote", "http://127.0.0.1:23026/mcp",
->                "--header", "Authorization:Bearer YOUR_API_KEY"]
->     }
->   }
-> }
-> ```
+> **Why not the "Add custom connector" UI?** Claude Desktop's built-in dialog for remote MCP servers (Settings > Connectors) only supports OAuth -- there is no field for custom headers like `Authorization: Bearer`. Since Kado uses Bearer tokens, the dialog will not work with Kado; use the config file above.
 
 ## Cursor
 
@@ -148,6 +139,6 @@ You can register Kado multiple times with different API keys for different permi
 | Client | Config file (macOS) | URL field | Type field |
 |--------|-------------------|-----------|------------|
 | Claude Code | `.mcp.json` | `url` | `"http"` |
-| Claude Desktop | `~/Library/.../claude_desktop_config.json` | `url` | `"sse"` |
+| Claude Desktop | `~/Library/.../claude_desktop_config.json` | none (stdio via `mcp-remote`) | none (`command` + `args`) |
 | Cursor | `~/.cursor/mcp.json` | `url` | `"sse"` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `serverUrl` | not needed |
