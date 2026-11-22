@@ -31,9 +31,23 @@ jobs:
 
             - run: npm test
 
+            # The main-branch ruleset requires CodeQL results for every commit,
+            # which semantic-release's own release commit can never have. The
+            # GitHub Actions app cannot be a ruleset bypass actor, so the push
+            # runs as our own release GitHub App, which is a bypass actor
+            # (#145). Merges via PR stay CodeQL-gated. The `[skip ci]` in the
+            # release commit message keeps the app's push from retriggering
+            # workflows (unlike GITHUB_TOKEN, an app token would).
+            - name: Mint release app token
+              id: app-token
+              uses: actions/create-github-app-token@v3
+              with:
+                  client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
             - name: Release
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
               run: npx semantic-release
 
             - name: Guard against silently-dropped releases
